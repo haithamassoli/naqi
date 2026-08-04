@@ -18,6 +18,16 @@ enum Log {
     static let signposter = OSSignposter(subsystem: subsystem, category: "perf")
 }
 
+extension Duration {
+    /// `components` splits into whole seconds plus an attosecond remainder;
+    /// reading either alone is a silent truncation.
+    var milliseconds: Double {
+        let c = components
+        return Double(c.seconds) * 1000 + Double(c.attoseconds) / 1e15
+    }
+    var seconds: Double { milliseconds / 1000 }
+}
+
 /// Wall-clock timer that logs on `stop()`. Every pipeline stage reports through
 /// this so the per-shape wall breakdown (perf-plan-v4's framing) is always
 /// available from a release build, not just under Instruments.
@@ -34,8 +44,13 @@ struct Stage: ~Copyable {
         self.state = Log.signposter.beginInterval(name, id: id)
     }
 
-    /// Milliseconds elapsed so far.
-    var elapsedMs: Double { Double((ContinuousClock.now - start).components.attoseconds) / 1e15 }
+    /// Milliseconds elapsed so far. `Duration.components.attoseconds` is only
+    /// the sub-second remainder, so it must be combined with `.seconds` — using
+    /// it alone silently reports a 6.07 s render as 70.3 ms.
+    var elapsedMs: Double { start.duration(to: .now).milliseconds }
+
+    /// Elapsed seconds, for x-realtime ratios.
+    var elapsedSeconds: Double { elapsedMs / 1000 }
 
     consuming func stop(_ detail: String = "") {
         let ms = elapsedMs

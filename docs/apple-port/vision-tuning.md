@@ -82,13 +82,27 @@ parity run shows the vote disagreeing with Android, and it is the cheapest
 available answer to the known caveat that 23 % of what Android's vote classified
 was not a face at all.
 
-## 4. `minFaceSize` is not exposed, so §11.3 stays open
+## 4. `minFaceSize` is not exposed, and Vision detects *below* ML Kit's floor
 
 ML Kit's default `minFaceSize = 0.1` (fraction of the shorter side) was
 **[INFERRED]** on Android and never written down. `DetectFaceRectanglesRequest`
 has no equivalent knob, so the smallest detected face is whatever Vision decides.
-This moves both coverage and the effective reach of the 80 px vote floor, and it
-cannot be tuned — only measured. Carried forward to the M7 parity run.
+
+Measured on the QA clip (`test-video.mp4`, 12.8 s, 1080x1920, detector buffer
+360x640): 83 detections across 128 sampled frames, box long side **17–23 px**,
+median 20.7. That is 5.7 % of the 360 px short side — comfortably *under* ML
+Kit's inferred 0.1 floor, which on the same buffer would be 36 px. **Vision is
+finding faces ML Kit would have discarded.** Direction of the difference is
+toward more coverage, which is the safe one, but it means the two detectors are
+not scoring the same population and the M7 parity run must diff the censored
+timeline, never face counts.
+
+Downstream consequence on this clip: every crop is under `MIN_FACE_PX = 80`, so
+the gender vote never runs and all 19 tracks resolve 0/0 ⇒ censor. Correct per
+§5.1 (below 80 px the classifier is 76.9 % accurate against 95.9 % just above),
+but it means the QA suite as it stands **does not exercise the Women/Men
+selector at all** — that needs a close-up clip. Related open item: §11.7 already
+flags that the male sample behind the vote's accuracy numbers is 10 crops.
 
 ## 5. Coordinate space and the flip
 
@@ -122,7 +136,21 @@ ahead into its own internal queue, so the second slot Android needed to absorb
 unchanged and still load-bearing: Vision is awaited inside the consume call, so
 the pool slot is alive for the whole detection.
 
-## 7. Colour range (§9.3 / §11.1) — still unresolved, and deliberately so
+## 7. Vision's default compute device cannot always run
+
+`DetectFaceRectanglesRequest.perform` fails with
+`Could not create inference context` on the iOS 26.5 simulator for **every**
+pixel format and both `MLGPUComputeDevice` and the default — only
+`MLCPUComputeDevice` works there. It is a per-request property, not per frame,
+so `FaceDetector.resolve()` probes once with a 64² buffer at pass start and pins
+the CPU device only if the default cannot run. On hardware the default (ANE/GPU)
+is kept. The same fallback covers a device that cannot get a GPU context under
+pressure, so it is not simulator-only scaffolding.
+
+**Consequence for CI:** all simulator analyze timings below are CPU-Vision and
+are not device-representative — detection is essentially the entire wall there.
+
+## 8. Colour range (§9.3 / §11.1) — still unresolved, and deliberately so
 
 The pass reads `kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange` and applies
 Android's integer BT.601 **full-range** math to those bytes without a 16-235
@@ -131,3 +159,31 @@ the only way the strictness table transfers. `…FullRange` would have
 VideoToolbox expand the samples and change every RGB value, hence every gate
 probability. Not verified against Android's raw decoder output yet; that is the
 M7 bit-exactness check.
+
+---
+
+## Measured, iPhone 17 Pro simulator, Debug, `test-video.mp4` (12.8 s, 1080x1920)
+
+384 frames decoded, 128 sampled at 10 fps, 64 gated at 5 fps.
+
+| stage | wall | per frame |
+|---|---:|---:|
+| decode + vImage scale to 360x640 | 2 832 ms | 22.1 ms / sampled frame |
+| + 224² gate tensor fill (gather + SIMD BT.601) | within run-to-run noise | < 1 ms / gate frame |
+| + NSFW gate, ORT CPU, threads=2 | +760 ms | 11.9 ms / gate frame |
+| + Vision detect | ~6 200 ms total | ~48 ms / sampled frame |
+
+Read these as ratios only. The simulator has **no hardware H.264 decoder** and
+Vision is pinned to CPU there, so both the decode and the detect columns are
+software paths that a device does not take. What does transfer:
+
+* the gate tensor fill — the walk this milestone owns — is **below the noise
+  floor**, so §10.1's "sample the source planes, never the downscaled buffer"
+  costs nothing here;
+* the ORT thread knee is at **2** (19.25 / 11.87 / 10.43 ms per gate frame at
+  1 / 2 / 4), matching Android;
+* **gate batching buys nothing.** Bit-identical, and flat to 6 % worse per frame
+  at batch 2 / 4 / 8 against batch 1 (11.87 / 12.60 / 12.63 / 12.32 ms at
+  threads=2). Android's §10.16 "do not batch the gate" transfers; the mechanism
+  is kept because it is free, but it should be re-measured on hardware before
+  anyone counts it as a win.

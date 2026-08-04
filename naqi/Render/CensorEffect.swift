@@ -1,6 +1,7 @@
 import CoreImage
 import CoreImage.CIFilterBuiltins
 import CoreVideo
+import Foundation
 import Metal
 import os
 
@@ -25,14 +26,16 @@ struct BlurPlan: Equatable, Sendable {
         let shortSide = Float(min(size.width, size.height))
         // Float division throughout — integer-dividing collapses every amount
         // below 100 to zero.
-        sigmaPx = max(0.1, Float(amount) / 100 * 40 * (shortSide / 1080))
-        let d = [1, 2, 4, 8].first { sigmaPx / Float($0) <= 4 } ?? 8
+        let sigma = max(0.1 as Float, Float(amount) / 100 * 40 * (shortSide / 1080))
+        let d = [1, 2, 4, 8].first { sigma / Float($0) <= 4 } ?? 8
+        sigmaPx = sigma
         downscale = d
         // Integer division then a floor of 1: 854/4 is 213, not 213.5, and the
         // truncation is visible in the texel step.
         lowSize = CGSize(width: max(1, Int(size.width) / d), height: max(1, Int(size.height) / d))
-        sigmaLow = sigmaPx / Float(d)
-        radius = max(1, min(10, Int(ceil(2.5 * sigmaLow))))
+        let low = sigma / Float(d)
+        sigmaLow = low
+        radius = max(1, min(10, Int(ceil(2.5 * low))))
     }
 }
 
@@ -70,6 +73,8 @@ final class CensorEffect: @unchecked Sendable {
 
         var opts: [CIContextOption: Any] = [
             .cacheIntermediates: false,
+            // Names the context in Instruments' Core Image track.
+            .name: "naqi-render",
             // The downscale is meant to alias exactly as Android's bilinear
             // point-sample does; a high-quality resampler would change the look
             // and cost more.
@@ -79,9 +84,16 @@ final class CensorEffect: @unchecked Sendable {
             // Tone mapping is the one thing here that genuinely needs colour
             // management: half-float extended-linear working space in, SDR
             // BT.709 out.
-            opts[.workingColorSpace] = CGColorSpace(name: CGColorSpace.extendedLinearSRGB) as Any
+            if let working = CGColorSpace(name: CGColorSpace.extendedLinearSRGB) {
+                opts[.workingColorSpace] = working
+            }
             opts[.workingFormat] = CIFormat.RGBAh
-            outputColorSpace = CGColorSpace(name: CGColorSpace.sRGB)
+            // BT.709, not sRGB: `render()` tags the destination buffer
+            // `kCVImageBufferTransferFunction_ITU_R_709_2`, and the two curves
+            // disagree in the shadows, so rendering through the sRGB EOTF and
+            // labelling it 709 mis-levels the bottom of an HDR tone-map's range
+            // (`spec-avfoundation.md` §7.2, §4.4).
+            outputColorSpace = CGColorSpace(name: CGColorSpace.itur_709)
         } else {
             // No colour management at all. Android's pipeline is electrical/sRGB
             // end to end with no linearisation anywhere (`spec-render.md` §1.5),
@@ -89,7 +101,13 @@ final class CensorEffect: @unchecked Sendable {
             opts[.workingColorSpace] = NSNull()
             outputColorSpace = nil
         }
-        ctx = MTLCreateSystemDefaultDevice().map { CIContext(mtlDevice: $0, options: opts) }
+        // From a *command queue*, not a device: `CIContext(mtlDevice:)` makes Core
+        // Image spin up a queue of its own, which is the one thing the header
+        // tells you to avoid (`CIContext.h:426`, `spec-avfoundation.md` §7.2).
+        // One context per job — a CIContext caches compiled kernels.
+        ctx = MTLCreateSystemDefaultDevice()
+            .flatMap { $0.makeCommandQueue() }
+            .map { CIContext(mtlCommandQueue: $0, options: opts) }
             ?? CIContext(options: opts)
     }
 
@@ -239,6 +257,13 @@ final class CensorEffect: @unchecked Sendable {
     private static func limited(_ r: [NRect]) -> [NRect] {
         let live = r.filter { !$0.isEmpty }
         guard live.count > Edl.maxRegionsPerFrame else { return live }
+        // Never silently — Android warns on every overflowing frame
+        // (`CensorEffect.kt:183`) because reaching here means the EDL's
+        // whole-frame promotion missed an instant, which is an analyze-pass bug.
+        Log.render.warning("""
+            region overflow: \(live.count, privacy: .public) regions on one frame, \
+            keeping the \(Edl.maxRegionsPerFrame, privacy: .public) largest
+            """)
         return Array(live.sorted { $0.width * $0.height > $1.width * $1.height }
             .prefix(Edl.maxRegionsPerFrame))
     }

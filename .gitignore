@@ -1,5 +1,8 @@
 # Xcode
+# .noindex keeps Spotlight out of derived data — mds indexing the 88 MB
+# models and every build artifact was measurably contaminating benchmark runs.
 build/
+build.noindex/
 DerivedData/
 *.xcuserstate
 xcuserdata/

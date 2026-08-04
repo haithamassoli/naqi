@@ -65,6 +65,7 @@ final class OrtModel: @unchecked Sendable {
     let inputNames: [String]
     let outputNames: [String]
     let compute: ComputeUnit
+    let threads: Int
 
     /// - Parameters:
     ///   - threads: intra-op threads. 1 matches Android (`ml/Models.kt` pins it
@@ -81,6 +82,7 @@ final class OrtModel: @unchecked Sendable {
     init(name: String, path: String, compute: ComputeUnit, threads: Int = 1) throws {
         self.name = name
         self.compute = compute
+        self.threads = threads
 
         let opts = try ORTSessionOptions()
         try opts.setLogSeverityLevel(.warning)
@@ -144,14 +146,35 @@ enum ModelRegistry {
     /// Two threads calling `CreateSession` on the same graph concurrently
     /// segfaults inside ORT, and the cost of serialising is one 300 ms load per
     /// model per process.
+    ///
+    /// **One resident session per file, never per configuration.** Keying the
+    /// cache on `(file, compute, threads)` looks harmless and is not: callers
+    /// that disagreed about `threads` produced three concurrent htdemucs
+    /// sessions and a 6.4 GB footprint against a 1.5 GB budget, which SIGKILLed
+    /// the test host. A request with a different configuration replaces the
+    /// resident one rather than joining it.
     static func model(_ file: String, compute: ComputeUnit = .cpu, threads: Int = 1) throws -> OrtModel {
-        let key = "\(file)#\(compute)#\(threads)"
         lock.lock()
         defer { lock.unlock() }
-        if let m = cache[key] { return m }
+        if let m = cache[file] {
+            if m.compute == compute && m.threads == threads { return m }
+            Log.ml.notice("""
+                \(file, privacy: .public): reconfiguring \
+                \(String(describing: m.compute), privacy: .public)/\(m.threads) -> \
+                \(String(describing: compute), privacy: .public)/\(threads); evicting the old session
+                """)
+            cache[file] = nil
+        }
         let built = try OrtModel(bundledModel: file, compute: compute, threads: threads)
-        cache[key] = built
+        cache[file] = built
         return built
+    }
+
+    /// Drops one graph. Call after a job finishes with htdemucs so its ~1.3 GB
+    /// arena is not held while the user is just browsing.
+    static func evict(_ file: String) {
+        lock.lock(); defer { lock.unlock() }
+        cache[file] = nil
     }
 
     /// Drops cached sessions. Called when a job finishes so a 1.3 GB htdemucs

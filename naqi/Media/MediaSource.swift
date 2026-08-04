@@ -22,6 +22,8 @@ struct MediaSource: Sendable {
         let estimatedBitrate: Float
         let codec: CMVideoCodecType
         let isHDR: Bool
+        /// The source track's timescale, carried into the writer so PTS are not rescaled.
+        let naturalTimeScale: CMTimeScale
         var formatDescription: CMFormatDescription?
 
         var pixelCount: Int { Int(naturalSize.width * naturalSize.height) }
@@ -44,10 +46,10 @@ struct MediaSource: Sendable {
 
         var videoInfo: MediaSource.VideoInfo?
         if let t = try await asset.loadTracks(withMediaType: .video).first {
-            let (size, transform, fps, bitrate, formats) = try await (
+            let (size, transform, fps, bitrate, formats, timeScale) = try await (
                 t.load(.naturalSize), t.load(.preferredTransform),
                 t.load(.nominalFrameRate), t.load(.estimatedDataRate),
-                t.load(.formatDescriptions)
+                t.load(.formatDescriptions), t.load(.naturalTimeScale)
             )
             let fd = formats.first
             videoInfo = VideoInfo(
@@ -57,6 +59,7 @@ struct MediaSource: Sendable {
                 estimatedBitrate: bitrate,
                 codec: fd.map { CMFormatDescriptionGetMediaSubType($0) } ?? 0,
                 isHDR: fd.map(Self.isHDR) ?? false,
+                naturalTimeScale: timeScale,
                 formatDescription: fd)
         }
 
@@ -132,6 +135,10 @@ enum EncodeSettings {
             // long enough not to cost meaningful bitrate.
             AVVideoMaxKeyFrameIntervalDurationKey: 2.0,
             AVVideoAllowFrameReorderingKey: true,
+            // Required, not optional, whenever the profile is an AutoLevel one:
+            // VideoToolbox picks the level from the frame rate, and without this
+            // it guesses.
+            AVVideoExpectedSourceFrameRateKey: Int(v.nominalFrameRate.rounded()),
         ]
         props[AVVideoProfileLevelKey] = useHEVC
             ? kVTProfileLevel_HEVC_Main_AutoLevel as String

@@ -38,7 +38,7 @@ enum ModelSmoke {
     }
 
     private static func ms(_ from: ContinuousClock.Instant) -> Double {
-        Double((ContinuousClock.now - from).components.attoseconds) / 1e15
+        from.duration(to: .now).milliseconds
     }
 
     static func nsfw(_ compute: ComputeUnit) -> Result {

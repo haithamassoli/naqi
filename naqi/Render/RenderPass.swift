@@ -43,6 +43,12 @@ enum RenderPass {
         let asset = AVURLAsset(url: source.url, options: [
             AVURLAssetPreferPreciseDurationAndTimingKey: true,
         ])
+        // `AVAssetTrack.asset` is **weak** and `TrackReader` reads it back to
+        // build its `AVAssetReader`. Nothing below this line touches `asset`
+        // again, so an optimised build is free to release it the moment the
+        // track loads — and then the reader fails with "track has no asset"
+        // in Release only. Same guard as the replacement asset further down.
+        defer { withExtendedLifetime(asset) {} }
         guard let videoTrack = try await asset.loadTracks(withMediaType: .video).first else {
             throw MediaError.noVideoTrack
         }
@@ -50,12 +56,17 @@ enum RenderPass {
         let writer = try OutputWriter(url: output)
         writer.addEncodedVideo(v, bitrate: EncodeSettings.resolveBitrate(v))
 
+        // `AVAssetTrack.asset` is weak and `TrackReader` reads it back, so the
+        // replacement's asset has to outlive the pump — hence the local.
+        var replacementAsset: AVURLAsset?
+        defer { withExtendedLifetime(replacementAsset) {} }
         var audioTrack: AVAssetTrack?
         if let replacedAudio {
             let replacement = try await MediaSource.probe(replacedAudio)
+            let ra = AVURLAsset(url: replacedAudio)
+            replacementAsset = ra
             guard let info = replacement.audio,
-                  let t = try await AVURLAsset(url: replacedAudio)
-                      .loadTracks(withMediaType: .audio).first
+                  let t = try await ra.loadTracks(withMediaType: .audio).first
             else { throw MediaError.noAudioTrack }
             writer.addPassthroughAudio(info)
             audioTrack = t
@@ -91,8 +102,8 @@ enum RenderPass {
             let (counts, _) = try await (video, audio)
             try await out.finish()
 
-            let ms = stage.elapsedMs
-            let r = Result(frames: counts.frames, censoredFrames: counts.censored, wallMs: ms)
+            let r = Result(frames: counts.frames, censoredFrames: counts.censored,
+                           wallMs: stage.elapsedMs)
             stage.stop("\(r.frames) frames (\(r.censoredFrames) censored) "
                 + "\(String(format: "%.1f", r.framesPerSecond)) fps")
             return r

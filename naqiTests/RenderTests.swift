@@ -1,0 +1,678 @@
+import Testing
+import AVFoundation
+import CoreImage
+import CoreVideo
+import CryptoKit
+import Foundation
+@testable import naqi
+
+/// M4 exit criteria. Three things can silently ruin the render pass and none of
+/// them show up as a crash: a sigma that drifts from the Android table, a
+/// grayscale matrix in the wrong colour space, and a rect mapped into the wrong
+/// corner on a rotated source. All three are pinned here against real output
+/// pixels, not against the code that produced them.
+@Suite("Render", .serialized)
+struct RenderTests {
+
+    // MARK: - Sigma mapping
+
+    /// `(width, height, blurAmount, sigmaPx, downscale, lowW, lowH, sigmaLow, radius)`
+    /// straight off `spec-render.md` §1.2's worked table.
+    static let sigmaCases: [(Int, Int, Int, Float, Int, Int, Int, Float, Int)] = [
+        (1920, 1080,   0,  0.1,      1, 1920, 1080, 0.1,      1),
+        // The four rows of the spec table that sit exactly ON the ladder's
+        // `sigma / d <= 4` boundary. Each one picks the SMALLER d only because
+        // the comparison is inclusive; a `<` would push all four onto the next
+        // rung and halve the scratch, so these are the rows that catch it.
+        (1920, 1080,  10,  4.0,      1, 1920, 1080, 4.0,     10),
+        (1920, 1080,  20,  8.0,      2,  960,  540, 4.0,     10),
+        (1920, 1080,  40, 16.0,      4,  480,  270, 4.0,     10),
+        (1920, 1080,  80, 32.0,      8,  240,  135, 4.0,     10),
+        (1920, 1080,  50, 20.0,      8,  240,  135, 2.5,      7),
+        (1920, 1080, 100, 40.0,      8,  240,  135, 5.0,     10),
+        (1920, 1080,  60, 24.0,      8,  240,  135, 3.0,      8),
+        (1280,  720,   0,  0.1,      1, 1280,  720, 0.1,      1),
+        (1280,  720,  50, 13.333333, 4,  320,  180, 3.333333, 9),
+        (1280,  720, 100, 26.666666, 8,  160,   90, 3.333333, 9),
+        (1280,  720,  60, 16.0,      4,  320,  180, 4.0,     10),
+        // 854/4 truncates to 213, not 213.5 — the integer division is observable.
+        ( 854,  480,  60, 10.666667, 4,  213,  120, 2.666667, 7),
+        (3840, 2160,  60, 48.0,      8,  480,  270, 6.0,     10),
+    ]
+
+    @Test("blur amount maps to the Android sigma table", arguments: sigmaCases.indices)
+    func sigmaTable(i: Int) {
+        let (w, h, amount, sigma, d, lowW, lowH, sigmaLow, radius) = Self.sigmaCases[i]
+        let p = BlurPlan(amount: amount, size: CGSize(width: w, height: h))
+        let tag = "\(w)x\(h)@\(amount)"
+        #expect(abs(p.sigmaPx - sigma) < 1e-4, "\(tag) sigmaPx \(p.sigmaPx)")
+        #expect(p.downscale == d, "\(tag) downscale \(p.downscale)")
+        #expect(p.lowSize == CGSize(width: lowW, height: lowH), "\(tag) lowSize \(p.lowSize)")
+        #expect(abs(p.sigmaLow - sigmaLow) < 1e-4, "\(tag) sigmaLow \(p.sigmaLow)")
+        #expect(p.radius == radius, "\(tag) radius \(p.radius)")
+    }
+
+    /// Keyed on the short side, so a portrait clip and its landscape twin blur
+    /// by the same number of pixels. Only the scratch size swaps.
+    @Test("sigma is orientation-invariant")
+    func sigmaOrientation() {
+        let land = BlurPlan(amount: 60, size: CGSize(width: 1920, height: 1080))
+        let port = BlurPlan(amount: 60, size: CGSize(width: 1080, height: 1920))
+        #expect(land.sigmaPx == port.sigmaPx)
+        #expect(land.downscale == port.downscale)
+        #expect(port.lowSize == CGSize(width: 135, height: 240))
+    }
+
+    // MARK: - Grayscale coefficients
+
+    /// BT.709 on real output pixels. If Core Image were linearising on the way
+    /// in, pure red would come out around 137 instead of 54 — this is the test
+    /// that pins the working colour space, not just the matrix.
+    @Test("grayscale uses BT.709 luma on the electrical values")
+    func grayscaleCoefficients() throws {
+        let colours: [(UInt8, UInt8, UInt8)] = [(255, 0, 0), (0, 255, 0), (0, 0, 255), (200, 100, 50)]
+        let w = 4 * 64, h = 64
+        let src = try Self.bgra(w, h) { x, _ in colours[x / 64] }
+        let dst = try Self.bgra(w, h) { _, _ in (0, 0, 0) }
+
+        var ops = FilterOps()
+        ops.blurAmount = 0
+        ops.grayscale = true
+        let effect = CensorEffect(ops: ops,
+                                  transform: .identity(size: CGSize(width: w, height: h)),
+                                  tonemapHDR: false)
+        effect.render(src, to: dst, wholeFrame: true, regions: [])
+
+        for (i, c) in colours.enumerated() {
+            let luma = 0.2126 * Double(c.0) + 0.7152 * Double(c.1) + 0.0722 * Double(c.2)
+            let got = Self.pixel(dst, i * 64 + 32, 32)
+            for ch in [got.r, got.g, got.b] {
+                #expect(abs(Double(ch) - luma) <= 2,
+                        "rgb\(c): expected \(Int(luma.rounded())) got \(got)")
+            }
+        }
+    }
+
+    // MARK: - Whole frame
+
+    @Test("whole-frame mode replaces every pixel")
+    func wholeFrame() throws {
+        let w = 320, h = 240
+        let src = try Self.bgra(w, h) { _, _ in (200, 40, 90) }
+        let dst = try Self.bgra(w, h) { _, _ in (0, 0, 0) }
+        var ops = FilterOps()
+        ops.blurAmount = 0
+        ops.grayscale = true
+        CensorEffect(ops: ops, transform: .identity(size: CGSize(width: w, height: h)),
+                     tonemapHDR: false)
+            .render(src, to: dst, wholeFrame: true, regions: [])
+
+        // 0.2126*200 + 0.7152*40 + 0.0722*90 = 77.6
+        for y in stride(from: 2, to: h, by: 17) {
+            for x in stride(from: 2, to: w, by: 19) {
+                let p = Self.pixel(dst, x, y)
+                #expect(abs(p.r - 78) <= 2 && p.r == p.g && p.g == p.b,
+                        "pixel \(x),\(y) is \(p), not greyed")
+            }
+        }
+    }
+
+    /// Whole-frame beats regions, absolutely (`spec-render.md` §5.4). The EDL
+    /// already returns no regions inside a full-frame span, so passing some in
+    /// here is the case the renderer must not be able to get wrong: a shader
+    /// that unioned the whole-frame seed with the region mask instead of
+    /// short-circuiting would leave the area *outside* the rect uncensored.
+    @Test("whole-frame ignores any regions handed to it")
+    func wholeFrameSuppressesRegions() throws {
+        let w = 320, h = 240
+        let src = try Self.bgra(w, h) { _, _ in (200, 40, 90) }
+        let dst = try Self.bgra(w, h) { _, _ in (0, 0, 0) }
+        var ops = FilterOps()
+        ops.blurAmount = 0
+        ops.grayscale = true
+        CensorEffect(ops: ops, transform: .identity(size: CGSize(width: w, height: h)),
+                     tonemapHDR: false)
+            .render(src, to: dst, wholeFrame: true,
+                    regions: [NRect(left: 0.6, top: 0.6, right: 0.7, bottom: 0.7)])
+        // The far corner is nowhere near the rect or its feather.
+        for (x, y) in [(2, 2), (w - 3, 2), (2, h - 3), (w / 2, h / 2)] {
+            let p = Self.pixel(dst, x, y)
+            #expect(abs(p.r - 78) <= 2 && p.r == p.g && p.g == p.b,
+                    "pixel \(x),\(y) is \(p) — the region mask leaked into whole-frame mode")
+        }
+    }
+
+    /// Guards the downscale → blur → upscale path itself: without it a bug that
+    /// returned the source unblurred would still pass every mask test, because
+    /// grayscale is what those assert on.
+    @Test("blur actually softens a hard edge")
+    func blurSoftensEdge() throws {
+        let w = 320, h = 240
+        let src = try Self.bgra(w, h) { x, _ in x < w / 2 ? (0, 0, 0) : (255, 255, 255) }
+        let dst = try Self.bgra(w, h) { _, _ in (0, 0, 0) }
+        var ops = FilterOps()
+        ops.blurAmount = 100
+        ops.grayscale = false
+        CensorEffect(ops: ops, transform: .identity(size: CGSize(width: w, height: h)),
+                     tonemapHDR: false)
+            .render(src, to: dst, wholeFrame: true, regions: [])
+        // sigma at short side 240 is 100/100*40*(240/1080) = 8.9 px, so the seam
+        // is a wide ramp and both sides of it are mid-grey.
+        let left = Self.pixel(dst, w / 2 - 2, h / 2).r
+        let right = Self.pixel(dst, w / 2 + 2, h / 2).r
+        #expect(left > 60 && left < 190, "left of the seam is \(left), not blurred")
+        #expect(right > 60 && right < 190, "right of the seam is \(right), not blurred")
+        // Far from the seam the frame is still black and white.
+        #expect(Self.pixel(dst, 4, h / 2).r < 12)
+        #expect(Self.pixel(dst, w - 5, h / 2).r > 243)
+    }
+
+    // MARK: - Region mapping, both rotations
+
+    /// A 640x360 stored buffer with the SAME upright rect under two transforms.
+    /// `censored` is a buffer pixel that must change; `clean` are pixels that
+    /// must not — and each case's `clean` list deliberately contains the other
+    /// case's `censored` point, so an identity mapping cannot pass both.
+    /// The four `preferredTransform` values iOS capture actually writes, from
+    /// `spec-avfoundation.md` §5.2 with `naturalSize = 640x360`. Each rotation
+    /// sends the same upright rect to a different stored corner, and every
+    /// case's `clean` list is the other three cases' `censored` points, so no
+    /// single mapping — identity, a lone y-flip, or a transposed 90/270 pair —
+    /// can pass more than one row.
+    static let regionCases: [(name: String, t: CGAffineTransform,
+                              censored: (Int, Int), clean: [(Int, Int)])] = [
+        ("rot-0", .identity, (160, 45), [(500, 300), (80, 270), (480, 315), (560, 90)]),
+        ("rot-90", CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: 360, ty: 0),
+         (80, 270), [(500, 50), (160, 45), (480, 315), (560, 90)]),
+        ("rot-180", CGAffineTransform(a: -1, b: 0, c: 0, d: -1, tx: 640, ty: 360),
+         (480, 315), [(160, 45), (80, 270), (560, 90)]),
+        ("rot-270", CGAffineTransform(a: 0, b: -1, c: 1, d: 0, tx: 0, ty: 640),
+         (560, 90), [(160, 45), (80, 270), (480, 315)]),
+    ]
+
+    @Test("region censor lands in the right corner", arguments: regionCases.indices)
+    func regionMapping(i: Int) throws {
+        let c = Self.regionCases[i]
+        let w = 640, h = 360
+        let src = try Self.bgra(w, h) { _, _ in (200, 40, 90) }
+        let dst = try Self.bgra(w, h) { _, _ in (0, 0, 0) }
+
+        var ops = FilterOps()
+        ops.blurAmount = 0
+        ops.grayscale = true
+        let effect = CensorEffect(
+            ops: ops,
+            transform: VideoTransform(preferredTransform: c.t, naturalSize: CGSize(width: w, height: h)),
+            tonemapHDR: false)
+        // Upright top-left quadrant-ish. Stored: rot-0 x 0..320 / y 0..90,
+        // rot-90 x 0..160 / y 180..360, rot-180 x 320..640 / y 270..360,
+        // rot-270 x 480..640 / y 0..180 — `spec-render.md` §2.3's table.
+        let region = NRect(left: 0, top: 0, right: 0.5, bottom: 0.25)
+        effect.render(src, to: dst, wholeFrame: false, regions: [region])
+
+        let inside = Self.pixel(dst, c.censored.0, c.censored.1)
+        #expect(abs(inside.r - 78) <= 2 && inside.r == inside.g && inside.g == inside.b,
+                "\(c.name): \(c.censored) should be greyed, is \(inside)")
+        for p in c.clean {
+            let got = Self.pixel(dst, p.0, p.1)
+            #expect(got == (r: 200, g: 40, b: 90),
+                    "\(c.name): \(p) should be untouched, is \(got)")
+        }
+    }
+
+    /// The feather is strictly outward, so the hard rect is fully covered right
+    /// up to its own edge and the ramp lives outside it.
+    @Test("feather ramps outward only")
+    func featherIsOutward() throws {
+        let w = 640, h = 360
+        let src = try Self.bgra(w, h) { _, _ in (200, 40, 90) }
+        let dst = try Self.bgra(w, h) { _, _ in (0, 0, 0) }
+        var ops = FilterOps()
+        ops.blurAmount = 0
+        ops.grayscale = true
+        CensorEffect(ops: ops, transform: .identity(size: CGSize(width: w, height: h)),
+                     tonemapHDR: false)
+            .render(src, to: dst, wholeFrame: false,
+                    regions: [NRect(left: 0.25, top: 0.25, right: 0.75, bottom: 0.75)])
+        // Stored rect is x 160..480, y 90..270. Just inside the top edge must be
+        // fully greyed; a third of the way into the 27 px feather must be partial.
+        let justInside = Self.pixel(dst, 320, 92)
+        #expect(abs(justInside.r - 78) <= 2, "inside the hard rect is \(justInside), not fully greyed")
+        let inFeather = Self.pixel(dst, 320, 80)
+        #expect(inFeather.r > 78 && inFeather.r < 200, "feather at y=80 is \(inFeather), not a ramp")
+        #expect(Self.pixel(dst, 320, 40) == (r: 200, g: 40, b: 90), "past the feather is not clean")
+    }
+
+    /// The feather's exact shape, not just "something ramps". The three sample
+    /// points are chosen where a linear ramp and a 0.10 fraction both give
+    /// visibly different answers from the spec's `smoothstep` at 0.15 — the
+    /// looser test above passes under all three.
+    ///
+    /// Frame 640x360, hard rect x 160..480 / y 90..270, so `fy = 0.15 * 180 = 27`
+    /// and the outward ramp occupies buffer rows 63..89. Core Image samples at
+    /// pixel centres and counts y from the bottom, so buffer row `n` is
+    /// `360 - n - 0.5` in the mask's own coordinates.
+    /// (buffer row, mask, expected red). `mask = 1 - smoothstep(270, 297, yCI)`.
+    static let featherCases: [(row: Int, mask: Double, expected: Double)] = [
+        (69, 0.145947, 182.1),   // linear would give 170.5, a 0.10 feather 200.0
+        (76, 0.500000, 138.8),   // the one point where linear agrees — pins the midpoint
+        (83, 0.854028,  95.5),   // linear would give 107.1, a 0.10 feather 114.0
+    ]
+
+    @Test("feather is smoothstep over 0.15 of the rect", arguments: featherCases.indices)
+    func featherIsSmoothstep(i: Int) throws {
+        let (row, mask, expected) = Self.featherCases[i]
+        let w = 640, h = 360
+        let src = try Self.bgra(w, h) { _, _ in (200, 40, 90) }
+        let dst = try Self.bgra(w, h) { _, _ in (0, 0, 0) }
+        var ops = FilterOps()
+        ops.blurAmount = 0
+        ops.grayscale = true
+        CensorEffect(ops: ops, transform: .identity(size: CGSize(width: w, height: h)),
+                     tonemapHDR: false)
+            .render(src, to: dst, wholeFrame: false,
+                    regions: [NRect(left: 0.25, top: 0.25, right: 0.75, bottom: 0.75)])
+
+        // BT.709 luma of (200, 40, 90), lerped toward the original by the mask.
+        let grey = 0.2126 * 200 + 0.7152 * 40 + 0.0722 * 90
+        let want = 200 + (grey - 200) * mask
+        #expect(abs(want - expected) < 0.1, "table drift: computed \(want), table says \(expected)")
+        let got = Self.pixel(dst, 320, row).r
+        #expect(abs(Double(got) - want) <= 3,
+                "row \(row): mask \(mask) wants \(String(format: "%.1f", want)), got \(got)")
+    }
+
+    /// `MAX_REGIONS = 8`, and the overflow **fails open**: it keeps the eight
+    /// largest by area and drops the smallest faces, on exactly the frames with
+    /// the most people in them (`spec-render.md` §2.7). Ten equal-width rects of
+    /// descending height, so area order is unambiguous and the two that must go
+    /// are the last two.
+    @Test("nine or more regions keeps the eight largest")
+    func regionOverflowKeepsLargest() throws {
+        let w = 1000, h = 1000
+        let src = try Self.bgra(w, h) { _, _ in (200, 40, 90) }
+        let dst = try Self.bgra(w, h) { _, _ in (0, 0, 0) }
+        // Column i: x (i*100+20)...(i*100+80), y 100...(100 + 100 - 8i).
+        // 40 px of gutter between columns, more than the 9 px x-feather.
+        let heights = (0..<10).map { 100 - 8 * $0 }
+        let regions = heights.enumerated().map { i, ht in
+            NRect(left: Float(i * 100 + 20) / 1000, top: 0.1,
+                  right: Float(i * 100 + 80) / 1000, bottom: Float(100 + ht) / 1000)
+        }
+        CensorEffect(ops: { var o = FilterOps(); o.blurAmount = 0; o.grayscale = true; return o }(),
+                     transform: .identity(size: CGSize(width: w, height: h)),
+                     tonemapHDR: false)
+            .render(src, to: dst, wholeFrame: false, regions: regions)
+
+        for (i, ht) in heights.enumerated() {
+            let p = Self.pixel(dst, i * 100 + 50, 100 + ht / 2)
+            if i < 8 {
+                #expect(abs(p.r - 78) <= 2, "region \(i) (area rank \(i + 1)) was dropped: \(p)")
+            } else {
+                #expect(p == (r: 200, g: 40, b: 90),
+                        "region \(i) is the \(10 - i)th smallest and should have been dropped: \(p)")
+            }
+        }
+    }
+
+    /// The 0.002-per-axis floor under the feather (`spec-render.md` §2.5). A
+    /// 1000x1000 frame with a 5 px-tall rect wants `0.15 x 5 = 0.75 px` of
+    /// vertical ramp; the floor raises it to `0.002 x 1000 = 2 px`. Rows 399 and
+    /// 398 sit 0.5 px and 1.5 px outside the hard rect — both inside the floored
+    /// ramp, and 398 is past the unfloored one entirely. Drop the floor and 97
+    /// becomes 168, 181 becomes a clean 200.
+    @Test("feather floors at 0.002 of the frame on a thin rect")
+    func featherFloor() throws {
+        let w = 1000, h = 1000
+        let src = try Self.bgra(w, h) { _, _ in (200, 40, 90) }
+        let dst = try Self.bgra(w, h) { _, _ in (0, 0, 0) }
+        var ops = FilterOps()
+        ops.blurAmount = 0
+        ops.grayscale = true
+        CensorEffect(ops: ops, transform: .identity(size: CGSize(width: w, height: h)),
+                     tonemapHDR: false)
+            .render(src, to: dst, wholeFrame: false,
+                    regions: [NRect(left: 0.4, top: 0.4, right: 0.6, bottom: 0.405)])
+
+        let grey = 0.2126 * 200 + 0.7152 * 40 + 0.0722 * 90
+        // Hard rect is buffer rows 400..405, ramp rows 398..400 and 405..407.
+        #expect(abs(Double(Self.pixel(dst, 500, 402).r) - grey) <= 3, "hard rect is not solid")
+        // mask = 1 - smoothstep(0, 2, d) for d px past the edge: 0.84375 at
+        // d = 0.5, 0.15625 at d = 1.5.
+        for (row, mask, unfloored) in [(399, 0.84375, 168.3), (398, 0.15625, 200.0)] {
+            let want = 200 + (grey - 200) * mask
+            let got = Self.pixel(dst, 500, row).r
+            #expect(abs(Double(got) - want) <= 3,
+                    "row \(row) is \(got), want \(String(format: "%.0f", want)) — unfloored: \(unfloored)")
+        }
+        #expect(Self.pixel(dst, 500, 396) == (r: 200, g: 40, b: 90), "ramp is wider than the floor")
+    }
+
+    /// `GL_CLAMP_TO_EDGE` parity (`spec-render.md` §1.6a): blur taps that fall
+    /// outside the frame replicate the edge texel. Blurring a flat field must
+    /// therefore be the identity everywhere *including the corners* — without
+    /// the clamp Core Image reads transparent black past the extent and the
+    /// border darkens. Both rungs of the ladder are covered: 40 stays at d=1,
+    /// 100 downscales to d=4, and only the downscaled path has a second extent
+    /// to get wrong.
+    @Test("blurring a flat field leaves the borders alone", arguments: [40, 100])
+    func flatFieldBlurHasNoEdgeDarkening(amount: Int) throws {
+        let w = 320, h = 240
+        let src = try Self.bgra(w, h) { _, _ in (200, 40, 90) }
+        let dst = try Self.bgra(w, h) { _, _ in (0, 0, 0) }
+        var ops = FilterOps()
+        ops.blurAmount = amount
+        ops.grayscale = false
+        let effect = CensorEffect(ops: ops, transform: .identity(size: CGSize(width: w, height: h)),
+                                  tonemapHDR: false)
+        #expect(effect.plan.downscale == (amount == 40 ? 1 : 4), "ladder rung moved")
+        effect.render(src, to: dst, wholeFrame: true, regions: [])
+
+        for (x, y) in [(0, 0), (w - 1, 0), (0, h - 1), (w - 1, h - 1), (w / 2, 0), (0, h / 2)] {
+            let p = Self.pixel(dst, x, y)
+            #expect(abs(p.r - 200) <= 2 && abs(p.g - 40) <= 2 && abs(p.b - 90) <= 2,
+                    "amount \(amount): border pixel \(x),\(y) is \(p), not (200,40,90)")
+        }
+    }
+
+    // MARK: - The production pixel format
+
+    /// Every other pixel test here runs on BGRA, but the render path only ever
+    /// sees `420v` — `TrackReader.decodedVideo` asks for it and the adaptor pool
+    /// vends it. That round trip is where an unmanaged Core Image context can go
+    /// wrong invisibly: video-range expansion, the YCbCr matrix, and the fact
+    /// that `workingColorSpace: NSNull()` must still let CI do the *format*
+    /// conversion it is not allowed to colour-manage.
+    ///
+    /// BT.709's luma coefficients are the same ones that define Y′, so greying a
+    /// 709 frame must leave **Y′ byte-identical** and drive both chroma planes to
+    /// neutral 128. Under BT.601 the decode matrix differs, so 709 luma lands
+    /// elsewhere and the expected Y′ is a different, hard-computed number — which
+    /// is what proves the matrix is read off the buffer instead of assumed.
+    /// `CFString` is not `Sendable`, so the constants are picked inside the test
+    /// rather than stored in the case table.
+    static let yuvCases: [(name: String, expectedY: Double)] = [
+        // Y' IS the 709 luma of the decoded RGB, so 709 round-trips exactly.
+        ("bt709", 150.0),
+        // 601 decodes to R 0.8747 / G 0.5210 / B 0.3904; 709 luma of that is
+        // 0.586767, re-encoded as 16 + 219 * 0.586767 = 144.5.
+        ("bt601", 144.5),
+    ]
+
+    @Test("grayscale on a 4:2:0 buffer preserves Y and neutralises chroma",
+          arguments: yuvCases.indices)
+    func yuv420RoundTrip(i: Int) throws {
+        let (name, expectedY) = Self.yuvCases[i]
+        let matrix = name == "bt709"
+            ? kCVImageBufferYCbCrMatrix_ITU_R_709_2
+            : kCVImageBufferYCbCrMatrix_ITU_R_601_4
+        let w = 64, h = 64
+        // Y 150 / Cb 100 / Cr 170: in gamut under both matrices, and far enough
+        // off neutral that a dropped 16..235 expansion shifts Y by ~11.
+        let src = try Self.yuv420(w, h, y: 150, cb: 100, cr: 170, matrix: matrix)
+        let dst = try Self.yuv420(w, h, y: 0, cb: 0, cr: 0, matrix: matrix)
+        var ops = FilterOps()
+        ops.blurAmount = 0
+        ops.grayscale = true
+        CensorEffect(ops: ops, transform: .identity(size: CGSize(width: w, height: h)),
+                     tonemapHDR: false)
+            .render(src, to: dst, wholeFrame: true, regions: [])
+
+        let got = Self.yuvPixel(dst, w / 2, h / 2)
+        #expect(abs(Double(got.y) - expectedY) <= 2,
+                "\(name): Y' \(got.y), expected \(expectedY) — colour management leaked in")
+        #expect(abs(Int(got.cb) - 128) <= 2 && abs(Int(got.cr) - 128) <= 2,
+                "\(name): chroma \(got.cb),\(got.cr) is not neutral after grayscale")
+    }
+
+    // MARK: - End to end
+
+    @Test("censor-only: frames preserved, audio bit-identical")
+    func censorOnlyEndToEnd() async throws {
+        let inURL = try requireQAVideo()
+        let outURL = Fixtures.scratch("censor-only.mp4")
+        let src = try await MediaSource.probe(inURL)
+
+        // 2 s of whole-frame, then a moving face track — exercises both lookup
+        // paths and leaves plenty of untouched frames for the fast path.
+        let edl = Edl(censorIntervalsMs: [2_000...4_000],
+                      faceTracks: [FaceTrackEdl(startMs: 6_000, endMs: 8_000, keyframes: [
+                          .init(timeMs: 6_000, rect: NRect(left: 0.20, top: 0.20, right: 0.50, bottom: 0.45)),
+                          .init(timeMs: 8_000, rect: NRect(left: 0.40, top: 0.30, right: 0.70, bottom: 0.55)),
+                      ])])
+
+        let r = try await RenderPass.run(source: src, edl: edl, ops: FilterOps(), output: outURL)
+        print("[render] \(r.frames) frames, \(r.censoredFrames) censored, "
+            + "\(String(format: "%.0f", r.wallMs)) ms, \(String(format: "%.1f", r.framesPerSecond)) fps")
+
+        #expect(FileManager.default.fileExists(atPath: outURL.path))
+        let inFrames = try await Self.sampleCount(inURL, .video)
+        #expect(r.frames == inFrames, "rendered \(r.frames) of \(inFrames) source frames")
+        let outFrames = try await Self.sampleCount(outURL, .video)
+        #expect(outFrames == r.frames, "output has \(outFrames) samples, rendered \(r.frames)")
+        // Both spans are inclusive at both ends (`spec-render.md` §5.2) and the
+        // clip is 30.000 fps on a 15360 timescale, so `pts.value * 1000 /
+        // timescale` lands exactly on 2000/4000/6000/8000: frames 60...120 and
+        // 180...240, 61 each. An exclusive end would give 120, a rounded time
+        // base would move the edges.
+        #expect(r.censoredFrames == 122, "censored \(r.censoredFrames) frames, expected 61 + 61")
+
+        let outDur = try await AVURLAsset(url: outURL).load(.duration).seconds
+        #expect(abs(outDur - src.duration.seconds) < 0.05,
+                "duration \(outDur) vs \(src.duration.seconds)")
+
+        // The whole point of the censor-only shape: the audio bytes are never
+        // decoded, so the elementary stream must hash identically.
+        let a = try await Self.audioDigest(inURL)
+        let b = try await Self.audioDigest(outURL)
+        #expect(a.hash == b.hash, "audio was re-encoded")
+        #expect(a.bytes == b.bytes, "audio payload size differs: \(a.bytes) vs \(b.bytes)")
+
+        // ...and the video was NOT passed through — it is a fresh encode.
+        let v0 = try await Self.videoDigest(inURL)
+        let v1 = try await Self.videoDigest(outURL)
+        #expect(v0 != v1, "video stream is byte-identical — the censor never ran")
+    }
+
+    /// The both-ops seam. M2 owns producing the replacement track; this pass
+    /// only muxes it, so the check is that the output carries the replacement's
+    /// bytes and not the source's, with the censor render intact alongside.
+    @Test("both-ops: replacement audio is muxed in place of the source's")
+    func bothOpsReplacedAudio() async throws {
+        let inURL = try requireQAVideo()
+        let replURL = Fixtures.scratch("replacement.m4a")
+        let outURL = Fixtures.scratch("both-ops.mp4")
+        let src = try await MediaSource.probe(inURL)
+
+        // Stand-in for the audio pass's output: the source's own AAC, truncated,
+        // so "the replacement was used" is provable from the byte count alone.
+        let asset = AVURLAsset(url: inURL)
+        defer { withExtendedLifetime(asset) {} }
+        let aTrack = try #require(try await asset.loadTracks(withMediaType: .audio).first)
+        let w = try OutputWriter(url: replURL, fileType: .m4a)
+        w.addPassthroughAudio(try #require(src.audio))
+        try w.start()
+        let reader = try TrackReader.compressed(track: aTrack)
+        try reader.start()
+        nonisolated(unsafe) let rd = reader
+        nonisolated(unsafe) let sink = try #require(w.audioInput)
+        let n = Confined(0)
+        try await pump(sink, label: "truncate") {
+            guard n.v < 100, let sb = rd.next() else { return false }
+            _ = sink.append(sb)
+            n.v += 1
+            return true
+        }
+        try await w.finish()
+
+        var ops = FilterOps()
+        ops.removeMusic = true
+        let r = try await RenderPass.run(source: src, edl: Edl(censorIntervalsMs: [0...1_000]),
+                                         ops: ops, output: outURL, replacedAudio: replURL)
+        #expect(r.frames == (try await Self.sampleCount(inURL, .video)))
+
+        let replacement = try await Self.audioDigest(replURL)
+        let got = try await Self.audioDigest(outURL)
+        let original = try await Self.audioDigest(inURL)
+        #expect(got.hash == replacement.hash, "output audio is not the replacement track")
+        #expect(got.hash != original.hash, "output audio is still the source's")
+        #expect(got.bytes < original.bytes)
+    }
+
+    /// No HDR fixture is staged, so this only proves the tone-map path builds a
+    /// working colour-managed graph and stays inside SDR — an actual HLG/PQ clip
+    /// still has to go through it before M4 can be called done.
+    @Test("HDR tone-map path renders SDR")
+    func hdrPathRuns() throws {
+        let w = 128, h = 128
+        let src = try Self.bgra(w, h) { _, _ in (200, 40, 90) }
+        let dst = try Self.bgra(w, h) { _, _ in (0, 0, 0) }
+        var ops = FilterOps()
+        ops.blurAmount = 0
+        ops.grayscale = true
+        CensorEffect(ops: ops, transform: .identity(size: CGSize(width: w, height: h)),
+                     tonemapHDR: true)
+            .render(src, to: dst, wholeFrame: true, regions: [])
+        let p = Self.pixel(dst, 64, 64)
+        #expect(p.r == p.g && p.g == p.b, "tone-mapped grayscale is not neutral: \(p)")
+        #expect(p.r > 8 && p.r < 248, "tone-mapped pixel clipped to \(p)")
+    }
+
+    @Test("cancel mid-render leaves no output file")
+    func cancelLeavesNothing() async throws {
+        let inURL = try requireQAVideo()
+        let outURL = Fixtures.scratch("censor-cancelled.mp4")
+        let src = try await MediaSource.probe(inURL)
+        let seen = Confined(0)
+        do {
+            _ = try await RenderPass.run(source: src, edl: Edl(), ops: FilterOps(), output: outURL,
+                                         isCancelled: { seen.v += 1; return seen.v > 20 })
+            Issue.record("expected cancellation to throw")
+        } catch {
+            // expected
+        }
+        #expect(!FileManager.default.fileExists(atPath: outURL.path), "partial file left behind")
+    }
+
+    // MARK: - Helpers
+
+    static func bgra(_ w: Int, _ h: Int,
+                     _ colour: (Int, Int) -> (UInt8, UInt8, UInt8)) throws -> CVPixelBuffer {
+        var out: CVPixelBuffer?
+        CVPixelBufferCreate(nil, w, h, kCVPixelFormatType_32BGRA,
+                            [kCVPixelBufferIOSurfacePropertiesKey: [:] as CFDictionary] as CFDictionary,
+                            &out)
+        let b = try #require(out)
+        CVPixelBufferLockBaseAddress(b, [])
+        defer { CVPixelBufferUnlockBaseAddress(b, []) }
+        let base = try #require(CVPixelBufferGetBaseAddress(b)).assumingMemoryBound(to: UInt8.self)
+        let stride = CVPixelBufferGetBytesPerRow(b)
+        for y in 0..<h {
+            for x in 0..<w {
+                let (r, g, bl) = colour(x, y)
+                let p = base + y * stride + x * 4
+                p[0] = bl; p[1] = g; p[2] = r; p[3] = 255
+            }
+        }
+        return b
+    }
+
+    /// A flat `420v` frame with the colour tags the decoder would have attached.
+    static func yuv420(_ w: Int, _ h: Int, y: UInt8, cb: UInt8, cr: UInt8,
+                       matrix: CFString) throws -> CVPixelBuffer {
+        var out: CVPixelBuffer?
+        CVPixelBufferCreate(nil, w, h, kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
+                            [kCVPixelBufferIOSurfacePropertiesKey: [:] as CFDictionary] as CFDictionary,
+                            &out)
+        let b = try #require(out)
+        CVBufferSetAttachment(b, kCVImageBufferYCbCrMatrixKey, matrix, .shouldPropagate)
+        CVBufferSetAttachment(b, kCVImageBufferColorPrimariesKey,
+                              kCVImageBufferColorPrimaries_ITU_R_709_2, .shouldPropagate)
+        CVBufferSetAttachment(b, kCVImageBufferTransferFunctionKey,
+                              kCVImageBufferTransferFunction_ITU_R_709_2, .shouldPropagate)
+        CVPixelBufferLockBaseAddress(b, [])
+        defer { CVPixelBufferUnlockBaseAddress(b, []) }
+        let luma = try #require(CVPixelBufferGetBaseAddressOfPlane(b, 0))
+            .assumingMemoryBound(to: UInt8.self)
+        let lumaStride = CVPixelBufferGetBytesPerRowOfPlane(b, 0)
+        for row in 0..<h { (luma + row * lumaStride).update(repeating: y, count: w) }
+        let chroma = try #require(CVPixelBufferGetBaseAddressOfPlane(b, 1))
+            .assumingMemoryBound(to: UInt8.self)
+        let chromaStride = CVPixelBufferGetBytesPerRowOfPlane(b, 1)
+        for row in 0..<(h / 2) {
+            let p = chroma + row * chromaStride
+            for col in 0..<(w / 2) { p[col * 2] = cb; p[col * 2 + 1] = cr }
+        }
+        return b
+    }
+
+    static func yuvPixel(_ b: CVPixelBuffer, _ x: Int, _ y: Int) -> (y: UInt8, cb: UInt8, cr: UInt8) {
+        CVPixelBufferLockBaseAddress(b, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(b, .readOnly) }
+        guard let luma = CVPixelBufferGetBaseAddressOfPlane(b, 0)?.assumingMemoryBound(to: UInt8.self),
+              let chroma = CVPixelBufferGetBaseAddressOfPlane(b, 1)?.assumingMemoryBound(to: UInt8.self)
+        else { return (0, 0, 0) }
+        let l = luma + y * CVPixelBufferGetBytesPerRowOfPlane(b, 0) + x
+        let c = chroma + (y / 2) * CVPixelBufferGetBytesPerRowOfPlane(b, 1) + (x / 2) * 2
+        return (l[0], c[0], c[1])
+    }
+
+    static func pixel(_ b: CVPixelBuffer, _ x: Int, _ y: Int) -> (r: Int, g: Int, b: Int) {
+        CVPixelBufferLockBaseAddress(b, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(b, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddress(b)?.assumingMemoryBound(to: UInt8.self) else {
+            return (-1, -1, -1)
+        }
+        let p = base + y * CVPixelBufferGetBytesPerRow(b) + x * 4
+        return (Int(p[2]), Int(p[1]), Int(p[0]))
+    }
+
+    /// Frames, summed over `CMSampleBufferGetNumSamples` rather than counted per
+    /// buffer: a compressed read of the qa clip vends 388 buffers for 384
+    /// frames, four of them empty. `AVAssetTrack.asset` is weak and
+    /// `TrackReader` reads it back out, hence the held asset.
+    static func sampleCount(_ url: URL, _ type: AVMediaType) async throws -> Int {
+        let asset = AVURLAsset(url: url)
+        defer { withExtendedLifetime(asset) {} }
+        guard let t = try await asset.loadTracks(withMediaType: type).first else { return 0 }
+        let r = try TrackReader.compressed(track: t)
+        try r.start()
+        var n = 0
+        while let sb = r.next() { n += CMSampleBufferGetNumSamples(sb) }
+        try r.throwIfFailed()
+        return n
+    }
+
+    /// SHA-256 over the concatenated compressed payload, exactly as
+    /// `PassthroughTests` does it: the container is irrelevant, the bytes are not.
+    static func digest(_ url: URL, _ type: AVMediaType) async throws -> (hash: String, bytes: Int) {
+        let asset = AVURLAsset(url: url)
+        defer { withExtendedLifetime(asset) {} }
+        guard let t = try await asset.loadTracks(withMediaType: type).first else { return ("", 0) }
+        let r = try TrackReader.compressed(track: t)
+        try r.start()
+        var hasher = SHA256()
+        var bytes = 0
+        while let sb = r.next() {
+            guard let bb = CMSampleBufferGetDataBuffer(sb) else { continue }
+            var len = 0
+            var ptr: UnsafeMutablePointer<CChar>?
+            if CMBlockBufferGetDataPointer(bb, atOffset: 0, lengthAtOffsetOut: nil,
+                                           totalLengthOut: &len, dataPointerOut: &ptr) == noErr,
+               let ptr {
+                hasher.update(bufferPointer: UnsafeRawBufferPointer(start: ptr, count: len))
+                bytes += len
+            }
+        }
+        try r.throwIfFailed()
+        return (hasher.finalize().map { String(format: "%02x", $0) }.joined(), bytes)
+    }
+
+    static func audioDigest(_ url: URL) async throws -> (hash: String, bytes: Int) {
+        try await digest(url, .audio)
+    }
+
+    static func videoDigest(_ url: URL) async throws -> String {
+        try await digest(url, .video).hash
+    }
+}

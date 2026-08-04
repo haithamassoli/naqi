@@ -57,7 +57,9 @@ struct FaceTrackEdl: Codable, Sendable, Equatable {
         for k in keyframes.dropFirst() {
             if k.timeMs >= t {
                 let span = Float(k.timeMs - prev.timeMs)
-                guard span > 0 else { return k.rect }
+                // Degenerate span (duplicate keyframe times) resolves to the
+                // *earlier* rect, as Android's `rectAt` does (§4.5 step 4).
+                guard span > 0 else { return prev.rect }
                 return NRect.lerp(prev.rect, k.rect, Float(t - prev.timeMs) / span)
             }
             prev = k

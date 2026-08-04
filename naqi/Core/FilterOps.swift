@@ -16,7 +16,20 @@ struct FilterOps: Codable, Sendable, Equatable {
     var grayscale: Bool = false
     var keepStems: KeepStems = .vocals
 
-    enum Who: String, Codable, Sendable, CaseIterable { case women, men }
+    /// `everyone` and `none` are not UI options — the PRD's picker is
+    /// Women | Men — but they exist because they make the gender vote free:
+    /// with either, no track needs a crop, a tensor or a genderage call at all.
+    /// Keeping them in the enum lets the analyze pass express that shortcut,
+    /// and matches Android's `censorWho`.
+    enum Who: String, Codable, Sendable, CaseIterable {
+        case women, men, everyone, none
+
+        /// The two the picker offers.
+        static var userSelectable: [Who] { [.women, .men] }
+
+        /// True when the verdict is known without running genderage.
+        var skipsGenderVote: Bool { self == .everyone || self == .none }
+    }
     enum CensorMode: String, Codable, Sendable, CaseIterable { case regions, wholeFrame }
     enum KeepStems: String, Codable, Sendable, CaseIterable {
         case vocals, vocalsAndOther

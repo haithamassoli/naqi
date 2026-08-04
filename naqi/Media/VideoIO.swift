@@ -90,6 +90,11 @@ final class OutputWriter {
         let input = AVAssetWriterInput(mediaType: .video,
                                        outputSettings: EncodeSettings.videoSettings(for: v, bitrate: bitrate))
         input.expectsMediaDataInRealTime = false
+        // Carry the source's timescale. The writer otherwise rescales every PTS
+        // to its own default, which is lossless at exactly 30 fps and lossy for
+        // 30000/1001 content. Must be set before startWriting() — it cannot be
+        // changed afterwards.
+        if v.naturalTimeScale > 0 { input.mediaTimeScale = v.naturalTimeScale }
         // Rotation is carried as track metadata, exactly as the source did:
         // the pixels stay in stored orientation, so no rotate-blit is needed.
         input.transform = v.transform.toUpright

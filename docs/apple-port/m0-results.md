@@ -43,36 +43,78 @@ htdemucs: fp16 weights produce finite fp32 output — PASSED
 
 No fp32 re-export required. The `.onnx` artifacts ship unchanged from Android.
 
-## Decision 3 — htdemucs throughput → **~8x the Android baseline**
+## Measurement method — read this before trusting any number below
 
-2.6 s segment, single session, 1 intra-op thread:
+Early runs in this document were wrong, and the way they were wrong is worth recording. Wall-clock
+timings taken while other work runs measure the machine, not the code: the *same* htdemucs segment
+read **617 ms** idle and **4231 ms** with parallel builds going. Two contributors, both invisible
+unless looked for:
 
-| provider | load ms | infer ms | x-realtime | finite |
+1. Parallel `xcodebuild` processes, and Swift Testing's own cross-suite parallelism running the
+   heavy media suites simultaneously. Fixed with `-parallel-testing-enabled NO`.
+2. **Spotlight indexing the build directory** — `mds` was burning 200 % CPU on derived data and the
+   88 MB models. Fixed by moving output to `build.noindex/`, which Spotlight skips.
+
+`BenchTests` now reports **min-of-N** rather than a single sample: contention can only ever make a
+sample slower, so the minimum is the closest thing to true cost a shared machine can give. Numbers
+below are min-of-3 (htdemucs) / min-of-5 (gate) at load < 4.
+
+## Decision 3 — htdemucs throughput → **6.5x the Android baseline, on the CPU EP**
+
+2.6 s segment, `Ort.computeThreads` intra-op threads, settled machine:
+
+| provider | session ms | best infer | x-realtime | finite |
 |---|---|---|---|---|
-| ORT CPU EP | 810 | 617 | **4.21x** | yes |
-| ORT CoreML EP | 111 | 564 | **4.61x** | yes |
+| **ORT CPU EP** | 482 | **728** | **3.57x** | yes |
+| ORT CoreML EP | 23 251 | 997 | 2.61x | yes |
 | *(S23 baseline)* | — | — | *0.55x* | — |
 
-Observed range across runs: 256–906 ms/segment (3.0x–10.1x realtime), varying with concurrent load.
+`x-realtime > 1` means faster than playback. **3.57x vs 0.55x is 6.5x the Android throughput**, and
+the audio wall — dominant on two of the three job shapes — is therefore not the problem on Apple
+that it is on Android. The PRD's Core ML/ANE spike is **deferred**: it was gated on "only if the
+measured wall demands it", and it does not.
 
-`x-realtime > 1` means faster than playback. The audio wall — the dominant cost on two of the three
-job shapes — is therefore **not** the problem on Apple that it is on Android. The PRD's proposed
-Core ML/ANE spike is **deferred**: it was gated on "only if measured wall demands it", and it does
-not.
+**The CoreML EP is slower here, and expensive to enter.** 997 ms vs 728 ms of inference, after
+**23 seconds** of graph compilation at session creation. That compile is a one-off on device (Core ML
+caches it), but the inference regression is not, and there is no ANE on the simulator to redeem it.
+Keeping the CPU EP as the default is now a measurement, not a preference.
 
-## Decision 4 — NSFW gate batching → **free analyze-wall win, adopted**
+## Decision 4 — NSFW gate batching → **no, it does not help. Shipped at batch 1**
 
-The exported graph has a **dynamic batch dimension** (`input['unk__615',3,224,224]`), which Android
-never exploited. Batched inference is bit-identical to single-frame (verified to 1e-4, four distinct
-inputs), and throughput improves monotonically:
+The graph has a **dynamic batch dimension** (`input['unk__615',3,224,224]`) that Android never
+exploited, and batched inference is bit-identical to single-frame (verified to 1e-4 on four distinct
+inputs). It still does not pay:
 
-| batch | total ms | ms/frame |
+| batch | best ms | ms/frame |
 |---|---|---|
-| 1 | 50.3 | 50.28 |
-| 4 | 172.8 | 43.20 |
-| 8 | 295.3 | **36.91** |
+| 1 | 9.5 | **9.50** |
+| 2 | 19.4 | 9.68 |
+| 4 | 33.5 | 8.38 |
+| 8 | 80.6 | 10.07 |
 
-**27 % less time per frame at batch 8.** `Models.Nsfw.maxBatch = 8`.
+Flat, within noise, and *worse* at 8 — independently reproduced by the analyze pass's own sweep
+(11.87 / 12.60 / 12.63 / 12.32 ms/frame at 1/2/4/8). This reproduces Android's finding rather than
+escaping it.
+
+> **This corrects an earlier claim in this document.** A first pass reported "27 % less time per
+> frame at batch 8". That was measured at **1 intra-op thread** on a contended machine — a single
+> frame cannot saturate the cores, so batching flattered itself, and the advantage vanishes once the
+> session is threaded correctly. The gate ships at **batch 1**; the batching mechanism is kept
+> because it costs nothing, but it is not counted as a win until hardware says otherwise.
+
+## Memory — htdemucs costs +842 MB resident
+
+| | |
+|---|---|
+| before load | 260 MB |
+| htdemucs loaded + one inference | 1102 MB |
+| **delta** | **+842 MB** |
+
+Android measured **1.30 GB** for the same 2.6 s segment, so Apple is meaningfully leaner, with ~694 MB
+of the 1536 MB budget left for the video pipeline. The absolute figure is still a *simulator* number
+(`phys_footprint` there reports the host process) — only the delta is trustworthy, and M7 must
+re-take this on a device. `ModelRegistry.evict(_:)` exists so the arena is released once a job ends
+rather than held while the user browses.
 
 ## Graph IO — dumped from the shipped artifacts, not from docs
 

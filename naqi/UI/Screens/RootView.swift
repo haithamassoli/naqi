@@ -57,7 +57,11 @@ struct DeviceRuntimeView: View {
             Button(running ? "Running…" : "Smoke test") { run() }
                 .disabled(running)
         }
-        .task { run() }
+        // Deliberately NOT `.task { run() }`. The smoke loads htdemucs, whose
+        // session is ~1.3 GB resident for the process lifetime — held while the
+        // user is only browsing, and overlapping the first real job's use of
+        // the same graph. It also made every media test suite flaky, because
+        // the test host runs this view. It stays behind the button.
     }
 
     private func run() {
@@ -67,6 +71,8 @@ struct DeviceRuntimeView: View {
         let unit = compute
         Task.detached(priority: .userInitiated) {
             let r = ModelSmoke.runAll(compute: unit)
+            // The panel is diagnostics, not a job: give the memory straight back.
+            ModelRegistry.evict(Models.Demucs.file)
             await MainActor.run { results = r; running = false }
         }
     }

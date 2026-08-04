@@ -119,6 +119,11 @@ final class FaceTracker {
 
             // Guards cheapest-first; nothing below allocates until the last one
             // passes (§5.1).
+            //
+            // `everyone` and `none` already know the verdict, so they skip the
+            // crop, the tensor and the ORT call entirely — the whole gender
+            // stage costs nothing on those settings.
+            guard !who.skipsGenderVote else { continue }
             guard let voter else { continue }
             // A one-sample track is this port's untracked detection (§10.8):
             // censored like any other, but never classified. Without it a fast

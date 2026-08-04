@@ -30,9 +30,17 @@ enum AudioPipeline {
 
     /// - Parameter progress: 0…1 over the separation stage, called from the
     ///   writer's private queue and only when the integer percent moves.
+    /// - Parameter includeVideo: copy the source's video track through into
+    ///   `output`. A music-only job wants that — it *is* the finished file. A
+    ///   both-ops job does not: it only needs this output's audio track, which
+    ///   it hands to `RenderPass.run(replacedAudio:)`, so passing `true` there
+    ///   would transmux the whole video into a temp that is then discarded —
+    ///   a full-size wasted copy on a feature film (Android hit the same thing,
+    ///   `video-performance-plan-v2.md` 5.9 S2).
     static func removeMusic(_ src: MediaSource,
                             to output: URL,
                             keepStems: FilterOps.KeepStems = .vocals,
+                            includeVideo: Bool = true,
                             progress: @escaping @Sendable (Double) -> Void = { _ in },
                             isCancelled: @escaping @Sendable () -> Bool = { false }) async throws -> Result {
         let started = ContinuousClock.now
@@ -42,7 +50,8 @@ enum AudioPipeline {
             throw MediaError.noAudioTrack
         }
         nonisolated(unsafe) let aTrack = audioTrack
-        nonisolated(unsafe) let vTrack = try await asset.loadTracks(withMediaType: .video).first
+        nonisolated(unsafe) let vTrack = includeVideo
+            ? try await asset.loadTracks(withMediaType: .video).first : nil
 
         // Pass 1: the whole-track scalars the separator normalizes by. Blocking
         // decode, so it stays off the cooperative pool.

@@ -114,3 +114,44 @@ XNNPACK's fp16 kernels corrupted htdemucs' spectral branch on Android. The CoreM
 EP is a different implementation of the same idea and is **unvalidated** on this
 graph beyond "output is finite". Before making it the default, compare its stems
 against the CPU EP's, not just against NaN.
+
+## 11. Segment concat: place segments at intended starts, not at a running cursor
+
+Android measured this one rather than reasoning about it
+(`docs/long-film-plan.md:123`). Offsetting each segment by the **accumulated
+measured duration** of the ones before it folds a sub-frame rounding error into
+every following segment — up to **~1 s of A/V drift across 31 joins**, 20× past
+the PRD's 50 ms budget. Their fix: offset by the *intended* segment start.
+
+`AVMutableComposition.insertTimeRange(_:of:at:)` at a running cursor is exactly
+the accumulating form, so this is the natural thing to write.
+
+**It only bites the shapes where audio is not per-segment.** If each `seg-NNN.mp4`
+carries its own video *and* its own audio for that window, A/V stays locked
+inside each segment and the only artifact is total timeline length. The
+dangerous shape is **combined**, where the audio is a single whole-film
+`audio.m4a` muxed against N video segments — Android's exact configuration.
+Check which one the port builds before deciding this is handled.
+
+## 12. Concat loses ~2 frames per seam, and that is a known accepted cost
+
+Android measured 4 619 frames out where 4 625 went in, with the largest
+inter-frame gap 148 ms at a seam against a normal 41.7 ms — a ~100 ms freeze at
+each join (`long-film-plan.md:124`). They deliberately did not chase it: the fix
+is a per-segment overlap plus a drop rule, to buy back 1–3 frames per five
+minutes.
+
+Consequence for **testing**: a frame-count assertion comparing a segmented
+render against a monolithic one will be off by roughly `2 × (segments - 1)`.
+If such a test passes exactly, either the Apple path genuinely does not drop
+frames — which is worth confirming and writing down, since AVAssetWriter and
+MediaMuxer are different implementations — or the test is not counting what it
+claims to.
+
+## 13. Segment length is a constant on purpose
+
+The plan called for deriving it from the measured per-segment fixed cost; the
+measurement came back at ~0.5–0.7 s per export, so 31 segments cost ~19 s on a
+film and anything between 1 and 10 min performs the same
+(`long-film-plan.md:122`). `Checkpoint.segmentMs = 300000` is that constant. Do
+not add a tuning knob for a parameter with no measurable slope.

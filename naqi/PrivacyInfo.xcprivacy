@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Naqi collects nothing and sends nothing. Every model runs on-device;
+	     the app has no networking code and no analytics SDK. The three entries
+	     below are Apple's "required reason" APIs, each traced to the exact call
+	     site rather than declared defensively. -->
+	<key>NSPrivacyTracking</key>
+	<false/>
+	<key>NSPrivacyTrackingDomains</key>
+	<array/>
+	<key>NSPrivacyCollectedDataTypes</key>
+	<array/>
+	<key>NSPrivacyAccessedAPITypes</key>
+	<array>
+		<dict>
+			<!-- Checkpoint.swift:181 sweeps work dirs older than 7 days;
+			     ShareInbox.swift:27 drains the inbox oldest-first. Both read
+			     timestamps only on files this app itself wrote. -->
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryFileTimestamp</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>C617.1</string>
+			</array>
+		</dict>
+		<dict>
+			<!-- Preflight.swift:105 refuses a job that would run the volume out
+			     of space mid-render, which would otherwise fail after minutes
+			     of work and leave a partial file behind. -->
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryDiskSpace</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>E174.1</string>
+			</array>
+		</dict>
+		<dict>
+			<!-- FilterOps last-used options, in the App Group suite so a
+			     shared-in video inherits them from the app. -->
+			<key>NSPrivacyAccessedAPIType</key>
+			<string>NSPrivacyAccessedAPICategoryUserDefaults</string>
+			<key>NSPrivacyAccessedAPITypeReasons</key>
+			<array>
+				<string>1C8F.5</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

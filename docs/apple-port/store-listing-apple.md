@@ -152,6 +152,36 @@ not survive contact with App Review as a *storefront* claim as cleanly as the ne
 which is also more accurate — the shipped picker is Women | Men. The copy in this document is written
 that way deliberately. Do not paste the Android headline back in.
 
+The two guidelines that framing is aimed at, so a reviewer never has to reach for them:
+
+| guideline | risk | what answers it |
+|---|---|---|
+| **1.1.1** defamatory, discriminatory or mean-spirited content | A storefront headline that singles out one gender reads as a judgement about people rather than a filter setting | Copy describes a user-selected setting with both options; the shipped picker really is Women \| Men |
+| **1.1.5** religious/cultural commentary fostering prejudice | The app is explicitly framed around Islamic modesty | The copy states a personal and family use case and makes no claim about anyone else's behaviour. Naqi is a filter a user applies to their own media |
+| **1.1.4** pornographic material | The app *detects* NSFW content | It displays none of its own. A reviewer sees only the video they picked |
+
+Guideline **5.1.1(i)** requires the privacy policy to be reachable **inside the app**, not only in App
+Store Connect. Naqi's About screen carries the full statement — for an app that collects nothing and
+links no networking framework, the whole policy is one card, so it is stated rather than linked to a
+page that could rot. The ASC Privacy Policy URL field still has to be filled in separately.
+
+## Pre-submission items that are code, and are done
+
+| item | state |
+|---|---|
+| `ITSAppUsesNonExemptEncryption = NO` | set in the generated Info.plist. The app links no networking framework and uses SHA-256 only over local files, which is exempt. Without this key ASC asks on **every** submission |
+| Required-reason API codes | `C617.1` file timestamp, `E174.1` disk space, `1C8F.1` + `CA92.1` user defaults. **`1C8F.5` was wrong and is not a valid code** — an invalid entry is an automatic rejection with no human review since May 2024 |
+| Privacy policy in-app | About screen, EN + AR |
+| Both localizations in the bundle | `ar.lproj` and `en.lproj` verified present; `knownRegions` carries `ar` |
+
+## Still owed before a build can be uploaded
+
+- ASC fields: Privacy Policy URL, Support URL, copyright, age rating questionnaire, EU DSA trader status
+- Pricing (Q4 unanswered)
+- Screenshots need caption plates
+- Distribution signing: the App Group entitlement means the App ID needs the capability enabled and a
+  matching profile for the app **and both extensions** — three profiles, not one
+
 ## Screenshots
 
 Six per device class (6.9" iPhone, 13" iPad, Mac), EN and AR, RTL laid out for AR. The in-app captures

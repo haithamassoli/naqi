@@ -879,6 +879,43 @@ struct JobTests {
         try? FileManager.default.removeItem(at: folder)
     }
 
+    /// `sweepStale` is the only code in the app that deletes work the user
+    /// cannot get back, and it had no test. It seeded `newest` from
+    /// `.distantPast`, so a work directory with no files in it yet — the state
+    /// every job passes through between `WorkDir.make` and its first
+    /// checkpoint — measured as infinitely stale and was deleted on sight.
+    /// Harmless only because `JobQueue` is strictly serial, which is not a
+    /// property this function should have to depend on.
+    @Test("the 7-day sweep spares an empty directory and a fresh one")
+    func sweepSparesWhatIsNotStale() throws {
+        let fm = FileManager.default
+        let tag = UUID().uuidString.prefix(8)
+        let empty = WorkDir.root.appendingPathComponent("sweep-empty-\(tag)")
+        let fresh = WorkDir.root.appendingPathComponent("sweep-fresh-\(tag)")
+        let old = WorkDir.root.appendingPathComponent("sweep-old-\(tag)")
+        for d in [empty, fresh, old] {
+            try fm.createDirectory(at: d, withIntermediateDirectories: true)
+        }
+        try Data("x".utf8).write(to: fresh.appendingPathComponent("analysis.json"))
+        try Data("x".utf8).write(to: old.appendingPathComponent("seg-000.mp4"))
+
+        // Backdate the stale one past the interval — both the file and the
+        // directory, since the directory's own mtime is now the floor.
+        let past = Date().addingTimeInterval(-Checkpoint.staleInterval - 3600)
+        try fm.setAttributes([.modificationDate: past],
+                             ofItemAtPath: old.appendingPathComponent("seg-000.mp4").path)
+        try fm.setAttributes([.modificationDate: past], ofItemAtPath: old.path)
+
+        Checkpoint.sweepStale()
+
+        #expect(fm.fileExists(atPath: empty.path),
+                "an empty work dir was swept — a job that had not checkpointed yet just lost its scratch")
+        #expect(fm.fileExists(atPath: fresh.path), "a fresh work dir was swept")
+        #expect(!fm.fileExists(atPath: old.path), "a 7-day-old work dir was not swept")
+
+        for d in [empty, fresh, old] { try? fm.removeItem(at: d) }
+    }
+
     /// The destination folder has to survive the same relaunch the source does.
     /// It did not: `capture` bookmarked `source` and stored `folder` as a bare
     /// URL, so a job queued for a folder and resumed after a cold start — or

@@ -406,6 +406,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = U3C6DM4QX4;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Naqi saves the filtered copy back to your photo library. Your original is never changed.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Naqi reads the video you pick so it can filter it on your device. Nothing is uploaded.";
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
@@ -431,6 +432,7 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = U3C6DM4QX4;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Naqi saves the filtered copy back to your photo library. Your original is never changed.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Naqi reads the video you pick so it can filter it on your device. Nothing is uploaded.";
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
@@ -690,6 +692,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Naqi;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Naqi saves the filtered copy back to your photo library. Your original is never changed.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Naqi reads the video you pick so it can filter it on your device. Nothing is uploaded.";
 				"INFOPLIST_KEY_NSSupportsLiveActivities[sdk=iphoneos*]" = YES;
@@ -740,6 +743,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_KEY_CFBundleDisplayName = Naqi;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
+				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Naqi saves the filtered copy back to your photo library. Your original is never changed.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Naqi reads the video you pick so it can filter it on your device. Nothing is uploaded.";
 				"INFOPLIST_KEY_NSSupportsLiveActivities[sdk=iphoneos*]" = YES;

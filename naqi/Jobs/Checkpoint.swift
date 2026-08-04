@@ -220,7 +220,14 @@ enum Checkpoint {
         else { return }
         for dir in entries {
             guard (try? dir.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == true else { continue }
-            var newest = Date.distantPast
+            // Seed from the directory's own mtime, not `.distantPast`. An empty
+            // work dir has no file to read a date off, and `.distantPast` makes
+            // it infinitely stale — so a job whose directory exists but is not
+            // yet written to would have its scratch deleted out from under it.
+            // Harmless only while `JobQueue` is strictly serial; this removes
+            // the dependency on that rather than documenting it.
+            var newest = (try? dir.resourceValues(forKeys: [.contentModificationDateKey]))?
+                .contentModificationDate ?? Date.distantPast
             let walker = fm.enumerator(at: dir, includingPropertiesForKeys: [.contentModificationDateKey])
             while let f = walker?.nextObject() as? URL {
                 if let m = try? f.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate {

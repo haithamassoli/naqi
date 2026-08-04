@@ -18,6 +18,23 @@ struct AboutScreen: View {
                             .foregroundStyle(Naqi.C.onSurfaceVariant)
                             .padding(.top, Naqi.S.s2)
                     }
+                    // App Review expects the privacy policy to be reachable
+                    // from inside the app, not only from the App Store listing.
+                    // For an app that collects nothing and has no networking
+                    // code at all, the whole policy fits on a card — so it is
+                    // stated here rather than linked to a page that could rot.
+                    VStack(alignment: .leading, spacing: 0) {
+                        SectionHeader(.aboutEyebrowPrivacy)
+                        NaqiCard {
+                            Text(.aboutPrivacyTitle)
+                                .font(Naqi.F.titleSmall)
+                                .foregroundStyle(Naqi.C.onSurface)
+                            Text(.aboutPrivacyBody)
+                                .font(Naqi.F.bodySmall)
+                                .foregroundStyle(Naqi.C.onSurfaceVariant)
+                                .padding(.top, 2)
+                        }
+                    }
                     VStack(alignment: .leading, spacing: 0) {
                         SectionHeader(.aboutEyebrowUpdates)
                         NaqiCard {

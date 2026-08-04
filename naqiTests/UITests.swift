@@ -70,6 +70,194 @@ struct UITests {
         #expect(FilterOps.loadLastUsed() == ops)
     }
 
+    // MARK: - Export destination
+
+    /// `.serialized` because every test in here writes the same two
+    /// `UserDefaults` keys: run in parallel they would restore each other's
+    /// "before" value and the round-trip assertions would flake.
+    @Suite("Export destination", .serialized)
+    struct ExportTests {
+
+        @Test("Last-used destination round-trips, and a folderless one does not")
+        func destinationRoundTrip() {
+            let saved = ExportTarget.loadLastUsed()
+            defer { saved.saveAsLastUsed() }
+
+            let folder = FileManager.default.temporaryDirectory
+                .appendingPathComponent("naqi-export-\(UUID().uuidString)", isDirectory: true)
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: folder) }
+
+            ExportTarget(destination: .userFolder, folder: folder).saveAsLastUsed()
+            let loaded = ExportTarget.loadLastUsed()
+            #expect(loaded.destination == .userFolder)
+            #expect(loaded.folder?.standardizedFileURL == folder.standardizedFileURL)
+            #expect(loaded.folderName == folder.lastPathComponent)
+
+            // `.userFolder` with nothing to write into is not a state worth
+            // restoring: it would enable Start for a job certain to die at
+            // publish, hours in, on a film.
+            ExportTarget(destination: .userFolder, folder: nil).saveAsLastUsed()
+            #expect(ExportTarget.loadLastUsed().destination == .photos)
+        }
+
+        /// The runner rejects an audio-only job bound for Photos with
+        /// `publishFailed` — Photos will not take a bare audio file — so the
+        /// picker has to *force* the folder, not merely prefer it, and Start
+        /// has to stay disabled until there is a folder to force it into.
+        @Test("An audio-only source forces the folder destination and gates Start")
+        @MainActor
+        func audioOnlyForcesFolder() throws {
+            let saved = ExportTarget.loadLastUsed()
+            defer { saved.saveAsLastUsed() }
+            ExportTarget(destination: .photos, folder: nil).saveAsLastUsed()
+
+            let flow = Flow()
+            let clip = FileManager.default.temporaryDirectory.appendingPathComponent("clip.m4a")
+            flow.seed(source: PickedSource(url: clip, name: "clip.m4a"),
+                      durationMs: 60_000, hasVideo: false)
+
+            #expect(flow.mustUseFolder)
+            #expect(flow.destination == .userFolder)
+            // Continue must stay live: Options is the only screen that can pick
+            // the folder, so gating Pick on it would strand the source.
+            #expect(flow.canContinue)
+            #expect(!flow.canStart)
+
+            let folder = FileManager.default.temporaryDirectory
+                .appendingPathComponent("naqi-export-\(UUID().uuidString)", isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: folder) }
+            flow.setFolder(folder)
+            #expect(flow.canStart)
+
+            // Photos is not reachable for this source even by asking for it.
+            flow.setDestination(.photos)
+            #expect(flow.destination == .userFolder)
+        }
+
+        /// The share extension carries no options, so the app decides where a
+        /// shared-in video lands. It used to decide `.photos` unconditionally —
+        /// `ShareInbox.drain`'s default — which was the one route in the app
+        /// that saved somewhere the user had not chosen.
+        @Test("A shared-in video inherits the chosen folder, not the Photos default")
+        @MainActor
+        func sharedInInheritsTheDestination() async throws {
+            let dir = try #require(ShareInbox.container, "no App Group container")
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            let saved = ExportTarget.loadLastUsed()
+            defer { saved.saveAsLastUsed() }
+
+            let folder = FileManager.default.temporaryDirectory
+                .appendingPathComponent("naqi-sharein-\(UUID().uuidString)", isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: folder) }
+            ExportTarget(destination: .userFolder, folder: folder).saveAsLastUsed()
+
+            let id = UUID()
+            try Data("not really a movie".utf8)
+                .write(to: ShareManifest.mediaURL(dir, id: id, ext: "mp4"))
+            try JSONEncoder().encode(ShareManifest(id: id, fileName: "shared.mp4",
+                                                   receivedAt: Date()))
+                .write(to: ShareManifest.manifestURL(dir, id: id), options: .atomic)
+
+            let flow = Flow()
+            let queue = JobQueue(storeURL: Fixtures.scratch("ui-sharein.json"))
+            #expect(await flow.drainSharedIn(into: queue) == 1)
+
+            let job = try #require(await queue.jobs.first)
+            #expect(job.destination == .userFolder,
+                    "a shared-in video went to \(job.destination) instead of the chosen folder")
+            #expect(job.folder?.standardizedFileURL == folder.standardizedFileURL)
+
+            // 18 bytes of text: the job dies at preflight, so stop it rather
+            // than leave it racing the next test.
+            await queue.cancel(job.id)
+            try? FileManager.default.removeItem(at: job.source)
+        }
+
+        /// The hop between the picker and the runner. Every pipeline test hands
+        /// `Publish` a destination directly, so all of them would still pass if
+        /// `Flow.start` dropped the folder on the floor and the job published to
+        /// Photos — the exact class of bug the last integration pass found twice.
+        @Test("Start puts the chosen destination and folder on the job it enqueues")
+        @MainActor
+        func startCarriesTheDestination() async throws {
+            let saved = ExportTarget.loadLastUsed()
+            defer { saved.saveAsLastUsed() }
+            ExportTarget(destination: .photos, folder: nil).saveAsLastUsed()
+
+            let queue = JobQueue(storeURL: Fixtures.scratch("ui-start.json"))
+            let flow = Flow(monitor: JobMonitor(queue: queue))
+            // 18 bytes of text under an .mp4 name: enough to be captured and
+            // enqueued, and it dies at preflight instead of running for real.
+            let clip = Fixtures.scratch("ui-start-clip.mp4")
+            try Data("not really a movie".utf8).write(to: clip)
+            flow.seed(source: PickedSource(url: clip, name: "ui-start-clip.mp4"),
+                      durationMs: 60_000)
+
+            let folder = FileManager.default.temporaryDirectory
+                .appendingPathComponent("naqi-start-\(UUID().uuidString)", isDirectory: true)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            defer { try? FileManager.default.removeItem(at: folder) }
+            flow.setFolder(folder)
+            #expect(flow.destination == .userFolder)
+
+            await flow.start()
+            let job = try #require(await queue.jobs.first, "Start enqueued nothing")
+            #expect(job.destination == .userFolder,
+                    "the job went to \(job.destination), not the folder the user picked")
+            #expect(job.folder?.standardizedFileURL == folder.standardizedFileURL,
+                    "the job carries \(String(describing: job.folder))")
+
+            await queue.cancel(job.id)
+        }
+
+        @Test("A source with video keeps Photos and needs no folder")
+        @MainActor
+        func videoSourceKeepsPhotos() {
+            let saved = ExportTarget.loadLastUsed()
+            defer { saved.saveAsLastUsed() }
+            ExportTarget(destination: .photos, folder: nil).saveAsLastUsed()
+
+            let flow = Flow()
+            let clip = FileManager.default.temporaryDirectory.appendingPathComponent("clip.mp4")
+            flow.seed(source: PickedSource(url: clip, name: "clip.mp4"), durationMs: 60_000)
+            #expect(!flow.mustUseFolder)
+            #expect(flow.destination == .photos)
+            #expect(flow.canStart)
+        }
+    }
+
+    // MARK: - Drag and drop
+
+    /// A drop hands over any file URL — `.dropDestination(for: URL.self)` has no
+    /// `allowedContentTypes` — so this is the filter the Files importer gets for
+    /// free. Without it a dropped PDF becomes a job that dies at preflight and
+    /// blames the pipeline for a mis-drop.
+    @Test("Only movie files are accepted from a drop")
+    func dropFiltersByType() {
+        let tmp = FileManager.default.temporaryDirectory
+        for name in ["clip.mp4", "clip.mov", "clip.m4v", "CLIP.MP4"] {
+            #expect(isDroppableMovie(tmp.appendingPathComponent(name)), "\(name)")
+        }
+        for name in ["notes.pdf", "song.mp3", "poster.jpg", "readme.txt", "noextension"] {
+            #expect(!isDroppableMovie(tmp.appendingPathComponent(name)), "\(name)")
+        }
+        // A directory is a URL a Finder drag produces constantly.
+        let dir = tmp.appendingPathComponent("naqi-drop-\(UUID().uuidString)", isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        #expect(!isDroppableMovie(dir))
+
+        // The file on disk wins over the extension, which is how an extensionless
+        // export from another app still gets in.
+        let real = tmp.appendingPathComponent("naqi-drop-\(UUID().uuidString).mov")
+        FileManager.default.createFile(atPath: real.path, contents: Data())
+        defer { try? FileManager.default.removeItem(at: real) }
+        #expect(isDroppableMovie(real))
+    }
+
     // MARK: - Sliders
 
     @Test("Strictness and blur clamp to 0…100")
@@ -113,6 +301,77 @@ struct UITests {
         #expect(monitor.output == nil)
         // The sentence the failure card puts on screen, not a developer string.
         #expect(String(localized: try #require(monitor.failure).sentence) != "sourceUnreadable")
+    }
+
+    /// The "N more queued" line is all that stands between a multi-file
+    /// share-in and N−1 invisible jobs, and there are exactly two ways to get
+    /// the number wrong: count the job the screen is already showing, or count
+    /// rows that are finished. Terminal rows sit in `naqi-queue.json` until
+    /// something clears them, so the second one reads as a line that appears
+    /// after the first job ever runs and then never leaves.
+    @Test("The queued-others count skips this job and every finished one")
+    func queuedOthersCount() {
+        let mine = Self.row(.running)
+        let snapshot = JobQueue.Snapshot(
+            jobs: [mine,
+                   Self.row(.pending),
+                   Self.row(.running),
+                   Self.row(.done(Published(name: "a.mp4", url: nil, assetID: nil))),
+                   Self.row(.failed(.generic, resumable: true)),
+                   Self.row(.cancelled)],
+            running: mine.id, progress: nil)
+
+        #expect(JobMonitor.othersQueued(in: snapshot, besides: mine.id) == 2)
+        // Nothing of ours in the queue: every unfinished row is somebody else's.
+        #expect(JobMonitor.othersQueued(in: snapshot, besides: nil) == 3)
+        #expect(JobMonitor.othersQueued(in: JobQueue.Snapshot(jobs: [], running: nil, progress: nil),
+                                        besides: mine.id) == 0)
+    }
+
+    /// The count has to come off the live stream, not off a number the screen
+    /// keeps for itself. Two finished rows are seeded into the store — the
+    /// shape the queue file has after any two jobs — and the queue never drains
+    /// them, so a count that forgot to filter terminal rows shows "2 more in
+    /// the queue" for a queue that is empty.
+    @Test("Finished rows in the real queue never reach the progress line")
+    @MainActor
+    func queuedOthersFromTheRealStream() async throws {
+        let store = FileManager.default.temporaryDirectory
+            .appendingPathComponent("naqi-ui-test-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: store) }
+        try JSONEncoder()
+            .encode([Self.row(.done(Published(name: "a.mp4", url: nil, assetID: nil))),
+                     Self.row(.cancelled)])
+            .write(to: store)
+
+        let monitor = JobMonitor(queue: JobQueue(storeURL: store))
+        let missing = FileManager.default.temporaryDirectory
+            .appendingPathComponent("no-such-video-\(UUID().uuidString).mp4")
+        await monitor.start(source: PickedSource(url: missing, name: missing.lastPathComponent),
+                            ops: FilterOps())
+
+        // Sampled while the job is still alive as well as after it dies: our own
+        // row is non-terminal for that window, so a count that forgot to
+        // exclude it reads 1 here.
+        var peak = 0
+        var waited = 0
+        while monitor.failure == nil, waited < 100 {
+            peak = max(peak, monitor.othersQueued)
+            try await Task.sleep(for: .milliseconds(50))
+            waited += 1
+        }
+        #expect(monitor.failure != nil)
+        #expect(peak == 0)
+        #expect(monitor.othersQueued == 0)
+    }
+
+    /// A queue row in a given state, with a unique source so no two share a
+    /// `Checkpoint.key`.
+    private static func row(_ state: Job.State) -> Job {
+        var job = Job(source: URL(fileURLWithPath: "/tmp/naqi-\(UUID().uuidString).mp4"),
+                      title: "queued", ops: FilterOps(), destination: .photos)
+        job.state = state
+        return job
     }
 
     // MARK: - Localization
@@ -203,10 +462,14 @@ struct UITests {
         .optSectionRemoveMusic,
         .optKeepVocalsTitle, .optKeepVocalsDesc,
         .optKeepVocalsOtherTitle, .optKeepVocalsOtherDesc,
+        .optSectionSaveTo, .optDestPhotosTitle, .optDestPhotosDesc,
+        .optDestFolderTitle, .optDestFolderDesc, .optDestFolderChosen("Movies"),
+        .optDestAudioOnly,
         .optSliderValue(50), .optEtaFloor("43 min"), .actionStart,
         .dlgLongJobTitle, .dlgLongJobBody("43 min"),
         // Progress
         .progressTitle, .progressKeepOpen, .jobsStageStarting,
+        .progressMoreQueued(3),
         .jobsProgressPercent(33), .jobsEtaRemaining("22 min"), .actionCancel,
         .jobsResumeHint, .actionResume, .jobsNewJob,
         .durUnderMin, .durMin(43), .durHMin(2, 35),

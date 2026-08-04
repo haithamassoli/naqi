@@ -1021,6 +1021,108 @@
         }
       }
     },
+    "opt_dest_audio_only": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "هذا الملف بلا فيديو، ولا تقبله مكتبة الصور. اختر مجلّدًا."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This file has no video, so the photo library can't take it. Choose a folder."
+          }
+        }
+      }
+    },
+    "opt_dest_folder_chosen": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "يُحفظ في ‏%1$@."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Saving into %1$@."
+          }
+        }
+      }
+    },
+    "opt_dest_folder_desc": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "اختر مجلّدًا يُحفظ فيه."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose a folder to save into."
+          }
+        }
+      }
+    },
+    "opt_dest_folder_title": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "مجلّد"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Folder"
+          }
+        }
+      }
+    },
+    "opt_dest_photos_desc": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تُضاف النسخة المفلترة إلى تطبيق الصور."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "The filtered copy is added to Photos."
+          }
+        }
+      }
+    },
+    "opt_dest_photos_title": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "مكتبة الصور"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Photo library"
+          }
+        }
+      }
+    },
     "opt_eta_floor": {
       "extractionState": "manual",
       "localizations": {
@@ -1187,6 +1289,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Remove music"
+          }
+        }
+      }
+    },
+    "opt_section_save_to": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "وجهة الحفظ"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Save to"
           }
         }
       }
@@ -1765,6 +1884,23 @@
           "stringUnit": {
             "state": "translated",
             "value": "Keep Naqi open and the phone plugged in."
+          }
+        }
+      }
+    },
+    "progress_more_queued": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "في قائمة الانتظار: ‏%1$d"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$d more in the queue"
           }
         }
       }

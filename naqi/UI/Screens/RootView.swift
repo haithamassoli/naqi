@@ -6,6 +6,7 @@ import SwiftUI
 /// not leave Options behind a back button that would re-enqueue it.
 struct RootView: View {
     @State private var flow = Flow()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
         NavigationStack(path: $flow.path) {
@@ -21,6 +22,21 @@ struct RootView: View {
                 }
         }
         .tint(Naqi.C.primary)
+        // The share extension leaves manifests in the App Group container; the
+        // app is the only thing that can enqueue them. Draining on every
+        // activation and not only at launch is what makes a share that arrives
+        // while the app is already open show up without a relaunch.
+        //
+        // The destination comes from the flow's `export`, not from `Publish`'s
+        // `.photos` default: the extension deliberately carries no options, so
+        // a shared-in video that ignored the folder the user picked would be
+        // the only route in the app that saves somewhere they did not choose —
+        // and on an audio-only share it would fail at publish outright.
+        .task { await flow.drainSharedIn() }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase == .active else { return }
+            Task { await flow.drainSharedIn() }
+        }
         #if DEBUG
         .task { flow.seedFromLaunchArguments() }
         #endif

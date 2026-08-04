@@ -25,6 +25,16 @@ struct DoneScreen: View {
         return source.assetID != nil || source.securityScoped
     }
 
+    /// Read off the finished job, not off the picker — the picker is free to
+    /// have moved on, and claiming the photo library for a copy that went into
+    /// a folder sends the user looking in the wrong app.
+    private var savedWhere: LocalizedStringResource {
+        if flow.monitor.destination == .userFolder, let folder = flow.monitor.folderName {
+            return .jobsSavedFolder(folder)
+        }
+        return .jobsSavedPhotos
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
@@ -84,7 +94,7 @@ struct DoneScreen: View {
                     Text(.jobsSavedLabel)
                         .font(Naqi.F.titleMedium)
                         .foregroundStyle(Naqi.C.onSurface)
-                    Text(.jobsSavedPhotos)
+                    Text(savedWhere)
                         .font(Naqi.F.bodySmall)
                         .foregroundStyle(Naqi.C.onSurfaceVariant)
                 }

@@ -190,8 +190,14 @@ struct PickScreen: View {
         .buttonStyle(.plain)
         .animation(Naqi.spring, value: picked)
         .animation(Naqi.spring, value: isDropTargeted)
+        // Returning `false` is the whole rejection: the system slides the item
+        // back to where it came from, which is what every Mac app does with a
+        // drop it cannot take, and it needs no error state of our own. There is
+        // no hover-time filter available — `dropDestination(for: URL.self)`
+        // reports `isTargeted` without ever showing the payload — so the target
+        // highlights for a PDF and then refuses it.
         .dropDestination(for: URL.self) { urls, _ in
-            guard let url = urls.first else { return false }
+            guard let url = urls.first(where: isDroppableMovie) else { return false }
             flow.adoptFileImport(url)
             return true
         } isTargeted: { isDropTargeted = $0 }

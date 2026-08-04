@@ -40,6 +40,26 @@ struct MovieFile: Transferable {
     }
 }
 
+/// True for a file the pick screen will take from a drag.
+///
+/// `.dropDestination(for: URL.self)` has no `allowedContentTypes` — it hands
+/// over whatever file URL was dropped, including a folder or a PDF — so the
+/// filter `fileImporter` gets for free has to be applied by hand, against the
+/// same list. Rejecting here rather than queueing matters: a dropped PDF would
+/// otherwise become a job that dies at preflight as "the file could not be
+/// read", which blames the pipeline for a mis-drop.
+///
+/// Type comes from the file when the file is there, and from the extension
+/// when it is not; `public.movie` covers every case the importer lists, since
+/// `.video`, `.mpeg4Movie` and `.quickTimeMovie` all conform to it. An
+/// audio-only `.mp4` is a movie container and is deliberately still accepted —
+/// `removeMusic` is a real job shape for it (`Job.shape`, `audioOnly`).
+func isDroppableMovie(_ url: URL) -> Bool {
+    let type = (try? url.resourceValues(forKeys: [.contentTypeKey]).contentType)
+        ?? UTType(filenameExtension: url.pathExtension)
+    return type?.conforms(to: .movie) ?? false
+}
+
 /// Four steps in a straight line. There is no route DSL because there is no
 /// graph: Options is a detour off Pick, and Progress ends the flow.
 ///
@@ -57,19 +77,52 @@ struct MovieFile: Transferable {
     /// deliberately silent: an unreadable source is Preflight's story to tell,
     /// and a broken probe must never stand between the user and Start.
     private(set) var durationMs: Int64 = 0
+    /// Photos or a folder, and the folder itself. Resolved once per launch —
+    /// `loadLastUsed` opens a security scope it never closes.
+    private(set) var export = ExportTarget.loadLastUsed()
+    /// `nil` until the probe answers, and it never becomes `nil` again for a
+    /// source that probed. Only `false` locks the destination.
+    private(set) var sourceHasVideo: Bool?
 
-    let monitor = JobMonitor()
+    let monitor: JobMonitor
+
+    /// - Parameter monitor: the app always watches the shared queue; a test
+    ///   hands in one pointed at a scratch store so asserting what `start`
+    ///   enqueues does not write into the user's `naqi-queue.json`.
+    init(monitor: JobMonitor = JobMonitor()) { self.monitor = monitor }
 
     var canContinue: Bool { source != nil && ops.isValid }
     var estimateMs: Int64 { Eta.estimateMs(durationMs: durationMs, ops: ops) }
+
+    /// A file with no video track cannot go to Photos: `PHAssetCreationRequest`
+    /// refuses a bare audio resource and the runner turns that into
+    /// `publishFailed`, a failure with no sentence the user can act on. So the
+    /// audio-only shape is **forced** to a folder rather than defaulted to one —
+    /// a default can be overridden back into a job that is certain to fail.
+    var mustUseFolder: Bool { sourceHasVideo == false }
+
+    var destination: Destination { mustUseFolder ? .userFolder : export.destination }
+
+    /// Start, as opposed to Pick's Continue. A folder destination with no
+    /// folder throws `destinationUnwritable("no folder chosen")` at the last
+    /// stage of the job — hours in, on a film. Disabling the button before the
+    /// fact is the only version of that the user can do anything about.
+    ///
+    /// Deliberately not folded into `canContinue`: Pick's Continue is the only
+    /// route to the screen that picks the folder, so gating it on the folder
+    /// would strand an audio-only source with no way forward.
+    var canStart: Bool { canContinue && (destination == .photos || export.folder != nil) }
 
     func setSource(_ new: PickedSource) {
         if let old = source, old.securityScoped { old.url.stopAccessingSecurityScopedResource() }
         source = new
         durationMs = 0
+        sourceHasVideo = nil
         Task { [url = new.url] in
-            let ms = await Self.probeDurationMs(url)
-            if source?.url == url { durationMs = ms }
+            let probed = await Self.probe(url)
+            guard source?.url == url else { return }
+            durationMs = probed.ms
+            sourceHasVideo = probed.hasVideo
         }
     }
 
@@ -78,11 +131,43 @@ struct MovieFile: Transferable {
         setSource(PickedSource(url: url, name: url.lastPathComponent, securityScoped: scoped))
     }
 
+    func setDestination(_ new: Destination) {
+        export.destination = new
+        export.saveAsLastUsed()
+    }
+
+    /// Opens the folder's security scope and keeps it open. The job publishes
+    /// into it minutes or hours from now, so nothing may `stopAccessing` in a
+    /// `defer` — the same rule the picked source lives under.
+    func setFolder(_ url: URL) {
+        if let old = export.folder, old != url { old.stopAccessingSecurityScopedResource() }
+        _ = url.startAccessingSecurityScopedResource()
+        export.folder = url
+        export.destination = .userFolder
+        export.saveAsLastUsed()
+    }
+
     func start() async {
-        guard let source, ops.isValid else { return }
+        guard let source, canStart else { return }
         ops.saveAsLastUsed()
         path = [.progress]
-        await monitor.start(source: source, ops: ops)
+        await monitor.start(source: source, ops: ops,
+                            destination: destination, folder: export.folder)
+    }
+
+    /// Enqueues whatever the share extension left in the App Group container,
+    /// with the destination this launch resolved. Returns how many it took, so
+    /// a test can assert the choice travelled rather than that the call exists.
+    ///
+    /// - Parameter queue: the app always drains into the shared one; a test
+    ///   points it at a scratch store so it does not enqueue into the user's
+    ///   real `naqi-queue.json`.
+    @discardableResult
+    func drainSharedIn(into queue: JobQueue = .shared) async -> Int {
+        // `export`, not `destination`: `mustUseFolder` describes the *picked*
+        // source, and a shared-in file is a different one.
+        await ShareInbox.drain(into: queue,
+                               destination: export.destination, folder: export.folder)
     }
 
     func cancelJob() async {
@@ -96,17 +181,21 @@ struct MovieFile: Transferable {
     }
 
     #if DEBUG
-    /// Screenshot harness only — sets both fields without the probe, whose
-    /// async answer would otherwise land after the seed and reset the duration.
-    func seed(source: PickedSource, durationMs: Int64) {
+    /// Screenshot harness only — sets the fields without the probe, whose async
+    /// answer would otherwise land after the seed and reset the duration.
+    func seed(source: PickedSource, durationMs: Int64, hasVideo: Bool = true) {
         self.source = source
         self.durationMs = durationMs
+        self.sourceHasVideo = hasVideo
     }
     #endif
 
-    private static func probeDurationMs(_ url: URL) async -> Int64 {
-        guard let src = try? await MediaSource.probe(url), src.duration.isNumeric else { return 0 }
-        return Int64(src.duration.seconds * 1000)
+    /// `hasVideo` is `nil` when the probe threw — "unknown", not "no video".
+    /// Locking the destination on a source we could not read would trade
+    /// Preflight's honest error for a silently different one.
+    private static func probe(_ url: URL) async -> (ms: Int64, hasVideo: Bool?) {
+        guard let src = try? await MediaSource.probe(url) else { return (0, nil) }
+        return (src.duration.isNumeric ? Int64(src.duration.seconds * 1000) : 0, src.video != nil)
     }
 
     // MARK: - Delete original

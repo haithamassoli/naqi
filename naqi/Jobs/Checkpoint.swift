@@ -28,6 +28,19 @@ enum Checkpoint {
     /// Below this, the whole timeline runs in one pass — the unsegmented route
     /// stays byte-for-byte unchanged for ordinary clips.
     static let longSourceThresholdMs: Int64 = 30 * 60 * 1000
+    /// No segment may be shorter than this.
+    ///
+    /// **Measured failure**, not a precaution. A source whose duration lands a
+    /// few milliseconds past a segment multiple — 35:00.001 — produced a
+    /// trailing segment of `2100000...2100001`. No cut is duplicated there, so
+    /// `distinct` below never sees it, and 1 ms holds no frame at any frame
+    /// rate: `RenderPass` refuses to write an empty segment and the whole job
+    /// dies with "decoded no frames", leaving a work directory that fails the
+    /// same way on every resume. Android has the identical gap
+    /// (`work/Checkpoint.kt:70-79`); it is fatal here only because this renderer
+    /// checks. One second is one frame at the slowest rate anything calling
+    /// itself video runs at, so a surviving segment always holds at least one.
+    static let minSegmentMs: Int64 = 1_000
     /// Work directories untouched for this long are swept. Age-based on
     /// purpose: "delete every temp at startup" is the obvious reading and the
     /// one change that could silently destroy hours of work.
@@ -55,7 +68,19 @@ enum Checkpoint {
         // clipper throw on an inverted range.
         cuts = Array(Set(cuts)).sorted()
 
-        return zip(cuts, cuts.dropFirst()).enumerated().map {
+        // The same collapse, widened from "identical" to "too close to hold a
+        // frame" — see `minSegmentMs`. The film's own two ends are never
+        // dropped, so a final cut sitting too close to the end takes the
+        // *interior* cut with it and leaves one longer last segment.
+        var kept = [cuts[0]]
+        for cut in cuts.dropFirst().dropLast() where cut - kept[kept.count - 1] >= minSegmentMs {
+            kept.append(cut)
+        }
+        let end = cuts[cuts.count - 1]
+        if kept.count > 1, end - kept[kept.count - 1] < minSegmentMs { kept.removeLast() }
+        kept.append(end)
+
+        return zip(kept, kept.dropFirst()).enumerated().map {
             RenderSegment(index: $0.offset, startMs: $0.element.0, endMs: $0.element.1)
         }
     }
@@ -79,8 +104,14 @@ enum Checkpoint {
     /// Bumping orphans stale directories and the 7-day sweep collects them.
     static let planGeneration = "apple-plan1"
 
-    static func key(source: URL, ops: FilterOps) -> String {
-        key([
+    /// - Parameter forcedSegmentMs: the debug segment-length override (Android's
+    ///   `segment_ms` Data key). It changes how many `seg-NNN.mp4` there are and
+    ///   which source window each one holds, so it changes what the directory
+    ///   *means* — resuming a 5-minute plan's segments into a 5-second plan would
+    ///   splice the wrong windows together silently. Appended only when set, so
+    ///   every shipping key stays byte-identical to the ones already on disk.
+    static func key(source: URL, ops: FilterOps, forcedSegmentMs: Int64 = 0) -> String {
+        var parts = [
             source.absoluteString,
             String(ops.removeMusic),
             ops.who.rawValue,
@@ -91,7 +122,9 @@ enum Checkpoint {
             String(ops.grayscale),
             ops.keepStems.rawValue,
             planGeneration,
-        ])
+        ]
+        if forcedSegmentMs > 0 { parts.append("seg\(forcedSegmentMs)") }
+        return key(parts)
     }
 
     // MARK: Files
@@ -105,6 +138,16 @@ enum Checkpoint {
     static var audioTrackName: String { "audio.m4a" }
     static var audioProgressName: String { "audio.json" }
     static var renderTempName: String { "render.mp4" }
+
+    /// The joined segments — itself a checkpoint, which is why the segments are
+    /// deleted the moment it lands. Keeping both would put three full-size temps
+    /// on disk at once where `Preflight.tempCopies` charges for two.
+    static var concatName: String { "concat.mp4" }
+    /// The partial-write name for the above. The marker goes in the *stem* and
+    /// not the extension because `Remux` re-opens its own output as an
+    /// `AVURLAsset` to verify the duration, and AVFoundation is much happier
+    /// doing that for a path that still ends in `.mp4`.
+    static var concatPartName: String { "concat.part.mp4" }
 
     /// Write-then-rename. `rename` will not overwrite on every filesystem, so a
     /// rewrite removes the target first.

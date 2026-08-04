@@ -28,20 +28,32 @@ extension Flow {
         if url != staged { FileManager.default.createFile(atPath: url.path, contents: Data()) }
         // 43 min: past the 30-minute confirm threshold, so the ETA line and the
         // long-job dialog are both live.
+        //
+        // `optionsAudio` poses the one source shape Photos cannot take — a
+        // container with no video track. Posed rather than staged because
+        // saying so for real needs an actual audio-only movie on disk for
+        // AVFoundation to probe, and the screen under audit is the same either
+        // way.
         seed(source: PickedSource(url: url, name: url.lastPathComponent, securityScoped: true),
-             durationMs: 43 * 60 * 1000)
+             durationMs: 43 * 60 * 1000,
+             hasVideo: screen != "optionsAudio")
         ops.removeMusic = true
-        ops.censor = true
+        ops.censor = screen != "optionsAudio"
 
         switch screen {
-        case "options":
+        case "options", "optionsAudio":
             path = [.options]
-        case "progress":
+        case "progress", "queued":
             path = [.progress]
             var bar = JobProgress(shape: .combined, removeMusic: true)
             bar.post(.analyze, 0.72)
             bar.post(.separate, 0.35)
-            monitor.seed(state: .running, progress: bar)
+            // `queued` poses what a four-file share-in looks like. The number
+            // is seeded here and observed for real by `runQueue` below; both
+            // exist because the pose is the only one that can be captured in
+            // Arabic without waiting out three real jobs.
+            monitor.seed(state: .running, progress: bar,
+                         othersQueued: screen == "queued" ? 3 : 0)
         case "done":
             path = [.done]
             // `url:` non-nil poses the folder destination, which is the only
@@ -52,12 +64,27 @@ extension Flow {
                          progress: nil)
         case "about":
             path = [.about]
-        case "run":
+        case "run", "runQueue":
             // Censor-only: the same four screens, real work behind them, and
             // no 88 MB htdemucs graph to load on a simulator.
             ops.removeMusic = false
             ops.censor = true
-            Task { await start() }
+            Task {
+                await start()
+                guard screen == "runQueue" else { return }
+                // Two more rows through the real queue, so the "N more queued"
+                // line can be seen coming from `JobQueue.observe()` and not
+                // from a number someone typed. A different `strictness` is a
+                // different `Checkpoint.key`, which is what stops `enqueue`'s
+                // KEEP rule from collapsing all three into one row.
+                for strictness in [41, 42] {
+                    var extra = ops
+                    extra.strictness = strictness
+                    await JobQueue.shared.enqueue(
+                        Job.capture(source: url, ops: extra, destination: .photos,
+                                    title: url.lastPathComponent))
+                }
+            }
         default:
             break
         }

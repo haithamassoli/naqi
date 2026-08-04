@@ -538,6 +538,223 @@ struct RenderTests {
         #expect(p.r > 8 && p.r < 248, "tone-mapped pixel clipped to \(p)")
     }
 
+    // MARK: - The segmented route (M5)
+
+    /// **The** test for segment + concat. A 90-minute film killed at minute 80
+    /// has to resume, and it resumes by rendering 5-minute slices that are
+    /// joined without a re-encode. The joined file must be indistinguishable
+    /// from the one monolithic pass it replaces, so it is compared against
+    /// exactly that — not against a hand-computed expectation.
+    ///
+    /// Both interior cuts land mid-GOP, which is the case that matters: the
+    /// reader decodes from the sync sample before the cut and throws those
+    /// frames away, and the seam must lose nothing to a decode order that
+    /// disagrees with display order (`spec-render.md` §6.5 measured 49 frames
+    /// lost over 31 seams on Android). The fixture is asserted to have that
+    /// shape rather than assumed to.
+    ///
+    /// The source is small and synthetic on purpose. Frame arithmetic at a seam
+    /// does not care about resolution, and five 1080p transcodes in one process
+    /// is what got this test's own process killed on a loaded machine while it
+    /// was being written. `segmentCensorOffset` runs the real QA clip.
+    @Test("N segments concatenate back into the monolithic render")
+    func segmentedConcatMatchesMonolithic() async throws {
+        let sourceURL = Fixtures.scratch("seg-source.mp4")
+        try await Self.syntheticClip(sourceURL, size: CGSize(width: 320, height: 240), frames: 300)
+        let src = try await MediaSource.probe(sourceURL)
+        let durationMs = src.duration.convertScale(1000, method: .default).value
+        #expect(durationMs > 9_966, "fixture is \(durationMs) ms, expected ~10000")
+
+        var ops = FilterOps()
+        ops.blurAmount = 0
+        ops.grayscale = true
+        // Both intervals straddle a cut, so a seam that dropped or duplicated a
+        // frame would move the censored count as well as the frame count.
+        // 30 fps on a 600 timescale puts frames exactly on these millisecond
+        // boundaries: 2900...3100 is frames 87...93 and 6900...7100 is frames
+        // 207...213, seven each.
+        let edl = Edl(censorIntervalsMs: [2_900...3_100, 6_900...7_100])
+
+        let wholeURL = Fixtures.scratch("seg-monolithic.mp4")
+        let mono = try await RenderPass.run(source: src, edl: edl, ops: ops, output: wholeURL)
+        #expect(mono.frames == 300, "monolithic rendered \(mono.frames) of 300 frames")
+        #expect(mono.censoredFrames == 14, "censored \(mono.censoredFrames), expected 7 + 7")
+
+        let cuts: [Int64] = [0, 3_010, 7_010, durationMs]
+        // A fixture that came out all-keyframes would make every cut free and
+        // the pre-roll path would never run.
+        let syncs = Set(try await Self.syncSampleTimesMs(sourceURL))
+        #expect(syncs.count > 1, "fixture is one GOP: \(syncs.sorted())")
+        #expect(syncs.isDisjoint(with: cuts.dropFirst().dropLast()),
+                "cuts landed on sync samples: \(syncs.sorted())")
+        // And **between two frames**, not merely inside a GOP. Frame `i` sits at
+        // `i * 1000 / 30` ms, so 3010 falls between frames 90 (3000) and 91
+        // (3033) and the segment's first kept frame is 23 ms past its own cut.
+        // That is the only shape in which rebasing to the cut and rebasing to
+        // the frame differ — and it is what every 29.97 fps cut looks like, so a
+        // frame-aligned fixture leaves `renderVideo`'s whole `base` argument
+        // untested and the 23 ms hole it prevents unmeasured.
+        #expect(cuts.dropFirst().dropLast().allSatisfy { $0 * 30 % 1_000 != 0 },
+                "a cut landed exactly on a frame: \(cuts)")
+        var parts: [URL] = []
+        var frames = 0, censored = 0
+        // What "starts at PTS 0" looks like out of this encoder, read off the
+        // whole-film render rather than assumed: VideoToolbox bakes its reorder
+        // delay into the media and cancels it with an edit list.
+        let monoStart = try await Self.minVideoPTS(wholeURL)
+        for (i, pair) in zip(cuts, cuts.dropFirst()).enumerated() {
+            let url = Fixtures.scratch("seg-\(i).mp4")
+            let r = try await RenderPass.run(source: src, edl: edl, ops: ops, output: url,
+                                             range: pair.0...pair.1)
+            parts.append(url)
+            frames += r.frames
+            censored += r.censoredFrames
+            // A segment is video-only: per-segment AAC cannot be concatenated,
+            // so the audio is muxed once at the end (`spec-render.md` §4.2).
+            let audioSamples = try await Self.sampleCount(url, .audio)
+            #expect(audioSamples == 0,
+                    "segment \(i) carries \(audioSamples) audio samples — concat would splice AAC at a seam")
+            // PTS 0, or the concat inherits a gap at every join — and a segment
+            // that forgot to rebase would read its own cut time here, not 0.
+            let info = try await Self.videoTrackInfo(url)
+            #expect(info.start == 0, "segment \(i) presents from \(info.start)s, not 0")
+            let low = try await Self.minVideoPTS(url)
+            #expect(low == monoStart,
+                    "segment \(i)'s earliest sample is \(low) ms; a rebased segment reads \(monoStart)")
+        }
+        // 90 + 120 + 90. Off by one either way means a seam dropped a frame or
+        // wrote it into both neighbours.
+        #expect(frames == mono.frames, "segments rendered \(frames) of \(mono.frames) frames")
+        #expect(censored == mono.censoredFrames,
+                "segments censored \(censored), monolithic \(mono.censoredFrames)")
+
+        let joined = Fixtures.scratch("seg-concat.mp4")
+        try await Remux.concat(parts, to: joined)
+
+        let a = try await Self.videoTrackInfo(wholeURL)
+        let b = try await Self.videoTrackInfo(joined)
+        let joinedFrames = try await Self.sampleCount(joined, .video)
+        #expect(joinedFrames == mono.frames,
+                "concat holds \(joinedFrames) of \(mono.frames) frames")
+        #expect(a.size == b.size, "concat is \(b.size), monolithic \(a.size)")
+        // The QA clip is upright, so this only says "no matrix was invented".
+        // `concatKeepsRotation` is where a dropped matrix actually fails.
+        #expect(a.transform == b.transform, "concat changed the rotation matrix")
+        // Each segment's last sample gets a duration the writer infers rather
+        // than reads, so three joins can differ from one continuous track by a
+        // few frame intervals. Anything larger is a dropped segment.
+        #expect(abs(a.duration - b.duration) < 0.1,
+                "concat is \(b.duration)s, monolithic \(a.duration)s")
+
+        // *Where* the censor landed, not just how many frames carry it. Both
+        // counts above and the duration survive a seam that slid the join by a
+        // frame; the greyed timestamps do not — and a censor that moved off the
+        // thing it was covering is the only version of this bug a user sees.
+        let monoGrey = try await Self.chromaByFrame(wholeURL).filter { $0.chroma < 6 }.map(\.ms)
+        let joinGrey = try await Self.chromaByFrame(joined).filter { $0.chroma < 6 }.map(\.ms)
+        #expect(joinGrey == monoGrey,
+                "greyed at \(joinGrey.first ?? -1)…\(joinGrey.last ?? -1) in the join, \(monoGrey.first ?? -1)…\(monoGrey.last ?? -1) monolithic")
+    }
+
+    /// The offset bug, isolated. The EDL is whole-film and absolute; a segment
+    /// is written from PTS 0. Looking the EDL up at segment-relative time finds
+    /// nothing (this window's relative times only reach 5000), and writing at
+    /// absolute time opens the file with a 4-second hole — so the two halves of
+    /// the mapping are asserted separately.
+    @Test("a censor lands at the right time in a segment that does not start at 0")
+    func segmentCensorOffset() async throws {
+        let inURL = try requireQAVideo()
+        let src = try await MediaSource.probe(inURL)
+        var ops = FilterOps()
+        ops.blurAmount = 0
+        ops.grayscale = true
+
+        let out = Fixtures.scratch("seg-offset.mp4")
+        // Absolute 6000...6500 sits 2 s into the 4000...9000 window: frames
+        // 180...195, which land at segment-relative 2000...2500 ms.
+        let r = try await RenderPass.run(source: src, edl: Edl(censorIntervalsMs: [6_000...6_500]),
+                                         ops: ops, output: out, range: 4_000...9_000)
+        #expect(r.frames == 150, "window holds \(r.frames) frames, expected 150")
+        #expect(r.censoredFrames == 16,
+                "censored \(r.censoredFrames), expected 16 — the EDL was not read at absolute time")
+
+        // Chroma proves it landed where it was written, not just that something
+        // was censored: greying drives Cb/Cr to neutral, and this clip's own
+        // frames sit ~15 off neutral.
+        let frames = try await Self.chromaByFrame(out)
+        #expect(frames.count == 150)
+        let grey = frames.filter { $0.chroma < 6 }.map(\.ms)
+        let colour = frames.filter { $0.chroma > 10 }
+        #expect(grey.count + colour.count == frames.count,
+                "\(frames.count - grey.count - colour.count) frames are neither grey nor coloured")
+        #expect(grey.first == 2_000 && grey.last == 2_500,
+                "greyed span is \(grey.first ?? -1)...\(grey.last ?? -1) ms, expected 2000...2500")
+        #expect(grey.count == 16, "\(grey.count) greyed frames, expected 16")
+    }
+
+    /// Two things the 1080p test above cannot check, on twelve frames instead of
+    /// 384: that the joined duration really is the **sum** of the inputs — a
+    /// concat that wrote only its first segment reports success and is the
+    /// classic silent failure — and that a non-identity rotation matrix survives
+    /// the join. The QA clip is upright, so only a synthetic source can fail the
+    /// second one.
+    @Test("concat sums the inputs and carries the rotation matrix")
+    func concatKeepsRotation() async throws {
+        let size = CGSize(width: 128, height: 64)
+        // Stored 128x64 displayed as 64x128: `spec-avfoundation.md` §5.2's rot-90.
+        let rot = CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: 64, ty: 0)
+        let first = Fixtures.scratch("rot-a.mp4")
+        let second = Fixtures.scratch("rot-b.mp4")
+        try await Self.syntheticClip(first, size: size, frames: 12, rotation: rot)
+        try await Self.syntheticClip(second, size: size, frames: 12, rotation: rot)
+
+        let out = Fixtures.scratch("rot-concat.mp4")
+        try await Remux.concat([first, second], to: out)
+
+        let joined = try await Self.videoTrackInfo(out)
+        let one = try await Self.videoTrackInfo(first)
+        #expect(joined.transform == rot, "concat wrote \(joined.transform), source \(rot)")
+        #expect(joined.size == size, "concat is \(joined.size), source \(size)")
+        let samples = try await Self.sampleCount(out, .video)
+        #expect(samples == 24, "concat holds \(samples) samples, expected 12 + 12")
+        #expect(abs(joined.duration - one.duration * 2) < 0.05,
+                "concat is \(joined.duration)s, two \(one.duration)s inputs")
+    }
+
+    /// `Remux.mux` is what makes a music-only job resumable: the source's own
+    /// picture and the separated `.m4a` are two files on disk, joined without an
+    /// encode. Both halves are checked by digest — a re-encode of either would
+    /// change its bytes even where it looks identical.
+    @Test("mux joins one file's video to another's audio without re-encoding")
+    func remuxMuxPassthrough() async throws {
+        let inURL = try requireQAVideo()
+        let src = try await MediaSource.probe(inURL)
+        let audioURL = Fixtures.scratch("mux-audio.m4a")
+        try await Self.truncatedAudio(from: inURL, info: try #require(src.audio),
+                                      to: audioURL, samples: 100)
+        let out = Fixtures.scratch("muxed.mp4")
+        try await Remux.mux(video: inURL, audio: audioURL, to: out)
+
+        let sourceVideo = try await Self.digest(inURL, .video)
+        let muxedVideo = try await Self.digest(out, .video)
+        #expect(muxedVideo.hash == sourceVideo.hash, "the video track was re-encoded")
+        #expect(muxedVideo.bytes == sourceVideo.bytes,
+                "video payload is \(muxedVideo.bytes) bytes, source \(sourceVideo.bytes)")
+
+        let replacement = try await Self.digest(audioURL, .audio)
+        let muxedAudio = try await Self.digest(out, .audio)
+        let sourceAudio = try await Self.digest(inURL, .audio)
+        #expect(muxedAudio.hash == replacement.hash, "output audio is not the file that was passed in")
+        #expect(muxedAudio.hash != sourceAudio.hash, "output kept the video file's own audio")
+
+        // Geometry and rotation ride in the format description, not the samples.
+        let a = try await Self.videoTrackInfo(inURL)
+        let b = try await Self.videoTrackInfo(out)
+        #expect(a.size == b.size && a.transform == b.transform)
+        #expect(abs(a.duration - b.duration) < 0.05,
+                "muxed video is \(b.duration)s, source \(a.duration)s")
+    }
+
     @Test("cancel mid-render leaves no output file")
     func cancelLeavesNothing() async throws {
         let inURL = try requireQAVideo()
@@ -670,6 +887,195 @@ struct RenderTests {
 
     static func audioDigest(_ url: URL) async throws -> (hash: String, bytes: Int) {
         try await digest(url, .audio)
+    }
+
+    /// What a concat has to preserve, read off the track rather than the movie:
+    /// the movie's own duration is the longest track's, so an audio track that
+    /// runs 17 ms past the picture would mask a dropped video segment.
+    static func videoTrackInfo(_ url: URL) async throws
+    -> (start: Double, duration: Double, size: CGSize, transform: CGAffineTransform) {
+        let asset = AVURLAsset(url: url)
+        defer { withExtendedLifetime(asset) {} }
+        guard let t = try await asset.loadTracks(withMediaType: .video).first else {
+            return (0, 0, .zero, .identity)
+        }
+        let (range, size, transform) = try await (t.load(.timeRange), t.load(.naturalSize),
+                                                  t.load(.preferredTransform))
+        return (range.start.seconds, range.duration.seconds, size, transform)
+    }
+
+    /// Earliest **presentation** time in the track's own media, in ms.
+    /// `copyNextSampleBuffer` walks a compressed track in decode order and a
+    /// reordered stream's first decoded sample is not its first displayed one,
+    /// so this scans rather than peeking. VideoToolbox writes the reorder delay
+    /// into the media and cancels it with an edit list, so a healthy file from
+    /// this encoder reads a small non-zero number here and 0 for
+    /// `videoTrackInfo().start` — which is why both are checked.
+    static func minVideoPTS(_ url: URL) async throws -> Int64 {
+        let asset = AVURLAsset(url: url)
+        defer { withExtendedLifetime(asset) {} }
+        guard let t = try await asset.loadTracks(withMediaType: .video).first else { return -1 }
+        let r = try TrackReader.compressed(track: t)
+        try r.start()
+        var lowest = Int64.max
+        while let sb = r.next() {
+            let pts = CMSampleBufferGetPresentationTimeStamp(sb)
+            guard pts.isNumeric else { continue }
+            lowest = min(lowest, pts.value * 1000 / Int64(pts.timescale))
+        }
+        try r.throwIfFailed()
+        return lowest
+    }
+
+    /// `(ptsMs, chroma)` per decoded frame. `chroma` is the mean distance of Cb
+    /// and Cr from neutral 128 over a subsampled grid — the cheapest measure of
+    /// "was this frame greyed", and one that survives an H.264 round trip:
+    /// the QA clip's own frames read ~15, a greyed frame reads under 2.
+    static func chromaByFrame(_ url: URL) async throws -> [(ms: Int64, chroma: Double)] {
+        let asset = AVURLAsset(url: url)
+        defer { withExtendedLifetime(asset) {} }
+        guard let t = try await asset.loadTracks(withMediaType: .video).first else { return [] }
+        let r = try TrackReader.decodedVideo(track: t)
+        try r.start()
+        var out: [(ms: Int64, chroma: Double)] = []
+        while let sb = r.next() {
+            guard let px = CMSampleBufferGetImageBuffer(sb) else { continue }
+            let pts = CMSampleBufferGetPresentationTimeStamp(sb)
+            out.append((pts.value * 1000 / Int64(pts.timescale), chromaDeviation(px)))
+        }
+        try r.throwIfFailed()
+        return out
+    }
+
+    static func chromaDeviation(_ b: CVPixelBuffer) -> Double {
+        CVPixelBufferLockBaseAddress(b, .readOnly)
+        defer { CVPixelBufferUnlockBaseAddress(b, .readOnly) }
+        guard let base = CVPixelBufferGetBaseAddressOfPlane(b, 1)?
+            .assumingMemoryBound(to: UInt8.self) else { return -1 }
+        let rowBytes = CVPixelBufferGetBytesPerRowOfPlane(b, 1)
+        let w = CVPixelBufferGetWidthOfPlane(b, 1), h = CVPixelBufferGetHeightOfPlane(b, 1)
+        var sum = 0.0, n = 0
+        for y in stride(from: 0, to: h, by: 8) {
+            let row = base + y * rowBytes
+            for x in stride(from: 0, to: w, by: 8) {
+                sum += abs(Double(row[x * 2]) - 128) + abs(Double(row[x * 2 + 1]) - 128)
+                n += 1
+            }
+        }
+        return n > 0 ? sum / Double(n) : -1
+    }
+
+    /// A synthetic H.264 source written through `OutputWriter`, so it carries
+    /// the same encoder settings the render pass produces — reordered frames and
+    /// a 2 s keyframe interval — which is what makes it a real seam fixture and
+    /// not merely a file. 30 fps on a 600 timescale, so frame `i` lands exactly
+    /// on `i * 1000 / 30` ms and the cut arithmetic is exact.
+    ///
+    /// Flat and saturated: luma walks per frame so consecutive frames differ and
+    /// the encoder has something to predict, chroma stays fixed so `censored`
+    /// versus `untouched` is one subtraction away.
+    ///
+    /// - Parameter tickStride: 600-timescale ticks between frames, i.e. `600 /
+    ///   fps`. The default 20 is the 30 fps every seam test wants. A larger
+    ///   value buys **duration without frames**, which is the only affordable
+    ///   way to build a source past `Checkpoint.longSourceThresholdMs`: 31
+    ///   minutes at 30 fps is 55 800 frames to encode and then decode again.
+    static func syntheticClip(_ url: URL, size: CGSize, frames: Int,
+                              rotation: CGAffineTransform = .identity,
+                              tickStride: Int64 = 20) async throws {
+        let info = MediaSource.VideoInfo(
+            naturalSize: size,
+            transform: VideoTransform(preferredTransform: rotation, naturalSize: size),
+            nominalFrameRate: Float(600 / tickStride), estimatedBitrate: 2_000_000,
+            codec: kCMVideoCodecType_H264, isHDR: false,
+            naturalTimeScale: 600, formatDescription: nil)
+        let w = try OutputWriter(url: url)
+        w.addEncodedVideo(info, bitrate: 2_000_000)
+        try w.start()
+        nonisolated(unsafe) let sink = try #require(w.pixelAdaptor)
+        let input = try #require(w.videoInput)
+        let n = Confined(0)
+        try await pump(input, label: "synthetic") {
+            guard n.v < frames else { return false }
+            guard let pool = sink.pixelBufferPool else {
+                throw MediaError.writerFailed("adaptor has no pixel buffer pool")
+            }
+            var px: CVPixelBuffer?
+            guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &px) == kCVReturnSuccess,
+                  let px else { throw MediaError.writerFailed("pool exhausted") }
+            fill(px, y: UInt8(60 + (n.v * 7) % 140), cb: 100, cr: 170)
+            guard sink.append(px, withPresentationTime: CMTime(value: Int64(n.v) * tickStride,
+                                                              timescale: 600))
+            else { throw MediaError.writerFailed("append frame \(n.v)") }
+            n.v += 1
+            return true
+        }
+        try await w.finish()
+    }
+
+    static func fill(_ b: CVPixelBuffer, y: UInt8, cb: UInt8, cr: UInt8) {
+        CVPixelBufferLockBaseAddress(b, [])
+        defer { CVPixelBufferUnlockBaseAddress(b, []) }
+        guard let luma = CVPixelBufferGetBaseAddressOfPlane(b, 0)?
+                .assumingMemoryBound(to: UInt8.self),
+              let chroma = CVPixelBufferGetBaseAddressOfPlane(b, 1)?
+                .assumingMemoryBound(to: UInt8.self) else { return }
+        let w = CVPixelBufferGetWidthOfPlane(b, 0), h = CVPixelBufferGetHeightOfPlane(b, 0)
+        let lumaRow = CVPixelBufferGetBytesPerRowOfPlane(b, 0)
+        for row in 0..<h { (luma + row * lumaRow).update(repeating: y, count: w) }
+        let chromaRow = CVPixelBufferGetBytesPerRowOfPlane(b, 1)
+        for row in 0..<(h / 2) {
+            let p = chroma + row * chromaRow
+            for col in 0..<(w / 2) { p[col * 2] = cb; p[col * 2 + 1] = cr }
+        }
+    }
+
+    /// Presentation times of the samples a decoder can start from. A cut that
+    /// lands on one of these never exercises the pre-roll, so the seam test
+    /// checks its own fixture with this rather than trusting the encoder.
+    static func syncSampleTimesMs(_ url: URL) async throws -> [Int64] {
+        let asset = AVURLAsset(url: url)
+        defer { withExtendedLifetime(asset) {} }
+        guard let t = try await asset.loadTracks(withMediaType: .video).first else { return [] }
+        let r = try TrackReader.compressed(track: t)
+        try r.start()
+        var out: [Int64] = []
+        while let sb = r.next() {
+            // The attachment is present only on samples that are NOT sync
+            // points, so its absence is the positive answer.
+            let attachments = CMSampleBufferGetSampleAttachmentsArray(sb, createIfNecessary: false)
+                as? [[CFString: Any]]
+            let notSync = attachments?.first?[kCMSampleAttachmentKey_NotSync] as? Bool ?? false
+            let pts = CMSampleBufferGetPresentationTimeStamp(sb)
+            if !notSync, pts.isNumeric { out.append(pts.value * 1000 / Int64(pts.timescale)) }
+        }
+        try r.throwIfFailed()
+        return out
+    }
+
+    /// A short `.m4a` cut from `url`'s own AAC. Standing in for the audio pass's
+    /// output: same codec so it muxes, provably fewer bytes so "the replacement
+    /// was used" needs no trust.
+    static func truncatedAudio(from url: URL, info: MediaSource.AudioInfo,
+                               to out: URL, samples: Int) async throws {
+        let asset = AVURLAsset(url: url)
+        defer { withExtendedLifetime(asset) {} }
+        let track = try #require(try await asset.loadTracks(withMediaType: .audio).first)
+        let w = try OutputWriter(url: out, fileType: .m4a)
+        w.addPassthroughAudio(info)
+        try w.start()
+        let reader = try TrackReader.compressed(track: track)
+        try reader.start()
+        nonisolated(unsafe) let rd = reader
+        nonisolated(unsafe) let sink = try #require(w.audioInput)
+        let n = Confined(0)
+        try await pump(sink, label: "truncate") {
+            guard n.v < samples, let sb = rd.next() else { return false }
+            _ = sink.append(sb)
+            n.v += 1
+            return true
+        }
+        try await w.finish()
     }
 
     static func videoDigest(_ url: URL) async throws -> String {

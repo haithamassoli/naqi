@@ -13,6 +13,20 @@ import os
     private(set) var job: Job?
     private(set) var progress: JobProgress?
 
+    /// How many other jobs the queue is still holding.
+    ///
+    /// A multi-file share-in enqueues N jobs and this flow watches exactly one
+    /// of them; without this the other N−1 are invisible and the user's only
+    /// evidence they exist is the app starting another job on its own.
+    ///
+    /// ponytail: a count, not a queue screen. The ceiling is that the other
+    /// rows cannot be named, reordered or cancelled individually. Q2 — whether
+    /// Mac batch is a first-class feature — is unanswered, and a list with
+    /// per-row progress and cancel is the wrong thing to guess at before it is.
+    /// If Q2 lands, `JobQueue.Snapshot.jobs` is already the entire model such a
+    /// screen needs and this becomes the badge that opens it.
+    private(set) var othersQueued = 0
+
     /// The app always watches the shared queue; a test points it at a scratch
     /// store so a run does not write into the user's `naqi-queue.json`.
     private let queue: JobQueue
@@ -65,6 +79,12 @@ import os
 
     var isDone: Bool { if case .done = job?.state { true } else { false } }
 
+    /// Read back off the job rather than off the flow's current setting: the
+    /// Done screen names where *this* copy went, and the picker is free to have
+    /// moved on to something else by then.
+    var destination: Destination? { job?.destination }
+    var folderName: String? { job?.folder?.lastPathComponent }
+
     var failure: JobFailure? {
         if case .failed(let f, _) = job?.state { return f }
         return nil
@@ -78,9 +98,11 @@ import os
 
     // MARK: Commands
 
-    func start(source: PickedSource, ops: FilterOps, destination: Destination = .photos) async {
+    func start(source: PickedSource, ops: FilterOps,
+               destination: Destination = .photos, folder: URL? = nil) async {
         let candidate = Job.capture(source: source.url, ops: ops,
-                                    destination: destination, title: source.name)
+                                    destination: destination, folder: folder,
+                                    title: source.name)
         job = candidate
         progress = nil
         startedAt = .now
@@ -117,7 +139,7 @@ import os
 
     #if DEBUG
     /// Screenshot harness only — see `ScreenshotSeed.swift`.
-    func seed(state: Job.State, progress: JobProgress?) {
+    func seed(state: Job.State, progress: JobProgress?, othersQueued: Int = 0) {
         var j = Job(source: FileManager.default.temporaryDirectory
                         .appendingPathComponent("holiday-in-tabuk.mp4"),
                     title: "holiday-in-tabuk-naqi-1754320000000.mp4",
@@ -125,9 +147,21 @@ import os
         j.state = state
         job = j
         self.progress = progress
+        self.othersQueued = othersQueued
         startedAt = Date().addingTimeInterval(-11 * 60)
     }
     #endif
+
+    /// Every row that is neither this flow's nor finished.
+    ///
+    /// Terminal rows stay in `naqi-queue.json` until something clears them, so
+    /// filtering them out is what makes the line disappear at zero instead of
+    /// at never. A running row that is not ours counts too: the queue is
+    /// strictly serial, so a job ahead of ours is as much "still to come" as a
+    /// pending one, and it is the case a share-in of four videos produces.
+    nonisolated static func othersQueued(in snapshot: JobQueue.Snapshot, besides id: Job.ID?) -> Int {
+        snapshot.jobs.filter { $0.id != id && !$0.state.isTerminal }.count
+    }
 
     private func detach() {
         observer?.cancel()
@@ -136,6 +170,7 @@ import os
         job = nil
         progress = nil
         startedAt = nil
+        othersQueued = 0
     }
 
     private func observe() {
@@ -145,6 +180,7 @@ import os
                 guard let self, let id = self.jobID else { return }
                 self.job = snapshot.jobs.first { $0.id == id }
                 self.progress = snapshot.running == id ? snapshot.progress : self.progress
+                self.othersQueued = Self.othersQueued(in: snapshot, besides: id)
             }
         }
     }

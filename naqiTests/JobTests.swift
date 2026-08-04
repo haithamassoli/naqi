@@ -149,6 +149,37 @@ struct JobTests {
         }
     }
 
+    /// The 1 ms segment, found by running the plan over durations the threshold
+    /// tests never reach. 35:00.001 planned `2100000...2100001`; no cut is
+    /// duplicated there so the `distinct` collapse never saw it, and
+    /// `RenderPass` refuses to write a segment that decoded no frames — so every
+    /// job on such a film died with "decoded no frames" and its work directory
+    /// died the same way on every resume. Android carries the same gap.
+    @Test("no plan emits a segment too short to hold a frame")
+    func planNeverEmitsAnUnrenderableSegment() {
+        // A tail under `minSegmentMs` is absorbed by the segment before it; at
+        // exactly `minSegmentMs` it stands on its own.
+        for (tail, expected): (Int64, Int) in [(1, 7), (33, 7), (999, 7), (1_000, 8)] {
+            let duration: Int64 = 35 * 60 * 1000 + tail
+            let plan = Checkpoint.plan(durationMs: duration)
+            #expect(plan.count == expected, "tail \(tail) planned \(plan.count) segments")
+            // The film's own end is never the cut that gets dropped.
+            #expect(plan.last?.endMs == duration, "tail \(tail) ends at \(plan.last?.endMs ?? -1)")
+            #expect(plan.first?.startMs == 0)
+            for seg in plan {
+                #expect(seg.durationMs >= Checkpoint.minSegmentMs,
+                        "tail \(tail) segment \(seg.index) is \(seg.durationMs) ms")
+            }
+        }
+
+        // The same collapse through the debug hook, where it degenerates all the
+        // way to a single segment — which `Remux.concat` accepts, unlike an
+        // empty one.
+        let forced = Checkpoint.plan(durationMs: 10_001, forcedSegmentMs: 10_000)
+        #expect(forced == [RenderSegment(index: 0, startMs: 0, endMs: 10_001)],
+                "forced plan is \(forced)")
+    }
+
     @Test("resume skips the segments already on disk")
     func completedSegmentsAreSkipped() throws {
         let dir = Fixtures.scratch("jobs-segments")
@@ -202,6 +233,23 @@ struct JobTests {
         #expect(Checkpoint.key(["", "abc"]) != Checkpoint.key(["abc", ""]))
     }
 
+    /// The debug segment override changes which source window each
+    /// `seg-NNN.mp4` holds, so it has to change the directory they live in —
+    /// resuming a 5-second plan's segments into a 5-minute plan would splice the
+    /// wrong picture together with nothing to notice it. Zero must leave the
+    /// shipping key untouched, or every work directory already on disk is
+    /// orphaned the day this lands.
+    @Test("a forced segment length moves the job key, and zero does not")
+    func forcedSegmentMovesTheKey() {
+        let url = URL(fileURLWithPath: "/tmp/a movie.mp4")
+        let ops = FilterOps()
+        let plain = Checkpoint.key(source: url, ops: ops)
+        #expect(Checkpoint.key(source: url, ops: ops, forcedSegmentMs: 0) == plain)
+        #expect(Checkpoint.key(source: url, ops: ops, forcedSegmentMs: 4_000) != plain)
+        #expect(Checkpoint.key(source: url, ops: ops, forcedSegmentMs: 4_000)
+                != Checkpoint.key(source: url, ops: ops, forcedSegmentMs: 5_000))
+    }
+
     // MARK: - Preflight free space
 
     /// Hand-computed from spec §4.1:
@@ -228,28 +276,38 @@ struct JobTests {
 
         // censor-only: one temp + the published copy, no scratch.
         #expect(required(censor, seconds: 600, segmented: false) == 2 * gib + slack)
-        // music-only under 30 min: the separator is not resumable, so no PCM.
-        #expect(required(music, seconds: 600, segmented: false) == 2 * gib + slack)
+        // music-only under 30 min: the separator is not resumable, so no PCM —
+        // but the separated track is now a standalone `audio.m4a` that coexists
+        // with the muxed output, which is what buys music-only its resume.
+        #expect(required(music, seconds: 600, segmented: false)
+                == 2 * gib + 600 * 24_000 + slack)
         // music-only at 30 min: resumable, so 1800 s x 176 400 B/s of int16 PCM.
         #expect(required(music, seconds: 1800, segmented: false)
-                == 2 * gib + 1800 * 176_400 + slack)
+                == 2 * gib + 1800 * (176_400 + 24_000) + slack)
         // combined: render temp AND published output coexist; under 30 min by
-        // construction, so no scratch.
-        #expect(required(both, seconds: 600, segmented: false) == 3 * gib + slack)
-        // segmented censor-only: every rendered segment plus the concat output.
+        // construction, so no PCM scratch — the separated track is still a file.
+        #expect(required(both, seconds: 600, segmented: false)
+                == 3 * gib + 600 * 24_000 + slack)
+        // segmented censor-only: the rendered segments and the concat output.
+        // The source's own audio is passed through, so nothing is encoded.
         #expect(required(censor, seconds: 3600, segmented: true) == 3 * gib + slack)
-        // …plus the one-off AAC transcode at 192 kbit/s when the source audio
-        // cannot be copied into the concat.
+        // …plus the one-off AAC transcode at 192 kbit/s if a source ever needs
+        // its audio re-encoded before the join.
         #expect(required(censor, seconds: 3600, segmented: true, transcodes: true)
                 == 3 * gib + 3600 * 24_000 + slack)
         // segmented with music: the PCM scratch scales with duration, not size.
         #expect(required(both, seconds: 3600, segmented: true)
-                == 3 * gib + 3600 * 176_400 + slack)
+                == 3 * gib + 3600 * (176_400 + 24_000) + slack)
 
-        // ~1.6 GB on a 155-minute film is the number that made the scratch a
-        // separate term instead of another "temp copy".
+        // ~1.6 GB of PCM on a 155-minute film is the number that made the
+        // scratch a separate term instead of another "temp copy"; the AAC track
+        // beside it is ~223 MB.
         #expect(Preflight.extraScratchBytes(for: music, durationSeconds: 155 * 60,
-                                            segmented: false) == 1_640_520_000)
+                                            segmented: false) == 1_863_720_000)
+        // A censor-only job encodes no audio at all, so nothing is charged for
+        // one — the term has to be tied to the shape, not added everywhere.
+        #expect(Preflight.extraScratchBytes(for: censor, durationSeconds: 155 * 60,
+                                            segmented: true) == 0)
     }
 
     // MARK: - Failure taxonomy
@@ -322,17 +380,34 @@ struct JobTests {
 
         // First attempt: stop the moment the analysis checkpoint lands.
         let interrupt = OSAllocatedUnfairLock(initialState: false)
+        let analyzeBar = OSAllocatedUnfairLock<[Double]>(initialState: [])
         var thrown: (any Error)?
         do {
             _ = try await JobRunner.run(
                 job,
-                progress: { p in if p.stage == .analyze, p.fraction >= 0.5 { interrupt.withLock { $0 = true } } },
+                progress: { p in
+                    if p.stage == .analyze { analyzeBar.withLock { $0.append(p.fraction) } }
+                    if p.stage == .analyze, p.fraction >= 0.5 { interrupt.withLock { $0 = true } }
+                },
                 stop: { interrupt.withLock { $0 } ? .interrupted : nil })
         } catch { thrown = error }
 
         let stopped = try #require(thrown as? JobStopped, "the run should have been interrupted")
         #expect(stopped.reason == .interrupted)
         #expect(stopped.resumable)
+
+        // Analyze is the longest stage of a censor-only job, so a bar that only
+        // knows 0 and 1 sits frozen through most of it. `AnalyzePass` reports
+        // one value per second of source (every `sampleFPS`-th sampled frame),
+        // and 0…50 is the censor-only analyze band — the pass reports 0…1 of
+        // itself and `JobProgress` does the mapping, so a stage that leaked an
+        // absolute percent would land outside that range.
+        let bar = analyzeBar.withLock { $0 }
+        let interior = Set(bar.filter { $0 > 0 && $0 < 0.5 })
+        #expect(interior.count >= 3, "analyze posted \(bar.count) values: \(bar)")
+        #expect(bar.allSatisfy { $0 >= 0 && $0 <= 0.5 }, "outside the 0…50 band: \(bar)")
+        #expect(zip(bar, bar.dropFirst()).allSatisfy { $0 <= $1 }, "analyze went backwards: \(bar)")
+        #expect(bar.last == 0.5, "analyze ended at \(String(describing: bar.last)), not the band top")
         #expect(FileManager.default.fileExists(
             atPath: dir.appendingPathComponent(Checkpoint.analysisName).path),
             "the analysis checkpoint should have survived the stop")
@@ -404,6 +479,379 @@ struct JobTests {
         try? FileManager.default.removeItem(at: folder)
     }
 
+    /// **The segmented resume.** Render a clip as four segments, kill the run
+    /// once some of them have landed, build a fresh runner from what survived on
+    /// disk, and prove two things: the finished segments are not rendered again,
+    /// and the joined output is the same film an unsegmented render produces.
+    ///
+    /// "Not rendered again" is read off the file mtimes and not off
+    /// `Completion.resumed`, which only reports whole stages — a run that
+    /// quietly re-rendered every segment would leave `resumed` exactly as empty
+    /// as a correct one and look right from the outside. The two runs are
+    /// separated by a second so a re-render cannot land on the same timestamp.
+    @Test("a killed segmented job resumes without re-rendering finished segments")
+    func segmentedResumeSkipsRenderedSegments() async throws {
+        // 13 s of 320x240 picture with the QA clip's real AAC track bolted on.
+        // Synthetic because frame arithmetic at a seam does not care about
+        // resolution and five 1080p transcodes in one process is what got
+        // `RenderTests` jetsammed; with audio because the segmented route has to
+        // produce a track its picture-only segments never carried.
+        let picture = Fixtures.scratch("seg-job-picture.mp4")
+        try await RenderTests.syntheticClip(picture, size: CGSize(width: 320, height: 240),
+                                            frames: 390)
+        let sourceURL = Fixtures.scratch("seg-job-source.mp4")
+        try await Remux.mux(video: picture, audio: try requireQAVideo(), to: sourceURL)
+
+        let src = try await MediaSource.probe(sourceURL)
+        var ops = FilterOps()
+        ops.removeMusic = false
+        ops.censor = true
+        ops.blurAmount = 0
+        ops.grayscale = true
+        // Both spans straddle a cut, so a seam that dropped or doubled a frame
+        // moves the picture as well as the count.
+        let edl = Edl(censorIntervalsMs: [3_900...4_100, 7_900...8_100])
+
+        let segmentMs: Int64 = 4_000
+        let durationMs = Int64(src.duration.seconds * 1000)
+        let plan = Checkpoint.plan(durationMs: durationMs, forcedSegmentMs: segmentMs)
+        #expect(plan.count == 4, "plan is \(plan.count) segments over \(durationMs) ms")
+
+        // The reference: the same EDL, one unsegmented pass, no ledger.
+        let refURL = Fixtures.scratch("seg-job-reference.mp4")
+        let reference = try await RenderPass.run(source: src, edl: edl, ops: ops, output: refURL)
+
+        let folder = Fixtures.scratch("seg-job-out")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let job = Job.capture(source: sourceURL, ops: ops, destination: .userFolder, folder: folder)
+        let key = Checkpoint.key(source: sourceURL, ops: ops, forcedSegmentMs: segmentMs)
+        WorkDir.clear(key)
+        let dir = WorkDir.job(key)
+        // Seeding the analysis keeps this test on the ledger rather than on
+        // ORT's runtime. Analyze is whole-film on this shape either way, so the
+        // seeded EDL is exactly what a real first pass would have written.
+        try Checkpoint.writeEdl(edl, dir: dir)
+
+        // Stop once two of the four segments have landed: the render band is
+        // 40…90 on segmented-without-music, so 2/4 of it is exactly 65.
+        let interrupt = OSAllocatedUnfairLock(initialState: false)
+        var thrown: (any Error)?
+        do {
+            _ = try await JobRunner.run(
+                job,
+                progress: { p in
+                    if p.stage == .render, p.pct >= 65 { interrupt.withLock { $0 = true } }
+                },
+                stop: { interrupt.withLock { $0 } ? .interrupted : nil },
+                forcedSegmentMs: segmentMs)
+        } catch { thrown = error }
+
+        let stopped = try #require(thrown as? JobStopped, "the run should have been interrupted")
+        #expect(stopped.reason == .interrupted)
+        #expect(stopped.resumable)
+
+        let survivors = Checkpoint.completedSegments(dir: dir, of: plan)
+        #expect(survivors.count >= 2 && survivors.count < plan.count,
+                "stopped holding \(survivors.count) of \(plan.count) segments")
+        #expect(!FileManager.default.fileExists(
+            atPath: dir.appendingPathComponent(Checkpoint.concatName).path),
+            "the concat cannot exist before every segment does")
+        // The in-flight segment's `.part` is the one temp a stop can strand.
+        #expect(try FileManager.default.contentsOfDirectory(atPath: dir.path)
+            .allSatisfy { !$0.hasSuffix(".part") }, "a partial segment survived the stop")
+        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).isEmpty,
+                "an interrupted run must not publish anything")
+
+        let before = try Self.segmentMtimes(Set(plan.map(\.index)), in: dir)
+        // Coarse enough that a re-render cannot reuse a timestamp.
+        try await Task.sleep(for: .milliseconds(1_100))
+        let boundary = Date()
+
+        // The segments are deleted the moment the concat lands, so the ledger
+        // has to be read while the second run is still holding it — the first
+        // `concat` post is the last instant all four exist.
+        let atConcat = OSAllocatedUnfairLock<[Int: Date]>(initialState: [:])
+        let indices = Set(plan.map(\.index))
+        let done = try await JobRunner.run(
+            job,
+            progress: { p in
+                guard p.stage == .concat, atConcat.withLock({ $0.isEmpty }) else { return }
+                let now = (try? Self.segmentMtimes(indices, in: dir)) ?? [:]
+                atConcat.withLock { $0 = now }
+            },
+            forcedSegmentMs: segmentMs)
+
+        #expect(done.shape == .segmented)
+        #expect(done.resumed.contains(.analyze), "the seeded analysis was thrown away")
+
+        let after = atConcat.withLock { $0 }
+        #expect(after.count == plan.count,
+                "the concat ran with \(after.count) of \(plan.count) segments present")
+        for i in survivors.sorted() {
+            #expect(after[i] == before[i], "segment \(i) was rendered a second time")
+        }
+        // The other half of the same signal: the missing segments DID get
+        // written in the second run, so "the mtime never moves" is not what is
+        // being measured.
+        for seg in plan where !survivors.contains(seg.index) {
+            let m = try #require(after[seg.index], "segment \(seg.index) never appeared")
+            #expect(m > boundary, "segment \(seg.index) predates the second run")
+        }
+
+        let out = try await MediaSource.probe(try #require(done.output.url))
+        #expect(out.video != nil)
+        #expect(out.audio != nil, "the joined picture never got its audio track")
+        let frames = try await RenderTests.sampleCount(out.url, .video)
+        #expect(frames == reference.frames,
+                "the join holds \(frames) frames, the unsegmented render \(reference.frames)")
+        let ref = try await MediaSource.probe(refURL)
+        #expect(abs(out.duration.seconds - ref.duration.seconds) < 0.2,
+                "the join is \(out.duration.seconds)s, unsegmented \(ref.duration.seconds)s")
+        #expect(!FileManager.default.fileExists(atPath: dir.path),
+                "a completed job leaves no work directory")
+        try? FileManager.default.removeItem(at: folder)
+    }
+
+    /// The other segmented arm: with music removed the joined picture gets the
+    /// *separated* track, not the source's. The two are told apart by sample
+    /// rate — htdemucs works at 44.1 kHz end to end and the fixture's own audio
+    /// is 48 kHz — so muxing the wrong URL fails here instead of shipping a film
+    /// with its music still in it.
+    @Test("a segmented job with music on joins the separated track, not the source's")
+    func segmentedWithMusicMuxesTheSeparatedTrack() async throws {
+        let picture = Fixtures.scratch("seg-music-picture.mp4")
+        try await RenderTests.syntheticClip(picture, size: CGSize(width: 320, height: 240),
+                                            frames: 390)
+        let sourceURL = Fixtures.scratch("seg-music-source.mp4")
+        try await Remux.mux(video: picture, audio: try requireQAVideo(), to: sourceURL)
+        let src = try await MediaSource.probe(sourceURL)
+        #expect(src.audio?.sampleRate == 48_000, "fixture audio is \(src.audio?.sampleRate ?? 0) Hz")
+
+        var ops = FilterOps()
+        ops.removeMusic = true
+        ops.censor = true
+        ops.blurAmount = 0
+        ops.grayscale = true
+
+        let segmentMs: Int64 = 4_000
+        let folder = Fixtures.scratch("seg-music-out")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let job = Job.capture(source: sourceURL, ops: ops, destination: .userFolder, folder: folder)
+        let key = Checkpoint.key(source: sourceURL, ops: ops, forcedSegmentMs: segmentMs)
+        WorkDir.clear(key)
+        // Seeded for the same reason as the resume test: this one is about which
+        // track reaches the output, not about ORT.
+        try Checkpoint.writeEdl(Edl(censorIntervalsMs: [3_900...4_100]), dir: WorkDir.job(key))
+
+        let done = try await JobRunner.run(job, forcedSegmentMs: segmentMs)
+        #expect(done.shape == .segmented)
+        #expect(done.resumed == [.analyze])
+
+        let out = try await MediaSource.probe(try #require(done.output.url))
+        #expect(out.video != nil)
+        #expect(out.audio?.sampleRate == 44_100,
+                "output audio is \(out.audio?.sampleRate ?? 0) Hz — the source's track was muxed in")
+        #expect(abs(out.duration.seconds - src.duration.seconds) < 0.2)
+        #expect(!FileManager.default.fileExists(
+            atPath: WorkDir.root.appendingPathComponent(key, isDirectory: true).path))
+        try? FileManager.default.removeItem(at: folder)
+    }
+
+    /// Music-only used to write its finished file in one pass, so an
+    /// interruption at 95 % threw away every second of htdemucs — the opposite
+    /// of the guarantee every other shape gives. It now separates into the
+    /// `audio.m4a` checkpoint and muxes that against the untouched source.
+    ///
+    /// The resume is proved by counting `separate` posts, not by timing: a
+    /// resumed run posts the band's top exactly once, and the only way to
+    /// produce an intermediate value is to run the separator again. htdemucs is
+    /// ~1.3 GB resident and ~700 ms per 2.6 s of audio, so a regression here is
+    /// slow as well as wrong.
+    @Test("music-only interrupted after separation resumes without re-running htdemucs")
+    func musicOnlyResumesAfterSeparation() async throws {
+        let url = try requireQAVideo()
+        var ops = FilterOps()
+        ops.removeMusic = true
+        ops.censor = false
+
+        let folder = Fixtures.scratch("jobs-music-out")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let job = Job.capture(source: url, ops: ops, destination: .userFolder, folder: folder)
+        let key = Checkpoint.key(source: url, ops: ops)
+        WorkDir.clear(key)
+        let dir = WorkDir.job(key)
+        let audio = dir.appendingPathComponent(Checkpoint.audioTrackName)
+
+        // Stopping on the checkpoint's own existence rather than on a progress
+        // number: the chunk loop posts its last percentage *before* the AAC
+        // encode and the rename, so a stop keyed to that would abort the very
+        // thing this test needs to survive.
+        var thrown: (any Error)?
+        do {
+            _ = try await JobRunner.run(job, stop: {
+                FileManager.default.fileExists(atPath: audio.path) ? .interrupted : nil
+            })
+        } catch { thrown = error }
+
+        let stopped = try #require(thrown as? JobStopped, "the run should have been interrupted")
+        #expect(stopped.reason == .interrupted)
+        #expect(stopped.resumable)
+        #expect(FileManager.default.fileExists(atPath: audio.path),
+                "the separated track should have survived the stop")
+        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).isEmpty,
+                "an interrupted run must not publish anything")
+
+        let posts = OSAllocatedUnfairLock<[Double]>(initialState: [])
+        let done = try await JobRunner.run(job, progress: { p in
+            if p.stage == .separate { posts.withLock { $0.append(p.fraction) } }
+        })
+        #expect(done.shape == .musicOnly)
+        #expect(done.resumed.contains(.separate))
+        // 1…93 is the music-only separate band, so one post at its top.
+        #expect(posts.withLock { $0 } == [0.93],
+                "htdemucs ran again: \(posts.withLock { $0.count }) separate posts")
+
+        let out = try await MediaSource.probe(try #require(done.output.url))
+        let source = try await MediaSource.probe(url)
+        #expect(out.video != nil, "the mux lost the picture")
+        #expect(out.audio != nil, "the mux lost the separated track")
+        // Compressed passthrough, not a re-encode: the picture comes out the
+        // size it went in.
+        #expect(out.video?.naturalSize == source.video?.naturalSize)
+        #expect(abs(out.duration.seconds - source.duration.seconds) < 0.5)
+        #expect(!FileManager.default.fileExists(atPath: dir.path),
+                "a completed job leaves no work directory")
+        try? FileManager.default.removeItem(at: folder)
+    }
+
+    /// The route question the debug hook cannot answer: `forcedSegmentMs` drives
+    /// every other segmented test, so all of them would still pass if the
+    /// production gate were wired to `segmented: false`. This one runs a source
+    /// over the real 30-minute threshold with no override at all, through
+    /// `JobRunner` exactly as the UI runs one, and reads the shape off the
+    /// completion.
+    ///
+    /// 1 fps, so 31 minutes is 1860 frames rather than 55 800 — the plan only
+    /// reads the duration, and the seam arithmetic is `segmentedConcatMatches‑
+    /// Monolithic`'s job at 30 fps.
+    @Test("a source past the real 30-minute gate is segmented with no debug hook")
+    func longSourceTakesTheSegmentedRoute() async throws {
+        let sourceURL = Fixtures.scratch("jobs-long-source.mp4")
+        try await RenderTests.syntheticClip(sourceURL, size: CGSize(width: 128, height: 96),
+                                            frames: 1_860, tickStride: 600)
+        let src = try await MediaSource.probe(sourceURL)
+        let durationMs = Int64(src.duration.seconds * 1000)
+        #expect(durationMs >= Checkpoint.longSourceThresholdMs,
+                "fixture is \(durationMs) ms, under the \(Checkpoint.longSourceThresholdMs) ms gate")
+
+        var ops = FilterOps()
+        ops.removeMusic = false
+        ops.censor = true
+        ops.blurAmount = 0
+        ops.grayscale = true
+
+        let folder = Fixtures.scratch("jobs-long-out")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let job = Job.capture(source: sourceURL, ops: ops, destination: .userFolder, folder: folder)
+        let key = Checkpoint.key(source: sourceURL, ops: ops)
+        WorkDir.clear(key)
+        // Seeded for the same reason the other segmented tests seed it: this is
+        // about the route, not about ORT over 18 600 sampled frames. The span
+        // straddles the first cut, so a seam that lost the frames at 300 000 ms
+        // shows up in the count below.
+        try Checkpoint.writeEdl(Edl(censorIntervalsMs: [299_000...301_000]), dir: WorkDir.job(key))
+
+        let stages = OSAllocatedUnfairLock<Set<Job.Stage>>(initialState: [])
+        let done = try await JobRunner.run(job, progress: { p in
+            if let s = p.stage { stages.withLock { _ = $0.insert(s) } }
+        })
+
+        #expect(done.shape == .segmented, "a \(durationMs) ms source ran as \(done.shape)")
+        #expect(stages.withLock { $0.contains(.concat) },
+                "the concat stage never posted: \(stages.withLock { $0 })")
+        let out = try await MediaSource.probe(try #require(done.output.url))
+        let frames = try await RenderTests.sampleCount(out.url, .video)
+        #expect(frames == 1_860, "the join holds \(frames) of 1860 frames")
+        #expect(abs(out.duration.seconds - src.duration.seconds) < 1.0,
+                "the join is \(out.duration.seconds)s, the source \(src.duration.seconds)s")
+        try? FileManager.default.removeItem(at: folder)
+    }
+
+    /// `Remux` cannot be cancelled, so the segmented route has to stop *between*
+    /// its two passthrough copies. On a silent source the join is **moved** into
+    /// the output rather than copied, so a mux that ran anyway after a cancel
+    /// consumed the one checkpoint the resume had — the failure path then
+    /// deletes the output, `hasResumableWork` finds nothing (the segments went
+    /// the moment the concat landed) and the whole render is thrown away.
+    @Test("a cancel between the concat and the mux keeps the join")
+    func cancelAfterConcatKeepsTheCheckpoint() async throws {
+        // No audio track at all: that is what selects the move-not-copy branch.
+        let sourceURL = Fixtures.scratch("jobs-silent-source.mp4")
+        try await RenderTests.syntheticClip(sourceURL, size: CGSize(width: 320, height: 240),
+                                            frames: 390)
+        let src = try await MediaSource.probe(sourceURL)
+        #expect(src.audio == nil, "fixture grew an audio track")
+
+        var ops = FilterOps()
+        ops.removeMusic = false
+        ops.censor = true
+        ops.blurAmount = 0
+        ops.grayscale = true
+
+        let segmentMs: Int64 = 4_000
+        let folder = Fixtures.scratch("jobs-silent-out")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let job = Job.capture(source: sourceURL, ops: ops, destination: .userFolder, folder: folder)
+        let key = Checkpoint.key(source: sourceURL, ops: ops, forcedSegmentMs: segmentMs)
+        WorkDir.clear(key)
+        let dir = WorkDir.job(key)
+        try Checkpoint.writeEdl(Edl(), dir: dir)
+
+        // Raised on the concat stage's first post, which lands before the join
+        // runs — so the run passes the pre-concat stop point and has to be
+        // caught by the one before the mux.
+        let atConcat = OSAllocatedUnfairLock(initialState: false)
+        var thrown: (any Error)?
+        do {
+            _ = try await JobRunner.run(
+                job,
+                progress: { if $0.stage == .concat { atConcat.withLock { $0 = true } } },
+                stop: { atConcat.withLock { $0 } ? .interrupted : nil },
+                forcedSegmentMs: segmentMs)
+        } catch { thrown = error }
+
+        let stopped = try #require(thrown as? JobStopped, "the run should have been interrupted")
+        #expect(stopped.reason == .interrupted)
+        #expect(FileManager.default.fileExists(
+            atPath: dir.appendingPathComponent(Checkpoint.concatName).path),
+            "the join was consumed by a mux that ran after the cancel")
+        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).isEmpty,
+                "a cancelled run must not publish anything")
+
+        // And the resume it protects: the join is picked up whole, no segment
+        // is rendered again, and the film comes out the length it went in.
+        let done = try await JobRunner.run(job, forcedSegmentMs: segmentMs)
+        #expect(done.resumed.contains(.render), "the join was not treated as a finished render")
+        let out = try await MediaSource.probe(try #require(done.output.url))
+        #expect(abs(out.duration.seconds - src.duration.seconds) < 0.2,
+                "the resumed join is \(out.duration.seconds)s, the source \(src.duration.seconds)s")
+        try? FileManager.default.removeItem(at: folder)
+    }
+
+    /// Segment mtimes, which is how "was this rendered again" is read.
+    /// `Completion.resumed` cannot answer it: it reports whole stages, and a
+    /// half-resumed render is not a skipped stage.
+    private static func segmentMtimes(_ indices: Set<Int>, in dir: URL) throws -> [Int: Date] {
+        var out: [Int: Date] = [:]
+        for i in indices.sorted() {
+            let u = Checkpoint.segmentURL(dir, segment: i)
+            guard FileManager.default.fileExists(atPath: u.path) else { continue }
+            out[i] = try u.resourceValues(forKeys: [.contentModificationDateKey])
+                .contentModificationDate
+        }
+        return out
+    }
+
     @Test("a user cancel leaves no output file and no temp directory")
     func cancelLeavesNothing() async throws {
         let url = try requireQAVideo()
@@ -428,6 +876,45 @@ struct JobTests {
         #expect(!FileManager.default.fileExists(
             atPath: WorkDir.root.appendingPathComponent(key, isDirectory: true).path),
             "a user cancel takes the whole work directory")
+        try? FileManager.default.removeItem(at: folder)
+    }
+
+    /// The destination folder has to survive the same relaunch the source does.
+    /// It did not: `capture` bookmarked `source` and stored `folder` as a bare
+    /// URL, so a job queued for a folder and resumed after a cold start — or
+    /// after the user picked a different folder, which closes the old scope —
+    /// reached `Publish` with a URL it could no longer write to. At the end of
+    /// an hour-long render, with no way back.
+    @Test("a queued job's destination folder survives a relaunch")
+    func folderSurvivesRelaunch() throws {
+        let folder = Fixtures.scratch("job-folder")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        var ops = FilterOps()
+        ops.censor = true
+
+        let job = Job.capture(source: URL(fileURLWithPath: "/tmp/naqi-x.mp4"), ops: ops,
+                              destination: .userFolder, folder: folder)
+        #expect(job.folderBookmark != nil, "no bookmark taken for the destination folder")
+
+        // Through the queue file, which is the only path that matters: an
+        // in-memory Job still holds a live URL and would pass regardless.
+        let round = try JSONDecoder().decode(Job.self, from: try JSONEncoder().encode(job))
+        // `.path`, not the URL: URL's Codable round-trip drops the directory
+        // flag, so an otherwise identical decoded URL loses its trailing
+        // slash and compares unequal. The path is what `Publish` appends to.
+        #expect(round.resolvedFolder?.path == folder.path)
+
+        // A row written before this field existed must still decode — the queue
+        // file on a user's device predates it.
+        var legacy = try #require(try JSONSerialization.jsonObject(
+            with: try JSONEncoder().encode(job)) as? [String: Any])
+        legacy["folderBookmark"] = nil
+        let old = try JSONDecoder().decode(
+            Job.self, from: try JSONSerialization.data(withJSONObject: legacy))
+        #expect(old.folderBookmark == nil)
+        #expect(old.resolvedFolder?.path == folder.path,
+                "a bookmarkless row must fall back to the stored URL, not to nil")
+
         try? FileManager.default.removeItem(at: folder)
     }
 

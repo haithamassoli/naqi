@@ -32,7 +32,10 @@ enum Preflight {
     /// exceeds any fixed "2 GB temp" budget by construction. The preflight
     /// sizes for that rather than asserting it (`docs/tasks.md:50` on Android).
     static func tempCopies(for ops: FilterOps, segmented: Bool) -> Int64 {
-        if segmented { return 2 }          // rendered segments + the concat output
+        // Segmented never holds three: the segments are deleted the moment the
+        // concat lands, so the pairs that coexist are (segments, concat) and
+        // then (concat, muxed output).
+        if segmented { return 2 }
         if ops.shape == .both { return 2 } // render temp + published output
         return 1                           // one temp + the published copy
     }
@@ -44,17 +47,24 @@ enum Preflight {
     /// (a longer one dispatches to `segmented`) and never writes the scratch.
     ///
     /// - Parameter transcodesAudio: the source's audio must be re-encoded to
-    ///   AAC once up front before the segments can be concatenated. Only
-    ///   reachable with `removeMusic` off, which is why the two terms are added
-    ///   rather than branched — a later edit does not have to re-prove the
-    ///   exclusivity.
+    ///   AAC once up front before the segments can be concatenated. Not yet
+    ///   reachable — the Apple segmented route copies the source's own track
+    ///   through `Remux.mux` instead — but the term is charged the same way the
+    ///   `removeMusic` one is, so turning that path on is a one-line change and
+    ///   not a budget revision.
+    ///
+    /// Every `removeMusic` shape now lands the separated track as a standalone
+    /// `audio.m4a` **before** it is muxed in, so the encoded track is a real
+    /// file that coexists with the output rather than bytes inside it. That is
+    /// what makes music-only resumable (`JobRunner`), and it is a term the
+    /// budget has to carry: 192 kbit/s over a 155-minute film is ~223 MB.
     static func extraScratchBytes(for ops: FilterOps, durationSeconds: Int64,
                                   segmented: Bool, transcodesAudio: Bool = false) -> Int64 {
         let resumableAudio = ops.removeMusic
             && durationSeconds * 1000 >= Checkpoint.longSourceThresholdMs
         let pcm = (resumableAudio || (segmented && ops.removeMusic))
             ? durationSeconds * pcmBytesPerSecond : 0
-        let aac = transcodesAudio ? durationSeconds * aacBytesPerSecond : 0
+        let aac = (transcodesAudio || ops.removeMusic) ? durationSeconds * aacBytesPerSecond : 0
         return pcm + aac
     }
 

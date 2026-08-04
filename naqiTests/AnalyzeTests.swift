@@ -3,6 +3,7 @@ import CoreGraphics
 import CoreVideo
 import Foundation
 import ImageIO
+import os
 import Testing
 @testable import naqi
 
@@ -259,6 +260,81 @@ struct AnalyzeTests {
             #expect(r.edl.regions(at: i.lowerBound).isEmpty)
         }
         print("[analyze whole-frame] \(r.edl.censorIntervalsMs.count) spans from \(r.edl.faceTracks.count) tracks")
+    }
+
+    // MARK: - Progress and cancellation
+
+    /// The analyze pass is the longest stage of a censor-only job and the bar
+    /// used to sit frozen for all of it.
+    ///
+    /// What is pinned: the band is monotonic and inside 0...1, it starts at the
+    /// head of the film, it **closes at exactly 1.0** — a stage that stops at
+    /// 0.94 is a stage the UI will never mark done — and report *k* equals the
+    /// decode position `k * 1000 / durationMs`, one report per second of source.
+    /// That last one catches a wrong time scale, a missing clamp, and a throttle
+    /// that drifted off `sampleFPS`; the report count pins the throttle directly.
+    ///
+    /// What it deliberately does **not** claim: that the value comes from the
+    /// decode position rather than from a count of sampled frames. The sampler
+    /// is uniform, so on any healthy source those are the same number — swapping
+    /// one for the other was tried here and passed. They diverge only where a
+    /// decode gap makes sampling non-uniform, and no fixture produces one.
+    @Test("analyze progress is monotonic, positional, and closes at 1.0")
+    func progressReporting() async throws {
+        let url = try requireQAVideo()
+        let source = try await MediaSource.probe(url)
+        let seen = OSAllocatedUnfairLock<[Double]>(initialState: [])
+
+        let result = try await AnalyzePass.run(source, ops: FilterOps(),
+                                               progress: { p in seen.withLock { $0.append(p) } })
+
+        let reports = seen.withLock { $0 }
+        #expect(reports.allSatisfy { $0 >= 0 && $0 <= 1 }, "out of band: \(reports)")
+        #expect(reports == reports.sorted(), "not monotonic: \(reports)")
+        #expect(reports.first == 0, "first report is \(reports.first ?? -1), not the head of the film")
+        #expect(reports.last == 1, "last report is \(reports.last ?? -1) — the band never closes")
+
+        // One report per `sampleFPS` sampled frames, i.e. per second of source,
+        // plus the terminal 1.0. Thirteen and one on this clip.
+        let every = Int(AnalyzeConstants.sampleFPS.rounded())
+        let expected = (result.sampledFrames + every - 1) / every + 1
+        #expect(reports.count == expected,
+                "\(reports.count) reports for \(result.sampledFrames) sampled frames, expected \(expected)")
+
+        let durationMs = Double(source.duration.convertScale(1000, method: .default).value)
+        for (k, p) in reports.dropLast().enumerated() {
+            let want = Double(k) * 1000 / durationMs
+            #expect(abs(p - want) < 1e-6,
+                    "report \(k) is \(p); the decode position at that point is \(want)")
+        }
+    }
+
+    /// A polled cancel has to stop the pass *now*, not at the next stage
+    /// boundary — the poll is what the Jobs layer bridges a user tap onto. Two
+    /// things are asserted that a `return` instead of a `throw` would pass:
+    /// the flag is never read again after it answers true (so no further frame
+    /// was sampled), and the terminal `progress(1)` did not fire, because a
+    /// cancelled stage that reports 100 % is a stage the UI will mark done.
+    @Test("analyze cancellation throws CancellationError and stops immediately")
+    func cancellation() async throws {
+        let url = try requireQAVideo()
+        let source = try await MediaSource.probe(url)
+        let polls = OSAllocatedUnfairLock(initialState: 0)
+        let seen = OSAllocatedUnfairLock<[Double]>(initialState: [])
+
+        await #expect(throws: CancellationError.self) {
+            _ = try await AnalyzePass.run(
+                source, ops: FilterOps(),
+                progress: { p in seen.withLock { $0.append(p) } },
+                isCancelled: { polls.withLock { $0 += 1; return $0 >= 5 } })
+        }
+
+        // The clip samples 128 frames; five polls means it stopped on the fifth.
+        #expect(polls.withLock { $0 } == 5,
+                "polled \(polls.withLock { $0 }) times — the pass ran on past the cancel")
+        let reports = seen.withLock { $0 }
+        #expect(!reports.contains(1), "a cancelled pass reported 100 %: \(reports)")
+        #expect(reports.allSatisfy { $0 < 0.05 }, "reported \(reports) before stopping at frame 5")
     }
 
     // MARK: - Pixel-math equivalence (§2.2, §5.2, §10.2)

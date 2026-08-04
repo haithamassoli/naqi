@@ -28,16 +28,17 @@ enum JobRunner {
         let wallMs: Double
     }
 
-    /// How often the cancel poll is bridged into a pass that only observes task
-    /// cancellation. One sampled analyze frame is ~100 ms, so this is well
-    /// inside the "at most one chunk" latency the PRD allows.
-    static let cancelPollMs = 200
-
     /// - Parameter stop: polled from the pipelines' own queues, so it must be
     ///   cheap and thread-safe. Non-nil means "wind up now".
+    /// - Parameter forcedSegmentMs: Android's `segment_ms` debug key. Overrides
+    ///   the 5-minute segment length *and* the 30-minute gate, which is the only
+    ///   way to drive the segmented route from a clip short enough to test. It
+    ///   is part of `Checkpoint.key`, so a forced run cannot resume a normal
+    ///   run's segments.
     static func run(_ job: Job,
                     progress: @escaping @Sendable (JobProgress) -> Void = { _ in },
-                    stop: @escaping @Sendable () -> Stop? = { nil }) async throws -> Completion {
+                    stop: @escaping @Sendable () -> Stop? = { nil },
+                    forcedSegmentMs: Int64 = 0) async throws -> Completion {
         // The head of a run is the only place that always executes, including
         // after a relaunch that went straight into a resumed job, so the
         // age-based sweep hangs off it.
@@ -50,12 +51,20 @@ enum JobRunner {
         let src = try await MediaSource.probe(url)
         let durationMs = src.duration.isNumeric ? Int64(src.duration.seconds * 1000) : 0
 
-        // Per-segment video resume needs a time-ranged analyze *and* render
-        // plus a compressed-segment concat. `FrameSampler` already takes
-        // `startMs`/`endMs`; `AnalyzePass`, `RenderPass` and the muxer do not.
-        // Until they do, every length runs the already-device-verified
-        // unsegmented route and resume is stage-level, not segment-level.
-        let shape = Job.shape(ops: job.ops, hasVideoTrack: src.video != nil, segmented: false)
+        // **Only the render is segmented.** `Checkpoint.plan` carries the
+        // 30-minute gate itself and returns empty below it, so an empty plan
+        // *is* the unsegmented route — the one that stays byte-for-byte
+        // unchanged for ordinary clips. `Job.shape` then ANDs it with
+        // `ops.censor`, which is what "long source with a render stage" reduces
+        // to: a music-only film has no render to slice.
+        //
+        // Analyze stays whole-film either way. `AnalyzePass`'s own doc block has
+        // the reason: a face track split by a cut can take opposite gender
+        // verdicts on the two halves, and the hysteresis and whole-frame floor
+        // both span seams.
+        let plan = Checkpoint.plan(durationMs: durationMs, forcedSegmentMs: forcedSegmentMs)
+        let shape = Job.shape(ops: job.ops, hasVideoTrack: src.video != nil,
+                              segmented: !plan.isEmpty)
 
         if let failure = await Preflight.check(source: src, ops: job.ops,
                                                segmented: shape == .segmented) {
@@ -69,7 +78,7 @@ enum JobRunner {
             throw JobFailure.publishFailed
         }
 
-        let key = Checkpoint.key(source: url, ops: job.ops)
+        let key = Checkpoint.key(source: url, ops: job.ops, forcedSegmentMs: forcedSegmentMs)
         let dir = WorkDir.job(key)
         let ext = shape == .audioOnly ? "m4a" : "mp4"
         let out = dir.appendingPathComponent("out.\(ext)")
@@ -101,16 +110,35 @@ enum JobRunner {
                                              progress: { post(.render, $0) },
                                              isCancelled: stopping)
 
-            case .musicOnly, .audioOnly:
-                // The container tail (`finishWriting`) happens inside
-                // `removeMusic`, so `mux` closes in one step when it returns.
-                _ = try await AudioPipeline.removeMusic(src, to: out, keepStems: job.ops.keepStems,
-                                                        includeVideo: shape == .musicOnly,
-                                                        progress: { post(.separate, $0) },
-                                                        isCancelled: stopping)
+            case .musicOnly:
+                // Separate into the checkpoint and mux, rather than one
+                // `includeVideo: true` pass that writes the finished file
+                // directly. htdemucs is the entire cost of this shape, and a
+                // single-pass write meant an interruption at 95 % lost all of
+                // it — the opposite of the guarantee every other shape gives.
+                // The price is one compressed video passthrough copy, which is
+                // container surgery: no re-encode, no quality change.
+                let audio = dir.appendingPathComponent(Checkpoint.audioTrackName)
+                try await separateOnce(src, ops: job.ops, to: audio,
+                                       resumed: resumed, post: post, isCancelled: stopping)
+                // `Remux` has no cancel hook, so this is the last stop point
+                // before a full-size passthrough copy runs to completion.
+                if stopping() { throw MediaError.cancelled }
+                post(.mux, 0)
+                try await Remux.mux(video: url, audio: audio, to: out)
                 post(.mux, 1)
 
-            case .combined, .segmented:
+            case .audioOnly:
+                // The separated track *is* the product here, so there is
+                // nothing to mux it into and no second file to checkpoint
+                // against — the output would be a byte-for-byte copy of it.
+                _ = try await AudioPipeline.removeMusic(src, to: out, keepStems: job.ops.keepStems,
+                                                        includeVideo: false,
+                                                        progress: { post(.separate, $0) },
+                                                        isCancelled: stopping)
+                post(.separate, 1)
+
+            case .combined:
                 let audio = dir.appendingPathComponent(Checkpoint.audioTrackName)
                 let edl = try await bothBranches(src, ops: job.ops, dir: dir, audio: audio,
                                                  resumed: resumed, post: post, stop: stop)
@@ -121,13 +149,34 @@ enum JobRunner {
                                              replacedAudio: audio,
                                              progress: { post(.render, $0) },
                                              isCancelled: stopping)
-                post(shape == .segmented ? .concat : .mux, 1)
+                post(.mux, 1)
+
+            case .segmented:
+                let audio = dir.appendingPathComponent(Checkpoint.audioTrackName)
+                let edl = job.ops.removeMusic
+                    ? try await bothBranches(src, ops: job.ops, dir: dir, audio: audio,
+                                             resumed: resumed, post: post, stop: stop)
+                    : try await resolveEdl(src, ops: job.ops, dir: dir, resumed: resumed,
+                                           post: post, isCancelled: stopping)
+                // A segment cannot carry its own audio — per-segment AAC does
+                // not concatenate — so the whole picture is joined first and
+                // given one continuous track: the separated one when music was
+                // removed, the source's own when it was not.
+                try await renderSegments(src, ops: job.ops, edl: edl, plan: plan,
+                                         dir: dir, output: out,
+                                         audio: job.ops.removeMusic ? audio
+                                             : (src.audio != nil ? url : nil),
+                                         resumed: resumed, post: post, isCancelled: stopping)
             }
 
             if stopping() { throw MediaError.cancelled }
             post(.publish, 0)
+            // Through the bookmark, not `job.folder` directly: the plain URL
+            // stops being writable once the app relaunches or the user picks a
+            // different folder, and this is the last step of a job that may
+            // have been rendering for an hour.
             let published = try await Publish.save(out, named: outputName(for: url, ext: ext),
-                                                   to: job.destination, folder: job.folder)
+                                                   to: job.destination, folder: job.resolvedFolder)
             post(.publish, 1)
             // Success takes the whole directory: the checkpoints only exist to
             // survive an interruption, and this run had none.
@@ -171,8 +220,8 @@ enum JobRunner {
     /// anything there", not "is it long".
     static func hasResumableWork(dir: URL) -> Bool {
         let fm = FileManager.default
-        if fm.fileExists(atPath: dir.appendingPathComponent(Checkpoint.analysisName).path) { return true }
-        if fm.fileExists(atPath: dir.appendingPathComponent(Checkpoint.audioTrackName).path) { return true }
+        for name in [Checkpoint.analysisName, Checkpoint.audioTrackName, Checkpoint.concatName]
+        where fm.fileExists(atPath: dir.appendingPathComponent(name).path) { return true }
         return Checkpoint.hasRenderedSegments(dir: dir)
     }
 
@@ -219,7 +268,9 @@ enum JobRunner {
                 // getting slower is free.
                 group.addTask(priority: .utility) {
                     post(.analyze, 0)
-                    let r = try await analyze(src, ops: ops, isCancelled: aborted)
+                    let r = try await AnalyzePass.run(src, ops: ops,
+                                                      progress: { post(.analyze, $0) },
+                                                      isCancelled: aborted).edl
                     edl.withLock { $0 = r }
                     post(.analyze, 1)
                 }
@@ -239,6 +290,11 @@ enum JobRunner {
         }
 
         guard let result = edl.withLock({ $0 }) else { throw MediaError.cancelled }
+        // The separator's own last post is `100 * done / estimatedFrames`, which
+        // lands on 99 whenever the estimate ran one chunk long — so the audio
+        // share is closed here rather than left to arithmetic, and a fresh run's
+        // bar matches a resumed one's exactly.
+        post(.separate, 1)
         try Checkpoint.writeEdl(result, dir: dir)
         return result
     }
@@ -253,35 +309,132 @@ enum JobRunner {
             return cached
         }
         post(.analyze, 0)
-        let edl = try await analyze(src, ops: ops, isCancelled: isCancelled)
+        // `AnalyzePass` polls `isCancelled` itself, once per sampled frame.
+        // This used to be a 200 ms sibling task that raced the pass and threw
+        // to cancel it; the pass taking the closure directly deletes the race
+        // along with the task.
+        let edl = try await AnalyzePass.run(src, ops: ops,
+                                            progress: { post(.analyze, $0) },
+                                            isCancelled: isCancelled).edl
         try Checkpoint.writeEdl(edl, dir: dir)
         post(.analyze, 1)
         return edl
     }
 
-    /// `AnalyzePass` observes task cancellation but takes no polled flag, so
-    /// the poll is bridged: a sibling task watches the flag and throws, which
-    /// cancels the analyze child at its next `Task.checkCancellation()`.
-    private static func analyze(_ src: MediaSource, ops: FilterOps,
-                                isCancelled: @escaping @Sendable () -> Bool) async throws -> Edl {
-        if isCancelled() { throw MediaError.cancelled }
-        return try await withThrowingTaskGroup(of: Edl?.self) { group in
-            group.addTask { try await AnalyzePass.run(src, ops: ops).edl }
-            group.addTask {
-                while !Task.isCancelled {
-                    if isCancelled() { throw MediaError.cancelled }
-                    try await Task.sleep(for: .milliseconds(cancelPollMs))
+    // MARK: - Segmented render
+
+    /// N standalone picture-only segments, each its own checkpoint, joined at
+    /// the end. The analysis this consumes is whole-film; only the render is
+    /// sliced.
+    ///
+    /// Cuts come straight from `Checkpoint.plan`, which shares endpoints —
+    /// `[a,b] [b,c] [c,d]` — and `RenderPass`'s upper bound is exclusive, so the
+    /// plan partitions the film with no frame written twice and none lost.
+    /// Handing it disjoint ranges (`0...4999, 5000...9999`) would drop the frame
+    /// at 4999.
+    ///
+    /// - Parameter audio: the one continuous track to give the joined picture:
+    ///   the separated `audio.m4a` when music was removed, the source itself
+    ///   when it was not, `nil` when the source is silent.
+    private static func renderSegments(_ src: MediaSource, ops: FilterOps, edl: Edl,
+                                       plan: [RenderSegment], dir: URL, output: URL,
+                                       audio: URL?,
+                                       resumed: OSAllocatedUnfairLock<Set<Job.Stage>>,
+                                       post: @escaping @Sendable (Job.Stage, Double) -> Void,
+                                       isCancelled: @escaping @Sendable () -> Bool) async throws {
+        let fm = FileManager.default
+        let joined = dir.appendingPathComponent(Checkpoint.concatName)
+        let count = Double(plan.count)
+
+        if fm.fileExists(atPath: joined.path) {
+            // The concat supersedes the segments it was built from, so finding
+            // it means the whole render is already done.
+            resumed.withLock { _ = $0.insert(.render) }
+            post(.render, 1)
+        } else {
+            let done = Checkpoint.completedSegments(dir: dir, of: plan)
+            // Only a run that rendered nothing skipped the *stage*; a partial
+            // ledger is a resumed segment list, not a resumed stage.
+            if done.count == plan.count { resumed.withLock { _ = $0.insert(.render) } }
+            Log.job.info("segments \(done.count)/\(plan.count) already rendered")
+
+            for seg in plan {
+                if isCancelled() { throw MediaError.cancelled }
+                let url = Checkpoint.segmentURL(dir, segment: seg.index)
+                if done.contains(seg.index) {
+                    post(.render, Double(seg.index + 1) / count)
+                    continue
                 }
-                return nil
+                // `.part` then rename, so a file under its final name *means*
+                // it is complete. The suffix also keeps a half-written segment
+                // out of `Checkpoint.hasRenderedSegments`, which matches on
+                // `seg-*.mp4`.
+                let part = url.appendingPathExtension("part")
+                try? fm.removeItem(at: part)
+                _ = try await RenderPass.run(
+                    source: src, edl: edl, ops: ops, output: part,
+                    range: seg.startMs...seg.endMs,
+                    progress: { post(.render, (Double(seg.index) + $0) / count) },
+                    isCancelled: isCancelled)
+                try? fm.removeItem(at: url)
+                try fm.moveItem(at: part, to: url)
+                post(.render, Double(seg.index + 1) / count)
             }
-            while let next = try await group.next() {
-                if let edl = next {
-                    group.cancelAll()
-                    return edl
-                }
-            }
-            throw MediaError.cancelled
+
+            if isCancelled() { throw MediaError.cancelled }
+            post(.concat, 0)
+            let part = dir.appendingPathComponent(Checkpoint.concatPartName)
+            try? fm.removeItem(at: part)
+            try await Remux.concat(plan.map { Checkpoint.segmentURL(dir, segment: $0.index) },
+                                   to: part)
+            try? fm.removeItem(at: joined)
+            try fm.moveItem(at: part, to: joined)
+            // Dead weight the moment the concat exists, and dropping them is
+            // what keeps the peak at the two full-size temps `Preflight`
+            // charges for instead of three.
+            for seg in plan { try? fm.removeItem(at: Checkpoint.segmentURL(dir, segment: seg.index)) }
         }
+
+        post(.concat, 0.5)
+        // `Remux` has no cancel hook and this mux is a full-size passthrough
+        // copy of a film, so without a stop point here a cancel pressed during
+        // the concat is not acted on until minutes later — the same check, for
+        // the same reason, as the one before `.musicOnly`'s mux.
+        if isCancelled() { throw MediaError.cancelled }
+        if let audio {
+            try await Remux.mux(video: joined, audio: audio, to: output)
+            // `joined` is deliberately left in place: it is the checkpoint a
+            // failed publish resumes from, and it and `output` are the same two
+            // temps the mux just had open.
+        } else {
+            // Nothing to add, so the join *is* the output. Moved and not copied
+            // — a second full-size copy here would put the peak over budget.
+            // The join therefore stops being a checkpoint on a silent source, so
+            // a publish that fails after this point re-renders. That is exactly
+            // what the unsegmented route does with its own temp, and the case is
+            // a silent film over 30 minutes long whose publish failed.
+            try? fm.removeItem(at: output)
+            try fm.moveItem(at: joined, to: output)
+        }
+        post(.concat, 1)
+    }
+
+    // MARK: - Audio
+
+    /// The separated track as a checkpoint: present means finished, so a resumed
+    /// run skips htdemucs entirely. Posting `separate` at 1 either way is what
+    /// keeps the bar identical between a fresh run and a resumed one.
+    private static func separateOnce(_ src: MediaSource, ops: FilterOps, to url: URL,
+                                     resumed: OSAllocatedUnfairLock<Set<Job.Stage>>,
+                                     post: @escaping @Sendable (Job.Stage, Double) -> Void,
+                                     isCancelled: @escaping @Sendable () -> Bool) async throws {
+        if FileManager.default.fileExists(atPath: url.path) {
+            resumed.withLock { _ = $0.insert(.separate) }
+        } else {
+            try await separate(src, ops: ops, to: url, includeVideo: false,
+                               progress: { post(.separate, $0) }, isCancelled: isCancelled)
+        }
+        post(.separate, 1)
     }
 
     /// Written to `<name>.part` and renamed: a file existing under its final

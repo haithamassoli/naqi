@@ -688,6 +688,8 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Naqi;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Naqi saves the filtered copy back to your photo library. Your original is never changed.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Naqi reads the video you pick so it can filter it on your device. Nothing is uploaded.";
 				"INFOPLIST_KEY_NSSupportsLiveActivities[sdk=iphoneos*]" = YES;
@@ -736,6 +738,8 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_CFBundleDisplayName = Naqi;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Naqi saves the filtered copy back to your photo library. Your original is never changed.";
 				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Naqi reads the video you pick so it can filter it on your device. Nothing is uploaded.";
 				"INFOPLIST_KEY_NSSupportsLiveActivities[sdk=iphoneos*]" = YES;

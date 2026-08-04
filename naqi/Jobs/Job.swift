@@ -18,39 +18,58 @@ struct Job: Identifiable, Codable, Sendable, Equatable {
     var destination: Destination
     /// Security-scoped folder for `.userFolder`.
     var folder: URL?
+    /// The folder's bookmark, for the same reason `source` has one and one
+    /// more: a queued job outlives the picker that produced the URL *and* it
+    /// outlives the user changing their mind. `Flow.setFolder` closes the scope
+    /// on the old folder, so a job still waiting in the queue for that folder
+    /// would fail at publish — after the whole render — with no way back.
+    var folderBookmark: Data?
     var state: State = .pending
     var enqueuedAt = Date()
 
     static func capture(source: URL, ops: FilterOps, destination: Destination,
                         folder: URL? = nil, title: String? = nil) -> Job {
-        let scoped = source.startAccessingSecurityScopedResource()
-        defer { if scoped { source.stopAccessingSecurityScopedResource() } }
-        #if os(macOS)
-        let data = try? source.bookmarkData(options: .withSecurityScope)
-        #else
-        let data = try? source.bookmarkData()
-        #endif
-        return Job(source: source, bookmark: data,
+        return Job(source: source, bookmark: bookmark(for: source),
                    title: title ?? source.deletingPathExtension().lastPathComponent,
-                   ops: ops, destination: destination, folder: folder)
+                   ops: ops, destination: destination, folder: folder,
+                   folderBookmark: folder.flatMap(bookmark(for:)))
+    }
+
+    private static func bookmark(for url: URL) -> Data? {
+        let scoped = url.startAccessingSecurityScopedResource()
+        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
+        #if os(macOS)
+        return try? url.bookmarkData(options: .withSecurityScope)
+        #else
+        return try? url.bookmarkData()
+        #endif
+    }
+
+    /// Re-resolves the destination folder the same way `openSource` re-resolves
+    /// the input, but does **not** open the scope: `Publish.saveToFolder` already
+    /// brackets its own access, and two nested opens would just be two closes to
+    /// keep balanced. Nil for every destination that is not `.userFolder`.
+    var resolvedFolder: URL? {
+        guard let folder else { return nil }
+        return Self.resolve(folderBookmark) ?? folder
+    }
+
+    private static func resolve(_ data: Data?) -> URL? {
+        guard let data else { return nil }
+        var stale = false
+        #if os(macOS)
+        let opts: URL.BookmarkResolutionOptions = .withSecurityScope
+        #else
+        let opts: URL.BookmarkResolutionOptions = []
+        #endif
+        return try? URL(resolvingBookmarkData: data, options: opts,
+                        relativeTo: nil, bookmarkDataIsStale: &stale)
     }
 
     /// Re-resolves the bookmark and opens security-scoped access. The returned
     /// closure must run when the job is finished with the file.
     func openSource() throws -> (url: URL, close: @Sendable () -> Void) {
-        var url = source
-        if let bookmark {
-            var stale = false
-            #if os(macOS)
-            let opts: URL.BookmarkResolutionOptions = .withSecurityScope
-            #else
-            let opts: URL.BookmarkResolutionOptions = []
-            #endif
-            if let resolved = try? URL(resolvingBookmarkData: bookmark, options: opts,
-                                       relativeTo: nil, bookmarkDataIsStale: &stale) {
-                url = resolved
-            }
-        }
+        let url = Self.resolve(bookmark) ?? source
         let scoped = url.startAccessingSecurityScopedResource()
         let opened = url
         let close: @Sendable () -> Void = { if scoped { opened.stopAccessingSecurityScopedResource() } }
@@ -105,8 +124,9 @@ extension Job {
 
     /// The pass strip. `transcode` is deliberately absent: it exists on Android
     /// only because `MediaMuxer` cannot copy an AC-3/DTS/Opus track into the
-    /// concat output, and it belongs with the segment concat that has not
-    /// landed here yet.
+    /// concat output. The segmented route here hands that track to
+    /// `Remux.mux` untouched, and a source AVFoundation cannot passthrough is
+    /// one it already refused at `Preflight`'s `isPlayable` check.
     enum Stage: String, Codable, Sendable, CaseIterable {
         case analyze, render, separate, mux, concat, publish
     }
@@ -119,6 +139,11 @@ extension Job {
     /// `publish` closes every shape. On Android the MediaStore row *was* the
     /// output; here the copy into Photos or the chosen folder is a real
     /// full-size write and it is what carries the bar to 100.
+    ///
+    /// Segmented has no `mux` of its own even though it ends with one: joining
+    /// the segments and giving them their audio track are two halves of the same
+    /// hand-off, and splitting a nine-point band across two labels would flick
+    /// the stage caption for the length of a passthrough copy.
     static func stages(_ shape: Shape, removeMusic: Bool) -> [Stage] {
         switch shape {
         case .censorOnly: [.analyze, .render, .publish]

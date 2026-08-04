@@ -65,30 +65,38 @@ Android carry-overs are cited inline — they are measured findings, not guesses
 ## M5 — Jobs, resilience & share-in
 **Exit:** 90-min film survives a forced kill + relaunch and resumes to a playable output; share-in queues with last-used options.
 
-- [ ] Serial job queue; per-segment checkpoints; resume across app kill and reboot (Q3 answer drives the iPhone UI copy)
-- [ ] iOS lifecycle: keep-awake toggle, graceful suspension (checkpoint flush on background), honest "phone must stay open" messaging
-- [ ] Live Activity progress on iOS; plain progress window on Mac
-- [ ] Share Extension → App Group handoff to main-app queue; extension never touches models or video bytes (~120 MB cap); multiple shares run in order
-- [ ] Cancel semantics everywhere: no partial output file, temp cleaned
-- [ ] Long-film verify on device: forced kill mid-both-ops job on a 90-min file → resume → output plays end-to-end, original untouched
+- [x] Serial job queue; per-segment checkpoints; resume across app kill and reboot. Only the **render** is segmented — splitting analyze at a 5-min boundary splits a face track, and its two halves can reach opposite gender verdicts, censoring the same face in one segment and not the next
+- [x] iOS lifecycle: keep-awake toggle, checkpoint flush on background, `beginBackgroundTask` grace whose expiry marks `.interrupted` so a short app switch does not kill a job
+- [x] Live Activity progress on iOS (`NaqiWidgets` target); Mac gets the in-app progress window — ActivityKit is iOS-only
+- [x] Share Extension → App Group handoff (`NaqiShare` target). Copies bytes only; manifest written last as the completion marker. `ShareManifest` carries no options, so `FilterOps` never enters a 120 MB target
+- [x] Cancel semantics: no partial output, temp cleaned, and the source proven byte-identical after a cancel (`OriginalIntegrityTests`)
+- [~] Long-film verify: run on the **simulator** against a synthesized 90-min film (`scripts/fetch-models.sh`). On-device is still open — see M7
+
+**Two critical bugs the segmented route shipped with, both found by adversarial verify, both mutation-confirmed:**
+- `AVAssetReader` does not drop the sample straddling `timeRange.start` — it **rewrites its PTS to the range start**, so the pre-roll guard let it through and wrote it into *both* neighbouring segments. Invisible at 30/25/24 fps where 5-minute cuts are exact frame times; **every seam gains a frame at 29.97 or 23.976**. `Remux.export` only guards against short output, so it would have shipped silently.
+- `Checkpoint.plan` emitted a 1 ms trailing segment on a 35:00.001 source. No duplicate cut, so `distinct()` never saw it; `RenderPass` then refused to write an empty segment and the job died — identically on every resume. Android carries the same gap.
 
 ## M6 — App UI & polish
 **Exit:** full user flow on iPhone, iPad, Mac; EN/AR with RTL; options persist. (Q2 decides whether Mac batch lands here.)
 
-- [ ] Screens: pick → ops `[Remove music] [Censor] (≥1 required)` → options (last-used preselected) → progress → done (Open / Share / Delete-original)
-- [ ] Options persistence incl. Who pick and censor mode
-- [ ] Export: Photos or user folder; original untouched
-- [ ] Port Naqi design language from Android (pass strip, ink = interaction / jade = video-truth)
-- [ ] EN + AR localization; RTL audit on every screen
-- [ ] Mac: file drag-drop; batch queue if Q2 = first-class
-- [ ] iPad: verify layouts are not stretched-phone
+- [x] Screens: pick → ops → options → progress → done, all driving the real `JobQueue`
+- [x] Options persistence incl. Who pick and censor mode — in the **App Group suite**, not `.standard`, so a share-in inherits them
+- [x] Export: Photos or user folder. Audio-only sources are **forced** to folder, not defaulted — Photos rejects a bare audio file, and a default could be clicked back to a publish failure. The folder is bookmarked, so a job resumed after a cold start still reaches the folder it was queued for
+- [x] Port Naqi design language from Android. **Kept as shipped**, which inverts this list's "ink = interaction / jade = video-truth" — the Android app uses jade for interaction; see `Theme.swift`
+- [x] EN + AR (110 keys); RTL audit found two real bugs — SwiftUI mirrors `Shape` by default (backwards tick, flipped music slash) and `Canvas` filled the pass bar from the left in Arabic
+- [x] Mac: file drag-drop, gated on `UTType.movie` so a dropped PDF is refused rather than queued to fail at preflight
+- [~] Batch queue: only a "N more queued" line, driven by the real `JobQueue.observe()`. A full queue screen is **deliberately not built** — Q2 (Mac batch as first-class) is unanswered and it would be speculative
+- [x] iPad: layouts verified, not stretched-phone
+- [ ] Done screen offers Open / Share only on the folder destination. On Photos the app holds `.addOnly`, so after the temp is moved into the library there is genuinely no readable path to act on — correct, but still a product gap
 
 ## M7 — QA & App Store
 **Exit:** submitted for review.
 
-- [ ] Full parity suite on floor iPhone + M-series Mac; record numbers next to S23 baselines
-- [ ] 90-min film on passively cooled iPhone: completes despite throttling; peak RAM ≤ 1.5 GB
-- [ ] Kill/reboot/resume matrix re-run on release build
-- [ ] Privacy nutrition label: no data collected; review notes: all inference on-device, nothing uploaded
-- [ ] Pricing implemented per Q4; App Store listing (EN/AR screenshots, description from Android `store-listing.md`)
+- [ ] Full parity suite on floor iPhone + M-series Mac; record numbers next to S23 baselines — **needs hardware**
+- [ ] 90-min film on passively cooled iPhone: completes despite throttling; peak RAM ≤ 1.5 GB — **needs hardware.** The simulator reports the *host* process's `phys_footprint`, so only the +842 MB delta from M0 is a real number
+- [ ] Kill/reboot/resume matrix re-run on **release** build. Debug-only coverage already hid one bug here (`AVAssetTrack.asset` is weak; an optimised build releases it before the reader is made)
+- [x] Privacy nutrition label — `naqi/PrivacyInfo.xcprivacy`: no tracking, no collected data, three required-reason APIs each traced to its call site. "No networking" **verified**, not asserted: no `URLSession` symbols in the binary, no networking framework linked
+- [x] App Store listing EN/AR — `docs/apple-port/store-listing-apple.md`. Four Play-listing claims are false on Apple and are removed rather than softened (bundled models not a download; no MKV/WebM — AVFoundation cannot demux Matroska; iOS 18/macOS 15; resume rather than background work)
+- [ ] Pricing per Q4 — **blocked**, Q4 unanswered
+- [ ] Store screenshots need caption plates; per-extension privacy manifests if App Store Connect flags the App Group `UserDefaults` symbol in `NaqiShare`/`NaqiWidgets` at upload
 - [ ] TestFlight beta pass → submit

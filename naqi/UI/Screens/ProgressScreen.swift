@@ -26,12 +26,25 @@ struct ProgressScreen: View {
                         // foreground-service notification.
                         NoteLine(icon: .shield, text: .progressKeepOpen)
                     }
+
+                    // Outside the failure branch: a job that failed does not
+                    // take the rest of the queue with it (spec §9 carry-over
+                    // 7), so the ones still waiting are exactly as real then.
+                    if flow.monitor.othersQueued > 0 {
+                        Text(.progressMoreQueued(Int32(flow.monitor.othersQueued)))
+                            .font(Naqi.F.bodySmall)
+                            .monospacedDigit()
+                            .foregroundStyle(Naqi.C.onSurfaceVariant)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .transition(.opacity)
+                    }
                 }
             }
             .padding(.horizontal, Naqi.S.gutter)
             .padding(.top, Naqi.S.s4)
             .padding(.bottom, Naqi.S.s5)
         }
+        .animation(Naqi.spring, value: flow.monitor.othersQueued)
         .background(Naqi.C.background)
         .navigationTitle(Text(.progressTitle))
         #if os(iOS)

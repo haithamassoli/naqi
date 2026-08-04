@@ -19,9 +19,32 @@ struct AnalyzeResult: Sendable {
 /// Pass 1: one sequential decode feeding two consumers — the NSFW whole-frame
 /// gate and the face tracker — emitting one `Edl`. Pass 2 consumes only the
 /// `Edl`; nothing else crosses the boundary.
+///
+/// **This pass is deliberately NOT segmented, and must not become so.**
+/// `RenderPass` takes a source-time window because a rendered segment is a
+/// standalone file that concatenates; an analyzed segment is not the same kind
+/// of thing. A 5-minute cut lands in the middle of face tracks, and the two
+/// halves of a split track take their gender votes from different samples —
+/// they can reach *opposite* verdicts, so the same face is censored either side
+/// of the seam and bare in between. The hysteresis (§3) and the whole-frame
+/// floor (§7) also span seams, which is why `Checkpoint.SegmentAnalysis` stores
+/// bare tracks and rebuilds intervals globally even on Android. Analyze is also
+/// the cheaper of the two passes — 10 fps sampling against the render's every
+/// frame — so what a resume loses here is worth less than the correctness it
+/// would cost. Stage-level resume (`Checkpoint.writeEdl`, one finished EDL) is
+/// the right trade and the one this port ships.
 enum AnalyzePass {
 
-    static func run(_ source: MediaSource, ops: FilterOps) async throws -> AnalyzeResult {
+    /// - Parameter progress: 0...1 of **this pass only**; the caller maps it
+    ///   into its own band. Reported from the real decode position, the same
+    ///   way `RenderPass` does it.
+    /// - Parameter isCancelled: polled once per sampled frame — the same
+    ///   granularity `RenderPass` polls at — and answered with
+    ///   `CancellationError`, which is what `FrameSampler` already throws, so
+    ///   every caller unwinds through one path.
+    static func run(_ source: MediaSource, ops: FilterOps,
+                    progress: (@Sendable (Double) -> Void)? = nil,
+                    isCancelled: @escaping @Sendable () -> Bool = { false }) async throws -> AnalyzeResult {
         guard let video = source.video else { throw MediaError.noVideoTrack }
         let asset = AVURLAsset(url: source.url)
         guard let track = try await asset.loadTracks(withMediaType: .video).first else {
@@ -55,6 +78,18 @@ enum AnalyzePass {
         let batch = GateBatch(model: gate, strictness: ops.strictness, size: 1)
         let sampler = try FrameSampler(track: track, transform: video.transform)
 
+        // `RenderPass` throttles to every 30th frame, which at a 30 fps source is
+        // one report per second of picture. This pass decodes at `sampleFPS`, so
+        // the same one-report-per-source-second cadence is every `sampleFPS`-th
+        // *sampled* frame. Copying the literal 30 instead would tick a third as
+        // often here and read as a stalled bar on the longer of the two stages.
+        let reportEvery = max(1, Int(AnalyzeConstants.sampleFPS.rounded()))
+        // `durationMs` is `.max` when the container will not say, and dividing
+        // by it would peg the bar at 0 for the whole film — report nothing then
+        // and let the terminal 1.0 close the band.
+        let knownDurationMs = (durationMs > 0 && durationMs != .max) ? Double(durationMs) : 0
+        var seen = 0
+
         // `Stage` carries the signpost; the wall is measured here as well
         // because `AnalyzeResult` reports it to the caller, not just to the log.
         // Both readings must combine `.seconds` with `.attoseconds` — the
@@ -63,7 +98,15 @@ enum AnalyzePass {
         let started = ContinuousClock.now
         let stage = Stage("analyze")
         let stats = try await sampler.run { frame in
+            // Polled per sampled frame, exactly where `RenderPass` polls, and
+            // answered with the error `FrameSampler` already throws so a polled
+            // cancel and a task cancel are indistinguishable to the caller.
+            if isCancelled() { throw CancellationError() }
             try Task.checkCancellation()
+            if let progress, knownDurationMs > 0, seen % reportEvery == 0 {
+                progress(min(1, max(0, Double(frame.ptsMs) / knownDurationMs)))
+            }
+            seen += 1
             // Detection and the gate overlap; the await stays inside this call
             // so the frame's pool slot survives both (§1.5, §2.5).
             async let detected = detector.detect(frame)
@@ -74,6 +117,11 @@ enum AnalyzePass {
             }
         }
         try batch.flush()
+        // The last sampled frame sits up to one sample interval short of the
+        // duration, and on a stage that feeds a progress band "97 %" is a stage
+        // that never finished. Closing at exactly 1.0 is the caller's signal
+        // that the band is complete, so it is stated rather than approached.
+        progress?(1)
         let elapsed = ContinuousClock.now - started
         let wallMs = Double(elapsed.components.seconds) * 1000
             + Double(elapsed.components.attoseconds) / 1e15

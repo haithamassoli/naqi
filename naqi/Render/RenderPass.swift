@@ -32,11 +32,28 @@ enum RenderPass {
     /// - Parameter edl: Consumed through `Edl.fullFrame(at:)` / `regions(at:)`,
     ///   so the whole-frame-beats-regions precedence rule is honoured by the
     ///   EDL itself, not re-derived here.
+    /// - Parameter range: **the segmented seam.** Milliseconds on the SOURCE
+    ///   timeline; `nil` renders the whole asset and is byte-for-byte the route
+    ///   that shipped. When set, the output is a standalone file whose first
+    ///   sample is at PTS 0 — see `renderVideo` for why the EDL is still read at
+    ///   absolute time.
+    ///
+    ///   The upper bound behaves as **exclusive**: a frame landing exactly on
+    ///   `upperBound` belongs to the next segment. That is what makes
+    ///   `Checkpoint.plan`'s cuts — which share endpoints, `[a,b] [b,c] [c,d]` —
+    ///   partition the film with no frame written twice and none lost.
+    ///
+    ///   A ranged render writes **no audio**, so `range` and `replacedAudio` are
+    ///   mutually exclusive. Per-segment AAC cannot be concatenated: encoder
+    ///   frames do not align with arbitrary clip boundaries, so the segmented
+    ///   route renders picture alone and muxes one continuous track at the end
+    ///   with `Remux.mux` (`spec-render.md` §4.2, Android `RenderPipeline.kt:66`).
     static func run(source: MediaSource,
                     edl: Edl,
                     ops: FilterOps,
                     output: URL,
                     replacedAudio: URL? = nil,
+                    range: ClosedRange<Int64>? = nil,
                     progress: (@Sendable (Double) -> Void)? = nil,
                     isCancelled: @escaping @Sendable () -> Bool = { false }) async throws -> Result {
         guard let v = source.video else { throw MediaError.noVideoTrack }
@@ -61,7 +78,11 @@ enum RenderPass {
         var replacementAsset: AVURLAsset?
         defer { withExtendedLifetime(replacementAsset) {} }
         var audioTrack: AVAssetTrack?
-        if let replacedAudio {
+        if range != nil {
+            if replacedAudio != nil {
+                Log.render.notice("segment render ignores replacedAudio: a segment is video-only")
+            }
+        } else if let replacedAudio {
             let replacement = try await MediaSource.probe(replacedAudio)
             let ra = AVURLAsset(url: replacedAudio)
             replacementAsset = ra
@@ -83,7 +104,8 @@ enum RenderPass {
             rot=\(v.transform.rotationDegrees) hdr=\(v.isHDR) \
             blur=\(ops.blurAmount)(sigma \(effect.plan.sigmaPx, format: .fixed(precision: 1))px \
             /\(effect.plan.downscale)) gray=\(ops.grayscale) \
-            audio=\(replacedAudio == nil ? "passthrough" : "replaced", privacy: .public)
+            audio=\(audioTrack == nil ? "none" : (replacedAudio == nil ? "passthrough" : "replaced"), privacy: .public) \
+            range=\(range.map { "\($0.lowerBound)..<\($0.upperBound)ms" } ?? "whole", privacy: .public)
             """)
 
         // AVFoundation objects are not Sendable but each is touched by exactly
@@ -96,8 +118,8 @@ enum RenderPass {
         let stage = Stage("render")
         do {
             async let video = renderVideo(track: vt, writer: out, edl: edl, effect: effect,
-                                          duration: source.duration, progress: progress,
-                                          isCancelled: isCancelled)
+                                          duration: source.duration, range: range,
+                                          progress: progress, isCancelled: isCancelled)
             async let audio: Void = copyAudio(at, into: audioIn, isCancelled: isCancelled)
             let (counts, _) = try await (video, audio)
             try await out.finish()
@@ -115,11 +137,37 @@ enum RenderPass {
         }
     }
 
+    /// Slack the reader is given on **both** sides of the requested window, so
+    /// that neither edge of the segment depends on how `AVAssetReader` chooses
+    /// to trim. One second either way; the loop's own PTS tests are what
+    /// actually define the window.
+    ///
+    /// **Tail** — Android's measurement. A B-frame stream's display order and
+    /// decode order disagree, and a clip end that cut in decode order lost 1-3
+    /// frames per seam (`spec-render.md` §6.5: 49 frames over 31 seams on a
+    /// 2.6 h film). The loop breaks at the boundary frame, so the guard past it
+    /// is never actually decoded and costs nothing.
+    ///
+    /// **Head** — measured here, and the reason this is not just a tail guard.
+    /// `AVAssetReader` does not drop the sample that *straddles* `timeRange
+    /// .start`; it emits it with its presentation timestamp **rewritten to the
+    /// range start**. The pre-roll test below then reads exactly `lowerBound`
+    /// for a frame that belongs to the previous segment, lets it through, and
+    /// writes it into both — the join comes out one frame longer per seam, with
+    /// everything after each seam shifted and the audio drifting against it.
+    /// A frame-aligned cut hides this completely (the straddling frame *is* the
+    /// boundary frame), which is why the seam fixture cuts at 3010 and not 3000
+    /// — and at 29.97 or 23.976 fps no 5-minute cut is frame-aligned, so on that
+    /// content every seam duplicated a frame. Starting a second early puts the
+    /// rewritten sample somewhere the pre-roll test discards anyway.
+    private static let readerGuardMs: Int64 = 1_000
+
     private static func renderVideo(track: AVAssetTrack,
                                     writer: OutputWriter,
                                     edl: Edl,
                                     effect: CensorEffect,
                                     duration: CMTime,
+                                    range: ClosedRange<Int64>?,
                                     progress: (@Sendable (Double) -> Void)?,
                                     isCancelled: @escaping @Sendable () -> Bool)
     async throws -> (frames: Int, censored: Int) {
@@ -127,12 +175,35 @@ enum RenderPass {
             throw MediaError.writerFailed("video input not configured")
         }
         let reader = try TrackReader.decodedVideo(track: track)
+        if let range {
+            let from = max(0, range.lowerBound - readerGuardMs)
+            reader.reader.timeRange = CMTimeRange(
+                start: CMTime(value: from, timescale: 1000),
+                duration: CMTime(value: range.upperBound - from + readerGuardMs,
+                                 timescale: 1000))
+        }
         try reader.start()
+        // A whole-asset pass reaches EOF and `AVAssetReader` tears its decoder
+        // down on its own; a segment stops mid-stream at the boundary frame and
+        // would otherwise hold a live decompression session and its 1080p buffer
+        // pool until ARC happened to get to it — N of those in one job is real
+        // memory. Cancelling a reader that already completed is a no-op.
+        defer { reader.cancel() }
 
         nonisolated(unsafe) let r = reader
         nonisolated(unsafe) let sink = adaptor
         let counts = Confined((frames: 0, censored: 0))
-        let total = duration.seconds
+        // Source time of the first frame this pass keeps. A segment is a
+        // standalone file, so it is written from PTS 0 — but only the *write*
+        // rebases. Resolved from the frame rather than from `range.lowerBound`
+        // because a cut that is not on a sync sample leaves the first kept frame
+        // some milliseconds late, and a segment starting at PTS 33 would make
+        // `AVAssetWriter` open the file with a 33 ms hole.
+        let base = Confined(CMTime.invalid)
+        // Progress spans the window, not the film: the caller maps this pass's
+        // 0...1 into its own band and does the per-segment arithmetic itself.
+        let total = range.map { Double($0.upperBound - $0.lowerBound) } ?? duration.seconds * 1000
+        let startMs = range?.lowerBound ?? 0
 
         try await pump(input, label: "video") {
             if isCancelled() { throw MediaError.cancelled }
@@ -140,14 +211,28 @@ enum RenderPass {
                 try r.throwIfFailed()
                 return false
             }
-            guard let src = CMSampleBufferGetImageBuffer(sb) else {
-                throw MediaError.readerFailed("frame \(counts.v.frames) carries no image buffer")
-            }
             let pts = CMSampleBufferGetPresentationTimeStamp(sb)
             // The EDL is in whole milliseconds. Truncate rather than round, so a
             // frame lands in the same interval Android's integer `us / 1000`
-            // put it in.
+            // put it in. This is the ABSOLUTE source time and stays absolute:
+            // the EDL is whole-film even when the render is not.
             let ms = pts.value * 1000 / Int64(pts.timescale)
+            if let range {
+                // Pre-roll: a cut inside a GOP makes the reader decode from the
+                // sync sample before it, and those frames belong to the previous
+                // segment.
+                if ms < range.lowerBound { return true }
+                // Exclusive upper bound — see `run(range:)`. Decoded output
+                // arrives in presentation order, so the first frame at or past
+                // the boundary really is the end of this segment.
+                if ms >= range.upperBound { return false }
+            }
+            guard let src = CMSampleBufferGetImageBuffer(sb) else {
+                throw MediaError.readerFailed("frame \(counts.v.frames) carries no image buffer")
+            }
+            if !base.v.isValid { base.v = pts }
+            let outPts = range == nil ? pts : CMTimeSubtract(pts, base.v)
+
             let full = edl.fullFrame(at: ms)
             let regions = full ? [] : edl.regions(at: ms)
 
@@ -161,22 +246,33 @@ enum RenderPass {
                     throw MediaError.writerFailed("pixel buffer pool exhausted at frame \(counts.v.frames)")
                 }
                 effect.render(src, to: dst, wholeFrame: full, regions: regions)
-                guard sink.append(dst, withPresentationTime: pts) else {
+                guard sink.append(dst, withPresentationTime: outPts) else {
                     throw MediaError.writerFailed("append censored frame \(counts.v.frames)")
                 }
                 counts.v.censored += 1
             } else {
                 // Nothing to censor here: the decoder's own buffer goes straight
                 // to the encoder. No Core Image, no pool allocation, no copy.
-                guard sink.append(src, withPresentationTime: pts) else {
+                guard sink.append(src, withPresentationTime: outPts) else {
                     throw MediaError.writerFailed("append frame \(counts.v.frames)")
                 }
             }
             counts.v.frames += 1
             if let progress, total > 0, counts.v.frames % 30 == 0 {
-                progress(min(1, pts.seconds / total))
+                progress(min(1, Double(ms - startMs) / total))
             }
             return true
+        }
+        // An empty segment would finish as a file with a video track and no
+        // samples: valid enough for `AVAssetWriter`, unreadable as a concat
+        // input, and indistinguishable from a completed checkpoint once it is
+        // renamed. This guard is what *caught* `Checkpoint.minSegmentMs`: a
+        // 35:00.001 source planned a 1 ms trailing segment and every job on such
+        // a film failed here. The plan no longer emits one, so this is back to
+        // being the loud version of a silent failure.
+        if let range, counts.v.frames == 0 {
+            throw MediaError.readerFailed(
+                "segment \(range.lowerBound)..<\(range.upperBound)ms decoded no frames")
         }
         return counts.v
     }

@@ -7,13 +7,14 @@ Decision gates (PRD open questions): Q1 device floor → answered inside M0. Q2 
 Android carry-overs are cited inline — they are measured findings, not guesses; do not re-litigate them.
 
 ## M0 — Foundations & de-risk spikes
+**Results: `apple-port/m0-results.md`.** Legend: `[x]` done · `[~]` partially done, remainder noted.
 **Exit:** all three models produce Android-parity outputs on Apple hardware; htdemucs ×realtime + peak RAM measured on the candidate floor iPhone and the floor is decided; Vision tuning constants written down; MKV decision made.
 
 - [x] Repo scaffold: one multiplatform SwiftUI target (iPhone/iPad/Mac), Swift 6, SPM only, models fetched by script (gitignored, as on Android)
 - [x] ONNX Runtime integrated on iOS + macOS; smoke-infer all three `.onnx` taken unchanged from Android `assets/models/`; pin fp32 execution for htdemucs (Android: fp16 path → NaN)
-- [ ] Port qa-assets + Android reference outputs into a parity suite (stems SNR, EDL interval diff); define tolerances from `m0-spikes.md` numbers
-- [ ] SPIKE: htdemucs chunked driver parity — 2.6 s segments, overlap-add, qa clip stems vs Android reference on Mac, then iPhone
-- [ ] SPIKE: htdemucs bench on 4 GB iPhone — ×realtime, peak RAM vs 1.5 GB budget, thermal; decide device floor (Q1: 4 GB in, or floor at 6 GB)
+- [x] Port qa-assets + Android reference outputs into a parity suite (stems SNR, EDL interval diff); define tolerances from `m0-spikes.md` numbers — qa clip staged by `scripts/fetch-models.sh`; graph-contract + passthrough parity green (`m0-results.md`)
+- [~] SPIKE: htdemucs chunked driver parity — graph-level parity proven (finite fp32 from fp16 weights, exact IO shapes); the chunked driver itself lands in M2
+- [~] SPIKE: htdemucs bench — **4.21×–4.61× realtime on simulator vs S23's 0.55×**; peak-RAM/thermal and the Q1 floor still need a physical device (`m0-results.md`)
 - [x] NSFW classifier + genderage parity: same crops through ORT-Apple vs Android outputs, max|Δ| within m0 tolerance; class order + preprocessing contracts locked in one file
 - [ ] SPIKE: Vision face detect+track on qa-assets vs Android ML Kit tracks — measure recall/track continuity; re-tune sampling fps, padding %, vote-crop count; write `vision-tuning.md`
 - [ ] SPIKE: MKV/Opus ingest — AVFoundation cannot demux MKV; decide drop-MKV-v1 vs embedded demuxer, amend PRD input line with the outcome

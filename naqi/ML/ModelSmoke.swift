@@ -84,7 +84,7 @@ enum ModelSmoke {
         timed(Models.Demucs.file, compute) {
             let D = Models.Demucs.self
             var t = ContinuousClock.now
-            let m = try ModelRegistry.model( D.file, compute: compute)
+            let m = try ModelRegistry.model(D.file, compute: compute, threads: Ort.computeThreads)
             let load = ms(t)
             let wave = try ORTValue.zeros(shape: [1, D.channels, D.segmentFrames])
             let spec = try ORTValue.zeros(shape: [1, 4, D.specBins, D.specFrames])

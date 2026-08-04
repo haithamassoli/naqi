@@ -35,6 +35,25 @@ enum Ort {
     }()
 
     static var coreMLAvailable: Bool { ORTIsCoreMLExecutionProviderAvailable() }
+
+    /// Logical CPUs at the highest performance level.
+    ///
+    /// **Never size intra-op threads from `activeProcessorCount`.** It returns 6
+    /// on an A19 Pro (2 P + 4 E) and 10–16 on an M-series, and every intra-op
+    /// barrier then waits on the slowest thread in it. Android swept this and
+    /// found 6 threads beat 8 by ~5 % on an S23 for exactly that reason; the
+    /// P/E gap on Apple silicon is wider, so an E-core inside a barrier costs
+    /// more here, not less.
+    static let performanceCores: Int = {
+        var n: Int32 = 0
+        var size = MemoryLayout<Int32>.size
+        if sysctlbyname("hw.perflevel0.logicalcpu", &n, &size, nil, 0) == 0, n > 0 { return Int(n) }
+        return max(1, ProcessInfo.processInfo.activeProcessorCount / 2)
+    }()
+
+    /// Intra-op threads for a compute-heavy graph, clamped to the range the
+    /// Android sweep found useful.
+    static var computeThreads: Int { min(max(performanceCores, 2), 6) }
 }
 
 /// A loaded ONNX graph plus its IO names. Not an actor: ORT sessions are
@@ -67,9 +86,19 @@ final class OrtModel: @unchecked Sendable {
         try opts.setLogSeverityLevel(.warning)
         try opts.setGraphOptimizationLevel(.all)
         try opts.setIntraOpNumThreads(Int32(threads))
-        // Android pins spinning off so idle worker threads don't burn battery
-        // between chunks; the same applies under iOS thermal pressure.
+        // A spinning worker on Apple silicon *holds* a P-core between chunks,
+        // which matters more here than the battery cost did on Android.
         try opts.addConfigEntry(withKey: "session.intra_op.allow_spinning", value: "0")
+        // Keeps htdemucs' 88 MB of initializers out of the arena. Android had
+        // to go further and disable the CPU arena and memory-pattern planner
+        // outright — without those, lmkd killed the app at 5.6 GB RSS on this
+        // graph, and the iOS equivalent is a jetsam kill with no warning.
+        // ponytail: ORT's ObjC wrapper exposes no DisableCpuMemArena /
+        // DisableMemPattern, only this config entry. Measured footprint on
+        // Apple is fine so far (see docs/apple-port/m0-results.md); if a device
+        // run shows the same blow-up, the fix is a small ObjC shim over the C
+        // API rather than a different runtime.
+        try opts.addConfigEntry(withKey: "session.use_device_allocator_for_initializers", value: "1")
 
         var resolved = compute
         if compute != .cpu {

@@ -88,7 +88,17 @@ enum JobRunner {
 
         let bar = OSAllocatedUnfairLock(initialState: JobProgress(shape: shape,
                                                                   removeMusic: job.ops.removeMusic))
+        // Sampling on the stage *change*, not on every sub-step: `post` is
+        // called per frame, and a `task_info` trap per frame would be
+        // instrumentation that changes what it measures.
+        let lastStage = OSAllocatedUnfairLock<Job.Stage?>(initialState: nil)
         @Sendable func post(_ stage: Job.Stage, _ sub: Double) {
+            let changed = lastStage.withLock { s -> Bool in
+                guard s != stage else { return false }
+                s = stage
+                return true
+            }
+            if changed { MemoryFootprint.note(stage.rawValue) }
             progress(bar.withLock { p in p.post(stage, sub); return p })
         }
         @Sendable func stopping() -> Bool { stop() != nil }
@@ -96,6 +106,10 @@ enum JobRunner {
         let resumed = OSAllocatedUnfairLock<Set<Job.Stage>>(initialState: [])
         let started = ContinuousClock.now
         let stage = Stage("job")
+        // Per job, not per process: the number M7 needs is what ONE job peaks
+        // at, and a stale high-water mark from a previous run would answer a
+        // different question.
+        MemoryFootprint.resetPeak()
         Log.job.info("""
             start \(shape.rawValue, privacy: .public) key=\(key, privacy: .public) \
             dur=\(durationMs)ms music=\(job.ops.removeMusic) censor=\(job.ops.censor)
@@ -183,6 +197,7 @@ enum JobRunner {
             WorkDir.clear(key)
 
             let wall = msSince(started)
+            MemoryFootprint.logPeak(shape.rawValue)
             stage.stop("\(shape.rawValue) \(Int(wall))ms resumed=\(resumed.withLock { $0.count })")
             return Completion(output: published, shape: shape,
                               resumed: resumed.withLock { $0 }, wallMs: wall)

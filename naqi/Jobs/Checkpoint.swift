@@ -70,6 +70,15 @@ enum Checkpoint {
         return d.finalize().prefix(8).map { String(format: "%02x", $0) }.joined()
     }
 
+    /// Bump whenever the *meaning* of an `an-NNN.json`, a `seg-NNN.mp4` or
+    /// `analysis.json` changes. Android's recorded history is `plan2 → plan3`
+    /// when the gender vote was dropped (an old file held only tracks that
+    /// voted FEMALE, a new one holds every face — mixing them would leave half
+    /// a film censored under the old semantics) and `plan3 → plan4` when the
+    /// music guard changed which chunks a resumed audio checkpoint claimed.
+    /// Bumping orphans stale directories and the 7-day sweep collects them.
+    static let planGeneration = "apple-plan1"
+
     static func key(source: URL, ops: FilterOps) -> String {
         key([
             source.absoluteString,
@@ -81,6 +90,7 @@ enum Checkpoint {
             String(ops.blurAmount),
             String(ops.grayscale),
             ops.keepStems.rawValue,
+            planGeneration,
         ])
     }
 
@@ -126,6 +136,34 @@ enum Checkpoint {
     /// Segments already on disk, so resume can skip them.
     static func completedSegments(dir: URL, of plan: [RenderSegment]) -> Set<Int> {
         Set(plan.map(\.index).filter { FileManager.default.fileExists(atPath: segmentURL(dir, segment: $0).path) })
+    }
+
+    /// The same question without a plan, for the resume guard that runs before
+    /// one exists.
+    static func hasRenderedSegments(dir: URL) -> Bool {
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
+        return names.contains { $0.hasPrefix("seg-") && $0.hasSuffix(".mp4") }
+    }
+
+    // MARK: The unsegmented route's analysis checkpoint
+
+    /// The whole finished EDL, intervals and all.
+    ///
+    /// `an-NNN.json` deliberately cannot be used for this: it holds *bare
+    /// tracks* because hysteresis, the region-overflow promotion and the
+    /// whole-frame floor are all rebuilt once over the accumulated firings of
+    /// every segment. With no segments there is nothing to rebuild, so the
+    /// finished EDL is the checkpoint.
+    static var analysisName: String { "analysis.json" }
+
+    static func writeEdl(_ edl: Edl, dir: URL) throws {
+        try writeAtomically(try edl.toJSONData(), to: dir.appendingPathComponent(analysisName))
+    }
+
+    /// nil means "not analyzed yet, or its write never completed".
+    static func readEdl(dir: URL) -> Edl? {
+        guard let d = try? Data(contentsOf: dir.appendingPathComponent(analysisName)) else { return nil }
+        return try? Edl.fromJSONData(d)
     }
 
     /// Runs at the head of every job. Descends only into the work root, and

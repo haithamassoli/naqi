@@ -37,11 +37,24 @@ enum Preflight {
         return 1                           // one temp + the published copy
     }
 
-    static func extraScratchBytes(for ops: FilterOps, durationSeconds: Int64, segmented: Bool) -> Int64 {
-        // Added rather than branched: the two terms are mutually exclusive
-        // today, and adding means a later edit does not have to re-prove it.
-        let pcm = (ops.removeMusic || (segmented && ops.removeMusic)) ? durationSeconds * pcmBytesPerSecond : 0
-        let aac = ops.removeMusic ? 0 : durationSeconds * aacBytesPerSecond
+    /// The PCM scratch only exists when the separator is **resumable** — being
+    /// resumable is what makes it land `audio.pcm` on disk instead of streaming
+    /// straight into the encoder. That is why the spec's combined row is a bare
+    /// `3x source + 2 GiB`: a combined job is under 30 minutes by construction
+    /// (a longer one dispatches to `segmented`) and never writes the scratch.
+    ///
+    /// - Parameter transcodesAudio: the source's audio must be re-encoded to
+    ///   AAC once up front before the segments can be concatenated. Only
+    ///   reachable with `removeMusic` off, which is why the two terms are added
+    ///   rather than branched — a later edit does not have to re-prove the
+    ///   exclusivity.
+    static func extraScratchBytes(for ops: FilterOps, durationSeconds: Int64,
+                                  segmented: Bool, transcodesAudio: Bool = false) -> Int64 {
+        let resumableAudio = ops.removeMusic
+            && durationSeconds * 1000 >= Checkpoint.longSourceThresholdMs
+        let pcm = (resumableAudio || (segmented && ops.removeMusic))
+            ? durationSeconds * pcmBytesPerSecond : 0
+        let aac = transcodesAudio ? durationSeconds * aacBytesPerSecond : 0
         return pcm + aac
     }
 

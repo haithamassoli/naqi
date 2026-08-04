@@ -1,83 +1,34 @@
 import SwiftUI
 
-/// Placeholder shell while M1–M4 land. The device-runtime readout is the M0
-/// gate made visible: it mirrors Android's DEVICE RUNTIME panel.
+/// Pick → Options → Progress → Done, plus two leaf screens off the overflow
+/// menu. A straight line does not need a route graph; `path` is an array so a
+/// step can replace the stack rather than push onto it — starting a job must
+/// not leave Options behind a back button that would re-enqueue it.
 struct RootView: View {
-    var body: some View {
-        NavigationStack {
-            DeviceRuntimeView()
-        }
-    }
-}
-
-struct DeviceRuntimeView: View {
-    @State private var results: [ModelSmoke.Result] = []
-    @State private var running = false
-    @State private var compute: ComputeUnit = .cpu
+    @State private var flow = Flow()
 
     var body: some View {
-        List {
-            Section("Runtime") {
-                LabeledContent("CoreML EP", value: Ort.coreMLAvailable ? "available" : "unavailable")
-                LabeledContent("Cores", value: "\(ProcessInfo.processInfo.activeProcessorCount)")
-                LabeledContent("Memory", value: ByteCountFormatter.string(
-                    fromByteCount: Int64(ProcessInfo.processInfo.physicalMemory), countStyle: .memory))
-                Picker("Compute", selection: $compute) {
-                    Text("CPU").tag(ComputeUnit.cpu)
-                    Text("CoreML").tag(ComputeUnit.coreML)
-                    Text("CoreML−ANE").tag(ComputeUnit.coreMLNoANE)
-                }
-                .pickerStyle(.segmented)
-            }
-
-            Section("Models") {
-                ForEach(results, id: \.model) { (r: ModelSmoke.Result) in
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Image(systemName: r.ok ? "checkmark.seal.fill" : "xmark.octagon.fill")
-                                .foregroundStyle(r.ok ? .green : .red)
-                            Text(r.model).font(.headline)
-                            Spacer()
-                            Text("\(Int(r.loadMs))ms load · \(Int(r.inferMs))ms run")
-                                .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-                        }
-                        Text(r.error ?? r.detail)
-                            .font(.caption.monospaced())
-                            .foregroundStyle(r.ok ? AnyShapeStyle(.secondary) : AnyShapeStyle(Color.red))
+        NavigationStack(path: $flow.path) {
+            PickScreen(flow: flow)
+                .navigationDestination(for: Flow.Step.self) { step in
+                    switch step {
+                    case .options: OptionsScreen(flow: flow)
+                    case .progress: ProgressScreen(flow: flow)
+                    case .done: DoneScreen(flow: flow)
+                    case .about: AboutScreen()
+                    case .diagnostics: DeviceRuntimeView()
                     }
-                    .padding(.vertical, 2)
                 }
-                if results.isEmpty && !running {
-                    Text("Not run yet").foregroundStyle(.secondary)
-                }
-            }
         }
-        .navigationTitle("Naqi · M0")
-        .toolbar {
-            Button(running ? "Running…" : "Smoke test") { run() }
-                .disabled(running)
-        }
-        // Deliberately NOT `.task { run() }`. The smoke loads htdemucs, whose
-        // session is ~1.3 GB resident for the process lifetime — held while the
-        // user is only browsing, and overlapping the first real job's use of
-        // the same graph. It also made every media test suite flaky, because
-        // the test host runs this view. It stays behind the button.
-    }
-
-    private func run() {
-        guard !running else { return }
-        running = true
-        results = []
-        let unit = compute
-        Task.detached(priority: .userInitiated) {
-            let r = ModelSmoke.runAll(compute: unit)
-            // The panel is diagnostics, not a job: give the memory straight back.
-            ModelRegistry.evict(Models.Demucs.file)
-            await MainActor.run { results = r; running = false }
-        }
+        .tint(Naqi.C.primary)
+        #if DEBUG
+        .task { flow.seedFromLaunchArguments() }
+        #endif
+        // Last-used options are what the next run opens with, so every change
+        // is persisted as it happens rather than only on Start — a user who
+        // backs out of Options still changed their mind.
+        .onChange(of: flow.ops) { flow.ops.saveAsLastUsed() }
     }
 }
-
-extension ComputeUnit: Hashable {}
 
 #Preview { RootView() }

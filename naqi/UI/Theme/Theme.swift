@@ -79,6 +79,37 @@ enum Naqi {
         }
     }
 
+    // MARK: Typography
+
+    /// Android's type scale (`ui/theme/Type.kt`) mapped onto the nearest system
+    /// text style, so every slot scales with Dynamic Type — the `sp` units the
+    /// Android scale is written in have no Apple equivalent that does not.
+    ///
+    /// Thmanyah Sans is deliberately not bundled: SF Pro / SF Arabic already
+    /// covers both scripts and both digit sets, and a bundled family would cost
+    /// binary size to lose optical sizing on Arabic. The Android scale has no
+    /// 600 weight, so every "SemiBold" slot resolves to `.bold`.
+    enum F {
+        /// displaySmall 36 — the Arabic wordmark only.
+        static let display = Font.system(.largeTitle, weight: .bold)
+        /// titleLarge 22 — top-bar / screen titles.
+        static let titleLarge = Font.system(.title2, weight: .bold)
+        /// titleMedium 16 — section header, pick-card title, progress stage.
+        static let titleMedium = Font.system(.body, weight: .medium)
+        /// titleSmall 14 — every card row title.
+        static let titleSmall = Font.system(.subheadline, weight: .medium)
+        /// bodyMedium 14 — failure sentence, dialog body.
+        static let bodyMedium = Font.system(.subheadline)
+        /// bodySmall 12 — every row description, ETA lines, note lines.
+        static let bodySmall = Font.system(.footnote)
+        /// labelLarge 14 — primary button label.
+        static let labelLarge = Font.system(.subheadline, weight: .bold)
+        /// labelMedium 12 — trust-seal text, slider value pill.
+        static let labelMedium = Font.system(.caption, weight: .medium)
+        /// The two label slots carry a wide 0.8 tracking override.
+        static let labelTracking: CGFloat = 0.8
+    }
+
     // MARK: Spacing — base unit 4
 
     enum S {

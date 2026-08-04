@@ -14,3 +14,7 @@ xcuserdata/
 
 branding
 /qa-assets/
+
+# Models + QA media are staged by scripts/fetch-models.sh, as on Android.
+naqi/Resources/Models/
+naqiTests/Fixtures/

@@ -9,12 +9,12 @@ Android carry-overs are cited inline — they are measured findings, not guesses
 ## M0 — Foundations & de-risk spikes
 **Exit:** all three models produce Android-parity outputs on Apple hardware; htdemucs ×realtime + peak RAM measured on the candidate floor iPhone and the floor is decided; Vision tuning constants written down; MKV decision made.
 
-- [ ] Repo scaffold: one multiplatform SwiftUI target (iPhone/iPad/Mac), Swift 6, SPM only, models fetched by script (gitignored, as on Android)
-- [ ] ONNX Runtime integrated on iOS + macOS; smoke-infer all three `.onnx` taken unchanged from Android `assets/models/`; pin fp32 execution for htdemucs (Android: fp16 path → NaN)
+- [x] Repo scaffold: one multiplatform SwiftUI target (iPhone/iPad/Mac), Swift 6, SPM only, models fetched by script (gitignored, as on Android)
+- [x] ONNX Runtime integrated on iOS + macOS; smoke-infer all three `.onnx` taken unchanged from Android `assets/models/`; pin fp32 execution for htdemucs (Android: fp16 path → NaN)
 - [ ] Port qa-assets + Android reference outputs into a parity suite (stems SNR, EDL interval diff); define tolerances from `m0-spikes.md` numbers
 - [ ] SPIKE: htdemucs chunked driver parity — 2.6 s segments, overlap-add, qa clip stems vs Android reference on Mac, then iPhone
 - [ ] SPIKE: htdemucs bench on 4 GB iPhone — ×realtime, peak RAM vs 1.5 GB budget, thermal; decide device floor (Q1: 4 GB in, or floor at 6 GB)
-- [ ] NSFW classifier + genderage parity: same crops through ORT-Apple vs Android outputs, max|Δ| within m0 tolerance; class order + preprocessing contracts locked in one file
+- [x] NSFW classifier + genderage parity: same crops through ORT-Apple vs Android outputs, max|Δ| within m0 tolerance; class order + preprocessing contracts locked in one file
 - [ ] SPIKE: Vision face detect+track on qa-assets vs Android ML Kit tracks — measure recall/track continuity; re-tune sampling fps, padding %, vote-crop count; write `vision-tuning.md`
 - [ ] SPIKE: MKV/Opus ingest — AVFoundation cannot demux MKV; decide drop-MKV-v1 vs embedded demuxer, amend PRD input line with the outcome
 - [ ] Photos picker vs Files: confirm picker hands over originals (not transcodes) for large/HDR files; document the ingest path

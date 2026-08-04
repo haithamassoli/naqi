@@ -11,3 +11,6 @@ xcuserdata/
 
 # Vendored agent skills — restore from skills-lock.json
 .agents/
+
+branding
+/qa-assets/

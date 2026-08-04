@@ -217,6 +217,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = U3C6DM4QX4;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Naqi saves the filtered copy back to your photo library. Your original is never changed.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Naqi reads the video you pick so it can filter it on your device. Nothing is uploaded.";
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MARKETING_VERSION = 1.0;
@@ -240,6 +242,8 @@
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_TEAM = U3C6DM4QX4;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Naqi saves the filtered copy back to your photo library. Your original is never changed.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Naqi reads the video you pick so it can filter it on your device. Nothing is uploaded.";
 				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MARKETING_VERSION = 1.0;
@@ -384,6 +388,8 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Naqi saves the filtered copy back to your photo library. Your original is never changed.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Naqi reads the video you pick so it can filter it on your device. Nothing is uploaded.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;
@@ -427,6 +433,8 @@
 				ENABLE_PREVIEWS = YES;
 				ENABLE_USER_SELECTED_FILES = readwrite;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Naqi saves the filtered copy back to your photo library. Your original is never changed.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "Naqi reads the video you pick so it can filter it on your device. Nothing is uploaded.";
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphoneos*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSceneManifest_Generation[sdk=iphonesimulator*]" = YES;
 				"INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents[sdk=iphoneos*]" = YES;

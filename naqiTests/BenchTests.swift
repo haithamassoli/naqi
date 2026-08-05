@@ -132,6 +132,90 @@ struct BenchTests {
         #expect(loaded > 0, "phys_footprint unavailable")
     }
 
+    /// The PRD's 1.5 GB ceiling, guarded at the one place it actually breaks.
+    ///
+    /// htdemucs is the whole budget: a music-only job on this 12.8 s clip
+    /// measured **1629 MB** against 1536 MB, and it was invisible for a whole
+    /// milestone because M0 recorded the simulator's `phys_footprint` as
+    /// unreadable (it is not — see the CORRECTION in `m0-results.md`).
+    ///
+    /// Two numbers, because they fail differently. The **peak** is the working
+    /// set; if that is over budget, no amount of cleanup helps and the fix has
+    /// to be the chunk size or the graph. What is **retained afterwards** is
+    /// ORT's CPU arena, which cannot be disabled through the ObjC API (hazard
+    /// 9) and so has to be dropped with the session — `JobRunner.separate`
+    /// does that on a `defer`.
+    @Test("music separation stays inside the memory budget")
+    func demucsFootprint() async throws {
+        let src = try await MediaSource.probe(try requireQAVideo())
+        let out = Fixtures.scratch("bench-music.m4a")
+        defer { try? FileManager.default.removeItem(at: out) }
+
+        ModelRegistry.evictAll()
+        let baseline = MemoryFootprint.currentMB
+        MemoryFootprint.resetPeak()
+        _ = try await AudioPipeline.removeMusic(src, to: out, includeVideo: false)
+        let peak = Double(MemoryFootprint.peakBytes) / 1_048_576
+        let held = MemoryFootprint.currentMB
+        // What `JobRunner.separate` does on every real music job.
+        ModelRegistry.evict(Models.Demucs.file)
+        let released = MemoryFootprint.currentMB
+        let budget = Double(MemoryFootprint.budgetBytes) / 1_048_576
+
+        // A clean process starts here at ~46 MB. Anything far above that means
+        // this is the shared full-suite process, where the reading is not
+        // htdemucs: measured 4865 MB "peak" (cumulative across 120 other tests)
+        // and a 0 MB evict delta, because the allocator does not hand pages
+        // back to the OS under that pressure. Report, do not assert — the
+        // alternative is a test that fails for a reason it cannot see.
+        let isolated = baseline < 400
+
+        print("""
+
+            === htdemucs memory, 12.8 s clip (budget \(Int(budget)) MB) ===
+            \(String(format: "baseline %.0f MB → peak during separation %.0f MB", baseline, peak))
+            \(String(format: "still held after separation %.0f MB → after evict %.0f MB (gave back %.0f MB)",
+                     held, released, held - released))
+            \(isolated ? "" : """
+                ⚠ shared test process (baseline \(Int(baseline)) MB, clean is ~46 MB) — \
+                figures are cumulative and the assertions below are skipped. \
+                Run alone: -only-testing:naqiTests/BenchTests/demucsFootprint()
+                """)
+            """)
+
+        guard isolated else { return }
+
+        // KNOWN ISSUE — measured 1774 MB against 1536 MB, and deliberately not
+        // silenced. `withKnownIssue` fails if the expectation starts *passing*,
+        // so whoever lands the fix is told to delete this wrapper rather than
+        // discovering the budget quietly came good.
+        //
+        // Not fixable from here: the peak is the working set during separation,
+        // so `JobRunner`'s evict cannot help, and `Demucs.seg` is the graph's
+        // own segment length, not a tunable. Android needed DisableCpuMemArena
+        // + DisableMemPattern on this same graph (lmkd killed it at 5.6 GB
+        // without them). ORT's ObjC wrapper exposes neither — only
+        // `addConfigEntryWithKey` — so the fix is the C-API shim `Ort.swift`
+        // already names. Tracked in `m7-perf-results.md`.
+        withKnownIssue("htdemucs peaks over the 1.5 GB budget; needs DisableCpuMemArena via a C-API shim") {
+            #expect(peak < budget, """
+                peak \(Int(peak)) MB is over the \(Int(budget)) MB budget during separation itself, \
+                so evicting the session afterwards cannot fix it
+                """)
+        }
+        // Live, and guarding the fix that DID land. Asserted as a **delta**,
+        // never against an absolute: this is one process shared with every
+        // other suite, so by the time the full run reaches here the baseline is
+        // already ~1.5 GB of other tests' allocations and `released` reads
+        // ~3 GB. That does not contradict the `m0-results.md` correction —
+        // the counter is still this process's own, the process is just doing
+        // more. The clean absolutes come from running this test alone.
+        #expect(held - released > 1_000, """
+            evicting htdemucs gave back only \(Int(held - released)) MB of \(Int(held)) MB — \
+            the arena is still held
+            """)
+    }
+
     /// The like-for-like end-to-end number the PRD's performance goal is judged
     /// on: the **same clip** Android published its baseline against.
     ///
@@ -152,19 +236,25 @@ struct BenchTests {
     ///
     /// Not min-of-N: one pass is ~10 minutes of 1080p. The machine's quietness
     /// is therefore part of the reading and must be recorded next to it.
-    /// **Always enabled, skipping loudly.** Three separate gates were tried —
-    /// `TEST_RUNNER_` env forwarding, a repo marker file, and `.enabled(if:)`
-    /// on the staged clip — and every one of them failed the same way: "Test
-    /// run with 0 tests in 1 suite passed", which is indistinguishable from a
-    /// benchmark that ran. A `#require` inside the body costs microseconds when
-    /// the clip is not staged and says *why* it skipped.
-    @Test("tv1 end-to-end vs the S23 baseline", .timeLimit(.minutes(60)))
+    /// Skips silently when the clip is not staged, which is the right default
+    /// for a ~10-minute benchmark — but the skip is **indistinguishable from
+    /// success** in xcodebuild's output ("Test run with 0 tests in 1 suite
+    /// passed"). The recipe below therefore checks that 1 test ran.
+    ///
+    /// The trap that cost several runs: `simctl get_app_container` returns a
+    /// **new UUID after every reinstall**, so a clip staged before a `test`
+    /// action (which builds and installs) lands in the previous container and
+    /// the test correctly sees nothing. Stage it immediately before
+    /// `test-without-building`.
+    @Test("tv1 end-to-end vs the S23 baseline",
+          .enabled(if: FileManager.default.fileExists(atPath: BenchTests.tv1.path)),
+          .timeLimit(.minutes(60)))
     func tv1EndToEnd() async throws {
-        try #require(FileManager.default.fileExists(atPath: Self.tv1.path), """
-            not staged — this is an opt-in ~10-minute benchmark. To run it:
-              D=$(xcrun simctl get_app_container <udid> com.haithamassoli.naqi data)
-              cp qa-assets/tv1-h264.mp4 "$D/Documents/bench-tv1.mp4"
-            """)
+        // Consume the opt-in. Leaving it staged makes EVERY later full-suite
+        // run take 25 minutes instead of 2.5, and the cause is invisible from
+        // the test output — it just looks like the suite got slow. Re-staging
+        // is a 379 MB copy and about two seconds.
+        defer { try? FileManager.default.removeItem(at: Self.tv1) }
         let source = try await MediaSource.probe(Self.tv1)
         let srcSeconds = source.duration.seconds
         // Censor-only, matching the Android baseline's configuration.

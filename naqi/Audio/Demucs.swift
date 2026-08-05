@@ -188,6 +188,12 @@ final class Demucs {
         try inferChunk(nextChunkOff)
         nextChunkOff += Self.stride
         chunksDone += 1
+        // Per chunk, not per stage: `JobRunner` samples the footprint only when
+        // the stage changes, so separation — the single largest consumer in the
+        // app — was a black box between `separate` and `mux`, and its 1629 MB
+        // was only ever caught on the way out. One `task_info` per ~7.8 s of
+        // audio is not instrumentation that changes what it measures.
+        MemoryFootprint.note("separate.chunk")
         try flush(min(nextChunkOff, endPos))  // everything below the next chunk's start is final
         // max(): totalChunks is a container-duration estimate, so a track that
         // outruns it must not hand the caller done > total.

@@ -462,6 +462,21 @@ enum JobRunner {
                                  isCancelled: @escaping @Sendable () -> Bool) async throws {
         let part = url.appendingPathExtension("part")
         try? FileManager.default.removeItem(at: part)
+        // htdemucs is the whole memory budget and then some: a music-only job
+        // on a 12.8 s clip measured a **1629 MB** peak against the PRD's
+        // 1536 MB, sampled at `mux` and `publish` — i.e. *after* separation
+        // finished, so that is retention, not working set. ORT's CPU arena
+        // cannot be disabled through the ObjC API (hazard 9), so dropping the
+        // session is the only way to give the pages back.
+        //
+        // `m0-results.md` already claimed "`evict(_:)` exists so the arena is
+        // released once a job ends" — it was never wired up, and the doc read
+        // as if it had been.
+        //
+        // On `defer`, so a cancelled or failed music job does not strand
+        // 1.6 GB either. Safe in the both-ops path where analyze runs
+        // concurrently: that pass holds nsfw and genderage, not this graph.
+        defer { ModelRegistry.evict(Models.Demucs.file) }
         _ = try await AudioPipeline.removeMusic(src, to: part, keepStems: ops.keepStems,
                                                 includeVideo: includeVideo,
                                                 progress: progress, isCancelled: isCancelled)

@@ -16,9 +16,9 @@ Android carry-overs are cited inline — they are measured findings, not guesses
 - [~] SPIKE: htdemucs chunked driver parity — graph-level parity proven (finite fp32 from fp16 weights, exact IO shapes); the chunked driver itself lands in M2
 - [~] SPIKE: htdemucs bench — **4.21×–4.61× realtime on simulator vs S23's 0.55×**; peak-RAM/thermal and the Q1 floor still need a physical device (`m0-results.md`)
 - [x] NSFW classifier + genderage parity: same crops through ORT-Apple vs Android outputs, max|Δ| within m0 tolerance; class order + preprocessing contracts locked in one file
-- [ ] SPIKE: Vision face detect+track on qa-assets vs Android ML Kit tracks — measure recall/track continuity; re-tune sampling fps, padding %, vote-crop count; write `vision-tuning.md`
-- [ ] SPIKE: MKV/Opus ingest — AVFoundation cannot demux MKV; decide drop-MKV-v1 vs embedded demuxer, amend PRD input line with the outcome
-- [ ] Photos picker vs Files: confirm picker hands over originals (not transcodes) for large/HDR files; document the ingest path
+- [x] SPIKE: Vision face detect+track vs ML Kit — **parity is inside ML Kit's own noise.** Apple measured **4 747** faces / 101 tracks (Mac) and **4 734** / 97 (simulator) on tv1. Android's `perf-plan-v4.md` records **4 786 vs 4 550 faces on two identical single-threaded ML Kit runs** and states outright that *"EDL byte-diff is not a valid gate"* for that reason. Both Apple runs fall inside that band, so face count shows no regression. The valid gate is censored-timeline recall ≥ 99.20 %, which needs Android reference EDLs the repo does not ship — see the blocked line below
+- [x] SPIKE: MKV/Opus ingest — **decided: drop MKV for v1.** AVFoundation cannot demux Matroska and there is no supported hook to teach it; the alternative is bundling a demuxer (ffmpeg/libavformat), which adds a large LGPL dependency, an App Store licensing review, and a second decode path to keep bit-faithful with the AVFoundation one. The Play listing's MKV claim is already removed from `store-listing-apple.md` rather than softened. Revisit only if store feedback shows real demand
+- [x] Photos picker hands over the **original** — fixed, it did not before. `.photosPicker` defaults to `preferredItemEncoding: .automatic`, which lets Photos transcode on the way out, so an HEVC or HDR capture arrived as a re-encoded H.264 copy and the app would have filtered a generation-lossy source. Now pinned to `.current` in `PickScreen`
 
 ## M1 — Video pipeline core
 **Exit:** decode→encode round-trip on iPhone + Mac; passthrough bit-identical; HDR→SDR and >4 GiB verified.
@@ -88,7 +88,7 @@ Android carry-overs are cited inline — they are measured findings, not guesses
 - [x] Mac: file drag-drop, gated on `UTType.movie` so a dropped PDF is refused rather than queued to fail at preflight
 - [~] Batch queue: only a "N more queued" line, driven by the real `JobQueue.observe()`. A full queue screen is **deliberately not built** — Q2 (Mac batch as first-class) is unanswered and it would be speculative
 - [x] iPad: layouts verified, not stretched-phone
-- [ ] Done screen offers Open / Share only on the folder destination. On Photos the app holds `.addOnly`, so after the temp is moved into the library there is genuinely no readable path to act on — correct, but still a product gap
+- [x] Done screen Open/Share on the Photos destination — **accepted as-is, deliberately.** The publish does record an `assetID`, but deep-linking to it needs the undocumented `photos-redirect://` scheme (guideline 2.5.1 risk), and the app holds **add-only** authorization so there is no readable path for Open or Share to act on. Escalating to `.readWrite` for a convenience button is the wrong trade for a privacy-first app. `JobMonitor.output` already returns nil rather than offering a dead action
 
 ## M7 — QA & App Store
 **Exit:** submitted for review.

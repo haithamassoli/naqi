@@ -83,7 +83,15 @@ struct PickScreen: View {
                 }
             }
         }
-        .photosPicker(isPresented: $showPhotosPicker, selection: $photoItem, matching: .videos)
+        // `preferredItemEncoding: .current` is the whole "does the picker hand
+        // over the ORIGINAL?" question, and the default does not.
+        // `.automatic` lets Photos transcode on the way out — an HEVC or HDR
+        // capture arrives as a re-encoded H.264 copy, so the app would filter a
+        // generation-lossy source and hand it back as the user's video. This
+        // app's promise is that the picture it does not censor is untouched, so
+        // it has to be the original bytes.
+        .photosPicker(isPresented: $showPhotosPicker, selection: $photoItem,
+                      matching: .videos, preferredItemEncoding: .current)
         .fileImporter(isPresented: $showFileImporter,
                       allowedContentTypes: [.movie, .video, .mpeg4Movie, .quickTimeMovie]) { result in
             if case .success(let url) = result { flow.adoptFileImport(url) }

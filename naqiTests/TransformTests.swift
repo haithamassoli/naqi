@@ -36,7 +36,6 @@ struct TransformTests {
         let c = Self.cases[i]
         let vt = VideoTransform(preferredTransform: c.t, naturalSize: c.stored)
         #expect(vt.rotationDegrees == expected, "\(c.name)")
-        #expect(vt.isRotated == (expected % 180 != 0), "\(c.name)")
     }
 
     @Test("upright -> stored -> upright is identity", arguments: cases.indices)

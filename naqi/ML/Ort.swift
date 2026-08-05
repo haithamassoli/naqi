@@ -205,14 +205,15 @@ enum ModelRegistry {
     }
 
     /// Drops one graph. Call after a job finishes with htdemucs so its ~1.3 GB
-    /// arena is not held while the user is just browsing.
+    /// arena is not held while the user is just browsing — `JobRunner.separate`
+    /// does exactly that, on a `defer`.
     static func evict(_ file: String) {
         lock.lock(); defer { lock.unlock() }
         cache[file] = nil
     }
 
-    /// Drops cached sessions. Called when a job finishes so a 1.3 GB htdemucs
-    /// arena is not held while the user is just browsing the UI.
+    /// Drops everything. Only `BenchTests` uses this, to get a clean baseline
+    /// before measuring a footprint; production evicts by file.
     static func evictAll() {
         lock.lock(); defer { lock.unlock() }
         cache.removeAll()

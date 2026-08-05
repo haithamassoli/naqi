@@ -67,11 +67,6 @@ struct FilterOps: Codable, Sendable, Equatable {
         default: .both
         }
     }
-
-    /// Video track can be copied compressed, untouched.
-    var videoPassthrough: Bool { !censor }
-    /// Audio track can be copied compressed, untouched.
-    var audioPassthrough: Bool { !removeMusic }
 }
 
 /// Last-used options, preselected on the next run (PRD user flow).

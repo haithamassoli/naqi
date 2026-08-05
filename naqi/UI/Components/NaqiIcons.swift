@@ -1,18 +1,22 @@
 import SwiftUI
 
 /// The hand-built icon set from Android `ui/NaqiIcons.kt`, ported path for path
-/// in the same 24×24 viewport. SF Symbols would cover most of them, but the
-/// droplet is the brand mark — the same outline as the app icon — and a set
-/// that mixes one custom path with seven system glyphs stops reading as a
+/// in the same 24×24 viewport. SF Symbols would cover all four, but they sit
+/// beside `NaqiMark` — the brand droplet, and genuinely custom — and a set that
+/// mixes one hand-drawn path with three system glyphs stops reading as a
 /// family. System chrome (back, close, overflow) still uses SF Symbols.
+///
+/// The standalone `droplet` glyph the Android set carried is gone: `NaqiMark`
+/// is the only droplet any screen draws, and the two outlines were never the
+/// same shape anyway.
 struct NaqiIcon: Shape {
     let glyph: Glyph
 
     init(_ glyph: Glyph) { self.glyph = glyph }
 
-    enum Glyph: Sendable { case droplet, video, musicOff, shield, check }
+    enum Glyph: Sendable { case video, musicOff, shield, check }
 
-    /// None of these five is directional, and SwiftUI mirrors a `Shape` in a
+    /// None of these four is directional, and SwiftUI mirrors a `Shape` in a
     /// right-to-left layout by default — which turned the tick into a backwards
     /// tick and flipped the slash on the music-off mark in Arabic. Only the back
     /// arrow should mirror, and that one is a system symbol.
@@ -21,18 +25,6 @@ struct NaqiIcon: Shape {
     func path(in rect: CGRect) -> Path {
         var p = Path()
         switch glyph {
-        case .droplet:
-            p.move(to: CGPoint(x: 12, y: 2))
-            p.addCurve(to: CGPoint(x: 5, y: 14.3),
-                       control1: CGPoint(x: 9.5, y: 5.5), control2: CGPoint(x: 5, y: 9.8))
-            p.addCurve(to: CGPoint(x: 12, y: 21.3),
-                       control1: CGPoint(x: 5, y: 18.2), control2: CGPoint(x: 8.1, y: 21.3))
-            p.addCurve(to: CGPoint(x: 19, y: 14.3),
-                       control1: CGPoint(x: 15.9, y: 21.3), control2: CGPoint(x: 19, y: 18.2))
-            p.addCurve(to: CGPoint(x: 12, y: 2),
-                       control1: CGPoint(x: 19, y: 9.8), control2: CGPoint(x: 14.5, y: 5.5))
-            p.closeSubpath()
-
         case .video:
             p.move(to: CGPoint(x: 5, y: 6.5))
             p.addLine(to: CGPoint(x: 13, y: 6.5))

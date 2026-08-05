@@ -120,8 +120,6 @@ final class AudioDecoder {
         }
     }
 
-    func cancel() { reader.cancelReading() }
-
     /// Fold `channels`-wide interleaved f32 down to interleaved stereo.
     ///
     /// Decoder PCM is assumed WAV order `L R C LFE Ls Rs`. LFE is dropped on

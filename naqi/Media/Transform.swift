@@ -39,8 +39,6 @@ struct VideoTransform: Sendable, Equatable {
         return ((Int(deg.rounded()) % 360) + 360) % 360
     }
 
-    var isRotated: Bool { rotationDegrees % 180 != 0 }
-
     /// Upright rect (Vision / gate space) -> stored rect (Core Image / encoder space).
     func storedRect(fromUpright r: CGRect) -> CGRect {
         r.applying(toUpright.inverted())
@@ -71,12 +69,5 @@ extension CGRect {
         let dx = width * fraction, dy = height * fraction
         return insetBy(dx: -dx, dy: -dy)
             .intersection(CGRect(origin: .zero, size: bounds))
-    }
-
-    /// Snaps outward to whole pixels. Sub-pixel rects make the blur seam visible
-    /// between consecutive frames.
-    var pixelAligned: CGRect {
-        CGRect(x: minX.rounded(.down), y: minY.rounded(.down),
-               width: width.rounded(.up), height: height.rounded(.up))
     }
 }

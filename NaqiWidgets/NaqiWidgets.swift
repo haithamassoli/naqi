@@ -87,12 +87,18 @@ private struct LockScreenView: View {
 
     /// Stage names arrive raw so the app and the widget do not both need the
     /// string catalog; the two-pass vocabulary is small enough to map here.
+    ///
+    /// These are `Job.Stage`'s raw values verbatim. They used to be Android's
+    /// spelling (`analyzing`, `rendering`, `publishing`), which `LiveActivity`
+    /// has never sent — every stage fell through to "Working" for the whole
+    /// life of the activity, silently, because a `default` cannot fail.
+    /// Grouping matches `Job.Stage.label`: the tail three are one caption.
     private var stageLabel: String {
         switch context.state.stage {
-        case "separating", "encodingAudio": String(localized: "Removing music")
-        case "analyzing": String(localized: "Analyzing")
-        case "rendering": String(localized: "Rendering")
-        case "publishing": String(localized: "Saving")
+        case "separate": String(localized: "Removing music")
+        case "analyze": String(localized: "Analyzing")
+        case "render": String(localized: "Rendering")
+        case "mux", "concat", "publish": String(localized: "Saving")
         default: String(localized: "Working")
         }
     }

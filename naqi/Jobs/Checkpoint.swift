@@ -12,9 +12,10 @@ struct RenderSegment: Codable, Sendable, Equatable {
 
 /// Per-segment resume.
 ///
-/// **The checkpoint unit is one COMPLETED segment.** Mid-segment state — gate
-/// firings so far, the live face-track map — is deliberately never persisted,
-/// so an interruption costs the segment in flight and nothing more.
+/// **The checkpoint unit is one COMPLETED segment**, and only the *render* is
+/// ever segmented (`AnalyzePass`'s doc block has the reason). Mid-segment state
+/// — gate firings so far, the live face-track map — is deliberately never
+/// persisted, so an interruption costs the segment in flight and nothing more.
 ///
 /// **Every file is written to `<name>.tmp` and renamed.** A file existing under
 /// its final name *means* it is complete: no manifest to keep in sync, and no
@@ -95,8 +96,8 @@ enum Checkpoint {
         return d.finalize().prefix(8).map { String(format: "%02x", $0) }.joined()
     }
 
-    /// Bump whenever the *meaning* of an `an-NNN.json`, a `seg-NNN.mp4` or
-    /// `analysis.json` changes. Android's recorded history is `plan2 → plan3`
+    /// Bump whenever the *meaning* of a `seg-NNN.mp4` or of `analysis.json`
+    /// changes. Android's recorded history is `plan2 → plan3`
     /// when the gender vote was dropped (an old file held only tracks that
     /// voted FEMALE, a new one holds every face — mixing them would leave half
     /// a film censored under the old semantics) and `plan3 → plan4` when the
@@ -129,15 +130,10 @@ enum Checkpoint {
 
     // MARK: Files
 
-    static func analysisURL(_ dir: URL, segment: Int) -> URL {
-        dir.appendingPathComponent(String(format: "an-%03d.json", segment))
-    }
     static func segmentURL(_ dir: URL, segment: Int) -> URL {
         dir.appendingPathComponent(String(format: "seg-%03d.mp4", segment))
     }
     static var audioTrackName: String { "audio.m4a" }
-    static var audioProgressName: String { "audio.json" }
-    static var renderTempName: String { "render.mp4" }
 
     /// The joined segments — itself a checkpoint, which is why the segments are
     /// deleted the moment it lands. Keeping both would put three full-size temps
@@ -159,23 +155,6 @@ enum Checkpoint {
         try FileManager.default.moveItem(at: tmp, to: url)
     }
 
-    /// A segment checkpoint stores **bare tracks only** — the whole-frame
-    /// intervals are always rebuilt globally, because hysteresis and the
-    /// whole-frame floor span segment boundaries.
-    struct SegmentAnalysis: Codable, Sendable {
-        var firingsMs: [Int64]
-        var tracks: [FaceTrackEdl]
-    }
-
-    static func writeAnalysis(_ a: SegmentAnalysis, dir: URL, segment: Int) throws {
-        try writeAtomically(try JSONEncoder().encode(a), to: analysisURL(dir, segment: segment))
-    }
-
-    static func readAnalysis(dir: URL, segment: Int) -> SegmentAnalysis? {
-        guard let d = try? Data(contentsOf: analysisURL(dir, segment: segment)) else { return nil }
-        return try? JSONDecoder().decode(SegmentAnalysis.self, from: d)
-    }
-
     /// Segments already on disk, so resume can skip them.
     static func completedSegments(dir: URL, of plan: [RenderSegment]) -> Set<Int> {
         Set(plan.map(\.index).filter { FileManager.default.fileExists(atPath: segmentURL(dir, segment: $0).path) })
@@ -192,11 +171,10 @@ enum Checkpoint {
 
     /// The whole finished EDL, intervals and all.
     ///
-    /// `an-NNN.json` deliberately cannot be used for this: it holds *bare
-    /// tracks* because hysteresis, the region-overflow promotion and the
-    /// whole-frame floor are all rebuilt once over the accumulated firings of
-    /// every segment. With no segments there is nothing to rebuild, so the
-    /// finished EDL is the checkpoint.
+    /// There is no per-segment analysis file to compose this from, and there
+    /// must not be: hysteresis, the region-overflow promotion and the
+    /// whole-frame floor all span seams, so the EDL is only meaningful whole.
+    /// Analyze therefore resumes at stage granularity, on this one file.
     static var analysisName: String { "analysis.json" }
 
     static func writeEdl(_ edl: Edl, dir: URL) throws {

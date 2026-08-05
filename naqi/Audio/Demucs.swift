@@ -372,10 +372,3 @@ final class DemucsSession {
         }
     }
 }
-
-/// Whole seconds included: `Duration.components.attoseconds` only carries the
-/// sub-second part, so reading it alone silently truncates anything over 1 s.
-func msSince(_ t: ContinuousClock.Instant) -> Double {
-    let d = (ContinuousClock.now - t).components
-    return Double(d.seconds) * 1000 + Double(d.attoseconds) / 1e15
-}

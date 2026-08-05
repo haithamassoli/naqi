@@ -264,14 +264,12 @@ struct JobTests {
         var music = FilterOps(); music.removeMusic = true; music.censor = false
         var both = FilterOps(); both.removeMusic = true; both.censor = true
 
-        func required(_ ops: FilterOps, seconds: Int64, segmented: Bool,
-                      transcodes: Bool = false) -> Int64 {
+        func required(_ ops: FilterOps, seconds: Int64, segmented: Bool) -> Int64 {
             Preflight.requiredBytes(
                 sourceBytes: gib,
                 tempCopies: Preflight.tempCopies(for: ops, segmented: segmented),
                 extraScratch: Preflight.extraScratchBytes(for: ops, durationSeconds: seconds,
-                                                          segmented: segmented,
-                                                          transcodesAudio: transcodes))
+                                                          segmented: segmented))
         }
 
         // censor-only: one temp + the published copy, no scratch.
@@ -291,10 +289,6 @@ struct JobTests {
         // segmented censor-only: the rendered segments and the concat output.
         // The source's own audio is passed through, so nothing is encoded.
         #expect(required(censor, seconds: 3600, segmented: true) == 3 * gib + slack)
-        // …plus the one-off AAC transcode at 192 kbit/s if a source ever needs
-        // its audio re-encoded before the join.
-        #expect(required(censor, seconds: 3600, segmented: true, transcodes: true)
-                == 3 * gib + 3600 * 24_000 + slack)
         // segmented with music: the PCM scratch scales with duration, not size.
         #expect(required(both, seconds: 3600, segmented: true)
                 == 3 * gib + 3600 * (176_400 + 24_000) + slack)

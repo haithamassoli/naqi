@@ -27,8 +27,8 @@ struct AnalyzeResult: Sendable {
 /// halves of a split track take their gender votes from different samples —
 /// they can reach *opposite* verdicts, so the same face is censored either side
 /// of the seam and bare in between. The hysteresis (§3) and the whole-frame
-/// floor (§7) also span seams, which is why `Checkpoint.SegmentAnalysis` stores
-/// bare tracks and rebuilds intervals globally even on Android. Analyze is also
+/// floor (§7) also span seams, which is why Android's own per-segment file
+/// stored bare tracks and rebuilt intervals globally. Analyze is also
 /// the cheaper of the two passes — 10 fps sampling against the render's every
 /// frame — so what a resume loses here is worth less than the correctness it
 /// would cost. Stage-level resume (`Checkpoint.writeEdl`, one finished EDL) is
@@ -93,9 +93,6 @@ enum AnalyzePass {
 
         // `Stage` carries the signpost; the wall is measured here as well
         // because `AnalyzeResult` reports it to the caller, not just to the log.
-        // Both readings must combine `.seconds` with `.attoseconds` — the
-        // remainder alone drops whole seconds and turned a 7.4 s pass into
-        // "361.1 ms" while this was being written.
         let started = ContinuousClock.now
         let stage = Stage("analyze")
         let stats = try await sampler.run { frame in
@@ -145,9 +142,7 @@ enum AnalyzePass {
         // that never finished. Closing at exactly 1.0 is the caller's signal
         // that the band is complete, so it is stated rather than approached.
         progress?(1)
-        let elapsed = ContinuousClock.now - started
-        let wallMs = Double(elapsed.components.seconds) * 1000
-            + Double(elapsed.components.attoseconds) / 1e15
+        let wallMs = msSince(started)
         let faceTracks = tracker.finish()
 
         // In region mode this is the plain concatenation — only the whole-frame

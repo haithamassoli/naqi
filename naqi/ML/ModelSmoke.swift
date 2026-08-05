@@ -44,7 +44,7 @@ enum ModelSmoke {
     static func nsfw(_ compute: ComputeUnit) -> Result {
         timed(Models.Nsfw.file, compute) {
             var t = ContinuousClock.now
-            let m = try ModelRegistry.model( Models.Nsfw.file, compute: compute)
+            let m = try ModelRegistry.model(Models.Nsfw.file, compute: compute)
             let load = ms(t)
             let side = Models.Nsfw.side
             let x = try ORTValue.zeros(shape: [1, 3, side, side])
@@ -63,7 +63,7 @@ enum ModelSmoke {
     static func genderAge(_ compute: ComputeUnit) -> Result {
         timed(Models.GenderAge.file, compute) {
             var t = ContinuousClock.now
-            let m = try ModelRegistry.model( Models.GenderAge.file, compute: compute)
+            let m = try ModelRegistry.model(Models.GenderAge.file, compute: compute)
             let load = ms(t)
             let side = Models.GenderAge.side
             let x = try ORTValue.zeros(shape: [1, 3, side, side])

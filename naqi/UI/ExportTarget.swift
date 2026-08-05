@@ -46,14 +46,7 @@ extension ExportTarget {
             // so it is not a choice worth restoring.
             return ExportTarget()
         }
-        var stale = false
-        #if os(macOS)
-        let opts: URL.BookmarkResolutionOptions = .withSecurityScope
-        #else
-        let opts: URL.BookmarkResolutionOptions = []
-        #endif
-        guard let url = try? URL(resolvingBookmarkData: data, options: opts,
-                                 relativeTo: nil, bookmarkDataIsStale: &stale) else {
+        guard let url = URL.resolvingScopedBookmark(data) else {
             // The folder was deleted or moved off a volume we can reach.
             // Falling back to Photos rather than keeping a dead folder
             // selected: Start would otherwise be enabled for a job that dies at
@@ -61,8 +54,6 @@ extension ExportTarget {
             Log.app.notice("export folder bookmark no longer resolves")
             return ExportTarget()
         }
-        // A stale-but-resolvable bookmark is still usable; rewriting it buys
-        // nothing until the next `saveAsLastUsed`, which happens on any change.
         _ = url.startAccessingSecurityScopedResource()
         return ExportTarget(destination: saved, folder: url)
     }
@@ -73,15 +64,10 @@ extension ExportTarget {
             Self.store.removeObject(forKey: Self.folderKey)
             return
         }
-        #if os(macOS)
-        let data = try? folder.bookmarkData(options: .withSecurityScope)
-        #else
-        let data = try? folder.bookmarkData()
-        #endif
         // A folder we cannot bookmark still works for this run; it simply is
         // not remembered. Dropping the whole pick on the floor because the
         // *memory* failed would be the worse trade.
-        if let data {
+        if let data = folder.scopedBookmark() {
             Self.store.set(data, forKey: Self.folderKey)
         } else {
             Log.app.notice("export folder could not be bookmarked")

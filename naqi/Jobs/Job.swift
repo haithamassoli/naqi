@@ -29,20 +29,10 @@ struct Job: Identifiable, Codable, Sendable, Equatable {
 
     static func capture(source: URL, ops: FilterOps, destination: Destination,
                         folder: URL? = nil, title: String? = nil) -> Job {
-        return Job(source: source, bookmark: bookmark(for: source),
+        return Job(source: source, bookmark: source.scopedBookmark(),
                    title: title ?? source.deletingPathExtension().lastPathComponent,
                    ops: ops, destination: destination, folder: folder,
-                   folderBookmark: folder.flatMap(bookmark(for:)))
-    }
-
-    private static func bookmark(for url: URL) -> Data? {
-        let scoped = url.startAccessingSecurityScopedResource()
-        defer { if scoped { url.stopAccessingSecurityScopedResource() } }
-        #if os(macOS)
-        return try? url.bookmarkData(options: .withSecurityScope)
-        #else
-        return try? url.bookmarkData()
-        #endif
+                   folderBookmark: folder?.scopedBookmark())
     }
 
     /// Re-resolves the destination folder the same way `openSource` re-resolves
@@ -51,25 +41,13 @@ struct Job: Identifiable, Codable, Sendable, Equatable {
     /// keep balanced. Nil for every destination that is not `.userFolder`.
     var resolvedFolder: URL? {
         guard let folder else { return nil }
-        return Self.resolve(folderBookmark) ?? folder
-    }
-
-    private static func resolve(_ data: Data?) -> URL? {
-        guard let data else { return nil }
-        var stale = false
-        #if os(macOS)
-        let opts: URL.BookmarkResolutionOptions = .withSecurityScope
-        #else
-        let opts: URL.BookmarkResolutionOptions = []
-        #endif
-        return try? URL(resolvingBookmarkData: data, options: opts,
-                        relativeTo: nil, bookmarkDataIsStale: &stale)
+        return .resolvingScopedBookmark(folderBookmark) ?? folder
     }
 
     /// Re-resolves the bookmark and opens security-scoped access. The returned
     /// closure must run when the job is finished with the file.
     func openSource() throws -> (url: URL, close: @Sendable () -> Void) {
-        let url = Self.resolve(bookmark) ?? source
+        let url = URL.resolvingScopedBookmark(bookmark) ?? source
         let scoped = url.startAccessingSecurityScopedResource()
         let opened = url
         let close: @Sendable () -> Void = { if scoped { opened.stopAccessingSecurityScopedResource() } }

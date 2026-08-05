@@ -172,9 +172,8 @@ enum AudioPipeline {
             })
 
         let drained = Confined(false)
-        // Own clock: `Stage.elapsedMs` reads only `Duration.components
-        // .attoseconds`, which carries the sub-second part alone, so anything
-        // past a second is truncated. `msSince` adds the whole seconds back.
+        // Own clock because `stop()` consumes the `Stage`, and the wall is part
+        // of this function's return value, not just of the log line.
         let started = ContinuousClock.now
         let stage = Stage("audio.separate")
         try await pump(input, label: "audio") {

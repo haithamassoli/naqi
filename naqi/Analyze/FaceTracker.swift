@@ -36,6 +36,44 @@ struct FaceDetector: Sendable {
     }
 }
 
+/// How much per-frame detector failure the analyze pass tolerates before it
+/// gives up on the whole job.
+///
+/// Vision fails per *request*, not per pass, and it does so on real content: a
+/// 1920x1080 29.97 fps clip died 133 s in with
+/// `kVTImageRotationNotSupportedErr` out of `VTPixelTransferSession` — Vision
+/// rotating a 4:2:0 face chip internally, which the simulator cannot always do.
+/// That took down a ten-minute job with `resumable=false`. One lost sample
+/// costs 100 ms of face tracking, which `associateWindowMs` already spans, so
+/// the frame is skipped instead.
+///
+/// **The tolerance is bounded in both directions on purpose.** Swallowing every
+/// failure would let a wholly broken detector produce an empty EDL, and an
+/// empty EDL publishes an *uncensored* video — the one outcome this app
+/// promises cannot happen. A streak means the detector is broken now; a high
+/// scattered rate means it was broken all along. Neither is survivable, and
+/// neither is silent.
+struct DetectFailures {
+    private(set) var total = 0
+    private var streak = 0
+
+    /// Call on every successful detection — the streak only counts *runs*.
+    mutating func succeeded() { streak = 0 }
+
+    /// Records one failure. `true` means stop the pass and rethrow.
+    mutating func failed() -> Bool {
+        total += 1
+        streak += 1
+        return streak >= AnalyzeConstants.detectFailStreakCap
+    }
+
+    /// Checked once at the end: scattered failures never trip the streak cap,
+    /// but faces still went unseen. Integer arithmetic, so no epsilon.
+    func exceededRate(sampled: Int) -> Bool {
+        total * 100 > sampled * AnalyzeConstants.detectFailPercentCap
+    }
+}
+
 /// Track identity, spans and the gender verdict — everything the EDL rests on.
 ///
 /// ML Kit handed Android a stable `trackingId`; Vision has none

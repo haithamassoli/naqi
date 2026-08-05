@@ -189,4 +189,10 @@ enum AnalyzeConstants {
     /// ...and spans shorter than this are dropped, which is what kills
     /// sub-second full-screen flashes from detector false positives.
     static let minFullFrameMs: Int64 = 500
+
+    /// Consecutive failed detections that mean the detector is broken rather
+    /// than unlucky. See `DetectFailures`.
+    static let detectFailStreakCap = 10
+    /// ...and the share of the whole pass that may fail scattered, in percent.
+    static let detectFailPercentCap = 2
 }

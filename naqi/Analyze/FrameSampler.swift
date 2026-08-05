@@ -9,11 +9,14 @@ import os
 enum AnalyzeError: Error, CustomStringConvertible {
     case vImage(Int)
     case pool(CVReturn)
+    case detectorUnusable(failed: Int, of: Int)
 
     var description: String {
         switch self {
         case .vImage(let e): "analyze: vImage scale failed (\(e))"
         case .pool(let e): "analyze: pixel-buffer pool failed (\(e))"
+        case .detectorUnusable(let f, let n):
+            "analyze: face detection failed on \(f) of \(n) sampled frames"
         }
     }
 }

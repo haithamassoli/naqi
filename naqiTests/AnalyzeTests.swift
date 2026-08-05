@@ -337,6 +337,38 @@ struct AnalyzeTests {
         #expect(reports.allSatisfy { $0 < 0.05 }, "reported \(reports) before stopping at frame 5")
     }
 
+    /// A 1080p clip died 133 s into analyze on one `VTPixelTransferSession`
+    /// failure, taking a ten-minute job with it. Skipping the frame is right;
+    /// skipping *every* frame is how an uncensored video gets published, so
+    /// both bounds are pinned here rather than left to the caller.
+    @Test("isolated detect failures are survivable, sustained ones are not")
+    func detectFailureTolerance() {
+        var f = DetectFailures()
+
+        // The real shape: one bad frame between good ones, over and over.
+        // `failed()` mutates, so it cannot be called inside the `#expect`
+        // macro's captured expression.
+        for _ in 0..<50 {
+            let giveUp = f.failed()
+            #expect(giveUp == false)
+            f.succeeded()
+        }
+        #expect(f.total == 50)
+        #expect(f.exceededRate(sampled: 6_430) == false, "0.8 % of a 10-min pass must survive")
+        // ...but the same 50 in a short pass is the detector, not the content.
+        #expect(f.exceededRate(sampled: 200))
+
+        // A broken detector fails consecutively and must stop the pass.
+        var g = DetectFailures()
+        let cap = AnalyzeConstants.detectFailStreakCap
+        for i in 1..<cap {
+            let giveUp = g.failed()
+            #expect(giveUp == false, "gave up at \(i), cap is \(cap)")
+        }
+        let giveUp = g.failed()
+        #expect(giveUp, "ran past \(cap) consecutive failures")
+    }
+
     // MARK: - Pixel-math equivalence (§2.2, §5.2, §10.2)
 
     /// §10.2: the gate fill must stay bit-identical to the reference walk, and

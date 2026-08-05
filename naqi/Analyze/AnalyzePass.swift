@@ -89,6 +89,7 @@ enum AnalyzePass {
         // and let the terminal 1.0 close the band.
         let knownDurationMs = (durationMs > 0 && durationMs != .max) ? Double(durationMs) : 0
         var seen = 0
+        var detectFailures = DetectFailures()
 
         // `Stage` carries the signpost; the wall is measured here as well
         // because `AnalyzeResult` reports it to the caller, not just to the log.
@@ -111,10 +112,32 @@ enum AnalyzePass {
             // so the frame's pool slot survives both (§1.5, §2.5).
             async let detected = detector.detect(frame)
             if let g = frame.gate { try batch.add(ptsMs: frame.ptsMs, tensor: g) }
-            let boxes = try await detected
+            // A detector failure is per-frame and survivable; see
+            // `DetectFailures` for why it is survivable only up to a point.
+            let boxes: [CGRect]
+            do {
+                boxes = try await detected
+                detectFailures.succeeded()
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                // Rethrown unchanged, so the job's recorded cause stays the
+                // real Vision error rather than a counter tripping.
+                if detectFailures.failed() { throw error }
+                Log.analyze.warning("""
+                    detect failed at \(frame.ptsMs) ms, skipping frame \
+                    (\(detectFailures.total) so far): \(String(describing: error), privacy: .public)
+                    """)
+                boxes = []
+            }
             tracker.onFaces(boxes, uprightSize: frame.transform.uprightSize, ptsMs: frame.ptsMs) { rect in
                 voter?.vote(in: frame, rect: rect) ?? 0
             }
+        }
+        // Before `batch.flush`, because an unusable detector must not look like
+        // a completed pass that merely found no faces.
+        if detectFailures.exceededRate(sampled: stats.emitted) {
+            throw AnalyzeError.detectorUnusable(failed: detectFailures.total, of: stats.emitted)
         }
         try batch.flush()
         // The last sampled frame sits up to one sample interval short of the
@@ -137,7 +160,8 @@ enum AnalyzePass {
 
         stage.stop("""
             \(stats.decoded) decoded, \(stats.emitted) sampled, \(stats.gated) gated, \
-            \(batch.firings.count) firings, \(faceTracks.count) tracks, \(intervals.count) intervals
+            \(batch.firings.count) firings, \(faceTracks.count) tracks, \(intervals.count) intervals\
+            \(detectFailures.total > 0 ? ", \(detectFailures.total) detect failures" : "")
             """)
         return AnalyzeResult(edl: Edl(censorIntervalsMs: intervals, faceTracks: faceTracks),
                              decodedFrames: stats.decoded,

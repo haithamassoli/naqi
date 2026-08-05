@@ -53,7 +53,21 @@ enum Ort {
 
     /// Intra-op threads for a compute-heavy graph, clamped to the range the
     /// Android sweep found useful.
-    static var computeThreads: Int { min(max(performanceCores, 2), 6) }
+    static var computeThreads: Int { threadOverride ?? min(max(performanceCores, 2), 6) }
+
+    /// The calibration knob for the sweep above.
+    ///
+    /// Thread count is not only a speed dial: ORT's memory-pattern planner
+    /// allocates per intra-op thread, and htdemucs peaks **over** the 1.5 GB
+    /// budget (`BenchTests.demucsFootprint`). Whether fewer threads buys that
+    /// back is a question about this machine's memory hierarchy, which no
+    /// amount of reading answers — so the knob exists to be measured through,
+    /// on hardware, rather than reasoned about.
+    ///
+    /// ponytail: plain global, no lock. Only the bench sweep writes it, and
+    /// `BenchTests` is `.serialized`. If production ever sets it, this needs to
+    /// become a real setting.
+    nonisolated(unsafe) static var threadOverride: Int?
 }
 
 /// A loaded ONNX graph plus its IO names. Not an actor: ORT sessions are

@@ -168,10 +168,29 @@ Verified against the pinned artifact rather than assumed:
 3. **The benefit is unverified on Apple.** Android needed both flags on this graph; nobody has shown
    they recover the ~240 MB here. Measure first with a throwaway build before wiring it in.
 
-Cheaper lever to try first: `Ort.computeThreads` is 4 on this machine
-(`min(max(hw.perflevel0.logicalcpu, 2), 6)`). ORT's memory-pattern planner allocates per intra-op
-thread, so sweeping 1/2/4 and watching `BenchTests.demucsFootprint`'s peak costs one build and may
-make the shim unnecessary.
+#### The cheap lever was tried, and it does not work
+
+ORT's memory-pattern planner allocates per intra-op thread, so fewer threads *should* mean a smaller
+peak. Swept on the Mac (`BenchTests.demucsThreadSweep`, budget 1536 MB):
+
+| intra-op threads | wall | peak | |
+|---:|---:|---:|---|
+| 1 | 9 196 ms | **1838 MB** | ❌ over — and this is the **clean-baseline** run |
+| 2 | 6 867 ms | 1815 MB | ❌ over (cumulative — see below) |
+| 4 (shipped) | 6 323 ms | 1881 MB | ❌ over (cumulative) |
+
+**Disproven.** The spread is ~3.5 % and **not monotonic** — 2 threads is the lowest, 4 the highest,
+1 in between — which rules out per-thread scratch as the driver. Meanwhile 1 thread costs **45 %**
+more wall time than 4. Fewer threads buys nothing and is expensive.
+
+Only the first row has a clean baseline; the suite is `.serialized`, so rows 2 and 3 inherit the
+previous run's retention and their absolutes are inflated (the test prints ⚠ when it detects this).
+That does not weaken the conclusion: the **minimum** thread count, measured clean, is 1838 MB —
+still ~300 MB over. There is no thread setting that gets under the budget.
+
+That the peak is flat across thread counts is itself evidence for the arena hypothesis: the memory
+is sized by the graph and its allocation pattern, not by how many workers walk it. The shim is the
+remaining lever.
 
 **Risk if unfixed:** the PRD's ceiling exists for the 4 GB device floor (open question Q1). A
 1.77 GB peak on a 4 GB iPhone is a plausible jetsam kill, and jetsam gives no warning.

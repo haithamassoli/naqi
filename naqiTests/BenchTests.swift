@@ -216,6 +216,43 @@ struct BenchTests {
             """)
     }
 
+    /// Does cutting intra-op threads buy back the memory htdemucs is over by?
+    ///
+    /// The cheap lever to try before the `DisableCpuMemArena` C-API shim, which
+    /// costs a bridging header and a private-API dependency. ORT's
+    /// memory-pattern planner allocates per intra-op thread, so this is a real
+    /// hypothesis and not a guess — but which way it lands on Apple's memory
+    /// hierarchy is not knowable from the docs, hence a sweep.
+    ///
+    /// Prints time *and* peak together deliberately: fewer threads is only a
+    /// fix if what it costs in wall time is worth what it buys in headroom.
+    @Test("htdemucs: does thread count move the memory peak?", arguments: [1, 2, 4])
+    func demucsThreadSweep(threads: Int) async throws {
+        let src = try await MediaSource.probe(try requireQAVideo())
+        let out = Fixtures.scratch("bench-threads-\(threads).m4a")
+        defer { try? FileManager.default.removeItem(at: out) }
+
+        ModelRegistry.evictAll()
+        Ort.threadOverride = threads
+        defer { Ort.threadOverride = nil }
+
+        let baseline = MemoryFootprint.currentMB
+        MemoryFootprint.resetPeak()
+        let t = ContinuousClock.now
+        _ = try await AudioPipeline.removeMusic(src, to: out, includeVideo: false)
+        let ms = t.duration(to: .now).milliseconds
+        let peak = Double(MemoryFootprint.peakBytes) / 1_048_576
+        ModelRegistry.evict(Models.Demucs.file)
+
+        let budget = Double(MemoryFootprint.budgetBytes) / 1_048_576
+        print(String(format: "threads %d → %7.0f ms, peak %6.0f MB (budget %.0f)%@%@",
+                     threads, ms, peak, budget,
+                     peak < budget ? "  ✅ UNDER" : "  ❌ over",
+                     baseline < 400 ? "" : "  ⚠ shared process, peak is cumulative"))
+
+        #expect(peak > 0)
+    }
+
     /// The like-for-like end-to-end number the PRD's performance goal is judged
     /// on: the **same clip** Android published its baseline against.
     ///

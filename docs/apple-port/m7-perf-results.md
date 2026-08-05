@@ -145,6 +145,34 @@ neither — `ort_session.h` offers only `addConfigEntryWithKey`, `setIntraOpNumT
 Recorded as a **`withKnownIssue`**, not a skipped test: it fails if the peak ever comes *under*
 budget, so whoever lands the shim is told to delete the wrapper.
 
+#### The access path, so it does not have to be rediscovered
+
+Verified against the pinned artifact rather than assumed:
+
+- `DisableCpuMemArena` and `DisableMemPattern` are C API **functions**
+  (`ORT_API2_STATUS(...)`, `onnxruntime_c_api.h:1375,1393`). They are **not** session config keys —
+  the full list in `onnxruntime_session_options_config_keys.h` has no arena entry — so
+  `addConfigEntryWithKey` can never reach them, however it is spelled.
+- The package's **`objectivec/ort_session_internal.h`** declares a private category:
+  `- (Ort::SessionOptions&)CXXAPIOrtSessionOptions`. That header is not in the public `include/`,
+  but the method is compiled into the ObjC target, so an `.mm` in the app can re-declare the
+  category and call `DisableCpuMemArena()` / `DisableMemPattern()` on the C++ object. ~20 lines.
+
+**Why it was not done in the session that found it**, so the next person can weigh the same things:
+
+1. It needs Xcode project surgery — a bridging header (`SWIFT_OBJC_BRIDGING_HEADER`) and an `.mm`
+   with correct target membership. Synchronized groups add Swift files automatically; build
+   settings are hand work.
+2. It depends on a **private API of a third-party package**. Acceptable — it breaks loudly at link
+   time on an ORT upgrade, not silently — but it is a real dependency to take on deliberately.
+3. **The benefit is unverified on Apple.** Android needed both flags on this graph; nobody has shown
+   they recover the ~240 MB here. Measure first with a throwaway build before wiring it in.
+
+Cheaper lever to try first: `Ort.computeThreads` is 4 on this machine
+(`min(max(hw.perflevel0.logicalcpu, 2), 6)`). ORT's memory-pattern planner allocates per intra-op
+thread, so sweeping 1/2/4 and watching `BenchTests.demucsFootprint`'s peak costs one build and may
+make the shim unnecessary.
+
 **Risk if unfixed:** the PRD's ceiling exists for the 4 GB device floor (open question Q1). A
 1.77 GB peak on a 4 GB iPhone is a plausible jetsam kill, and jetsam gives no warning.
 

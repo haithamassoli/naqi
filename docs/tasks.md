@@ -102,5 +102,6 @@ Android carry-overs are cited inline — they are measured findings, not guesses
 - [x] Privacy nutrition label — `naqi/PrivacyInfo.xcprivacy`: no tracking, no collected data, three required-reason APIs each traced to its call site. "No networking" **verified**, not asserted: no `URLSession` symbols in the binary, no networking framework linked
 - [x] App Store listing EN/AR — `docs/apple-port/store-listing-apple.md`. Four Play-listing claims are false on Apple and are removed rather than softened (bundled models not a download; no MKV/WebM — AVFoundation cannot demux Matroska; iOS 18/macOS 15; resume rather than background work)
 - [ ] Pricing per Q4 — **blocked**, Q4 unanswered
-- [ ] Store screenshots need caption plates; per-extension privacy manifests if App Store Connect flags the App Group `UserDefaults` symbol in `NaqiShare`/`NaqiWidgets` at upload
+- [x] Per-extension privacy manifests — **shipped, not deferred to an ASC flag.** `NaqiShare/PrivacyInfo.xcprivacy` and `NaqiWidgets/PrivacyInfo.xcprivacy`, each declaring `NSPrivacyAccessedAPICategoryUserDefaults` / **1C8F.1** (App Group suite). An appex is scanned as its own binary, and `NaqiShared/AppGroup.swift` compiles into all three targets, so the `UserDefaults` symbol is present even where the call is dead — the scanner is symbol-based and a missing required-reason declaration is an automatic rejection. Verified embedded in both `.appex` bundles
+- [ ] Store screenshots need caption plates — needs capture runs against the real screens in EN and AR
 - [ ] TestFlight beta pass → submit

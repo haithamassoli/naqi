@@ -185,24 +185,19 @@ struct BenchTests {
 
         guard isolated else { return }
 
-        // KNOWN ISSUE — measured 1774 MB against 1536 MB, and deliberately not
-        // silenced. `withKnownIssue` fails if the expectation starts *passing*,
-        // so whoever lands the fix is told to delete this wrapper rather than
-        // discovering the budget quietly came good.
+        // This was a `withKnownIssue` at 1721–1881 MB. `NaqiOrtArena` —
+        // DisableCpuMemArena + DisableMemPattern through the C++ API the ObjC
+        // wrapper does not expose — brought the peak to **1115 MB**, and the
+        // wrapper was removed because it had done its job: it fails when the
+        // expectation starts passing, which is how the fix announced itself.
         //
-        // Not fixable from here: the peak is the working set during separation,
-        // so `JobRunner`'s evict cannot help, and `Demucs.seg` is the graph's
-        // own segment length, not a tunable. Android needed DisableCpuMemArena
-        // + DisableMemPattern on this same graph (lmkd killed it at 5.6 GB
-        // without them). ORT's ObjC wrapper exposes neither — only
-        // `addConfigEntryWithKey` — so the fix is the C-API shim `Ort.swift`
-        // already names. Tracked in `m7-perf-results.md`.
-        withKnownIssue("htdemucs peaks over the 1.5 GB budget; needs DisableCpuMemArena via a C-API shim") {
-            #expect(peak < budget, """
-                peak \(Int(peak)) MB is over the \(Int(budget)) MB budget during separation itself, \
-                so evicting the session afterwards cannot fix it
-                """)
-        }
+        // Now a live gate. If it goes red, the arena is back on: check that
+        // `ORTSessionOptions` still answers `CXXAPIOrtSessionOptions` (the log
+        // says so explicitly) before looking anywhere else.
+        #expect(peak < budget, """
+            peak \(Int(peak)) MB is over the \(Int(budget)) MB budget during separation itself, \
+            so evicting the session afterwards cannot fix it
+            """)
         // Live, and guarding the fix that DID land. Asserted as a **delta**,
         // never against an absolute: this is one process shared with every
         // other suite, so by the time the full run reaches here the baseline is
@@ -210,9 +205,13 @@ struct BenchTests {
         // ~3 GB. That does not contradict the `m0-results.md` correction —
         // the counter is still this process's own, the process is just doing
         // more. The clean absolutes come from running this test alone.
-        #expect(held - released > 1_000, """
+        // 500, not 1000: the threshold was calibrated when the session held a
+        // 1580 MB arena. With the arena disabled there is simply less to give
+        // back (934 MB of 1006 MB), so the old number started failing *because*
+        // the memory fix worked.
+        #expect(held - released > 500, """
             evicting htdemucs gave back only \(Int(held - released)) MB of \(Int(held)) MB — \
-            the arena is still held
+            the session is still held
             """)
     }
 

@@ -111,7 +111,8 @@ old "only the delta is trustworthy" note is what kept the violation below invisi
 | workload | peak | budget | |
 |---|---:|---:|---|
 | censor-only, 643 s @ 1920×1080 | 472 MB | 1536 MB | ✅ comfortable |
-| **music separation, 12.8 s clip** | **1721–1774 MB** | 1536 MB | ❌ **over** |
+| music separation, 12.8 s clip — **before** §3.2 | 1721–1881 MB | 1536 MB | ❌ was over |
+| **music separation, 12.8 s clip — after** | **1115 MB** | 1536 MB | ✅ **fixed** |
 
 Note the shape: the *90-minute* censor job peaks lower than a *12.8-second* music job. Footprint
 tracks frame area and model working set, not duration — which is why `m5-soak-results.md`'s 236 MB
@@ -131,7 +132,46 @@ still held after separation 1639 MB → after evict 59 MB   (gave back 1580 MB)
 `JobRunner.separate` now evicts on a `defer`, so a cancelled or failed job releases it too.
 Guarded by a live assertion in `BenchTests.demucsFootprint`.
 
-### 3.2 Not fixed: the peak during separation is 1721–1774 MB
+### 3.2 FIXED: the arena shim — 1774 MB → 1115 MB, and 43 % faster
+
+**Resolved.** `naqi/ML/NaqiOrtArena.mm` makes the two C++ API calls ORT's Objective-C wrapper omits,
+`DisableCpuMemArena()` and `DisableMemPattern()`, and applies them to **htdemucs only** — keyed on
+the graph inside `ModelRegistry.model` rather than passed by callers, because a parameter is one
+call site away from being forgotten and the symptom of forgetting is a jetsam kill.
+
+| | before | after |
+|---|---:|---:|
+| peak during separation | 1721–1881 MB | **1115 MB** ✅ under the 1536 MB budget |
+| retained after separation | 1639 MB | 1005 MB (→ 72 MB after evict) |
+| separation, 4 threads (shipped) | 6 323 ms | **3 603 ms** |
+| separation, 1 thread — clean baseline both runs | 9 196 ms | **7 423 ms** |
+
+**It got faster, not slower** — 43 % at the shipped thread count, 19 % on the clean like-for-like
+single-thread comparison. That is the opposite of the expected trade, and it is explicable rather
+than lucky: holding ~1.8 GB costs page faults and memory compression that outweigh what the arena's
+reuse saves. Below a certain footprint, less memory *is* speed.
+
+Applied to htdemucs alone on purpose. The arena is exactly what makes repeated allocation cheap, and
+nsfw/genderage run thousands of times per job where htdemucs runs once per chunk — those would
+likely pay for losing it, and they are not the graphs breaking the budget.
+
+Three implementation notes, each of which cost a build:
+
+- **`@import` is unavailable in Objective-C++ here** (`-fno-cxx-modules`) and the ObjC bindings'
+  headers are not on the app target's include path, so the private accessor is reached with a typed
+  `objc_msgSend` cast rather than a category. Safety rests on `respondsToSelector:`, not on the
+  cast: if ORT drops the accessor the shim returns NO, the session is still valid and correct, and
+  the log says so.
+- **`FOUNDATION_EXTERN` is load-bearing.** Without `extern "C"` the ObjC++ definition is C++-mangled
+  while Swift's bridging-header import wants the plain C symbol. The only symptom is
+  `Undefined symbols: _NaqiOrtDisableArena` at link — *after* the `.o` has compiled cleanly.
+- `SWIFT_OBJC_BRIDGING_HEADER` had to be added to both app-target configurations. Synchronized
+  groups compile the `.mm` automatically but cannot supply a build setting.
+
+The `withKnownIssue` wrapper is **gone**: it failed the moment the expectation started passing,
+which is exactly how it was meant to announce the fix. `demucsFootprint` is now a live budget gate.
+
+### 3.2b Why it took a shim — the history, kept because the reasoning still holds
 
 Eviction cannot touch this — it is the working set, not retention. Neither is `Demucs.seg` a lever:
 114 660 frames is the graph's own segment length.

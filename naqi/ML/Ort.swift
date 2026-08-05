@@ -85,15 +85,24 @@ final class OrtModel: @unchecked Sendable {
     ///   - threads: intra-op threads. 1 matches Android (`ml/Models.kt` pins it
     ///     to 1 with spinning disabled) and keeps N concurrent sessions from
     ///     oversubscribing the P-cores.
-    convenience init(bundledModel name: String, compute: ComputeUnit = .cpu, threads: Int = 1) throws {
+    convenience init(bundledModel name: String, compute: ComputeUnit = .cpu, threads: Int = 1,
+                     disableArena: Bool = false) throws {
         guard let path = Bundle.main.path(forResource: name, ofType: "onnx", inDirectory: "Models")
                 ?? Bundle.main.path(forResource: name, ofType: "onnx") else {
             throw OrtError.modelMissing(name)
         }
-        try self.init(name: name, path: path, compute: compute, threads: threads)
+        try self.init(name: name, path: path, compute: compute, threads: threads,
+                      disableArena: disableArena)
     }
 
-    init(name: String, path: String, compute: ComputeUnit, threads: Int = 1) throws {
+    /// - Parameter disableArena: drops ORT's CPU arena and memory-pattern
+    ///   planner. **Off by default and it should stay that way** — the arena is
+    ///   what makes repeated allocation cheap, and the per-frame graphs (nsfw,
+    ///   genderage) run thousands of times per job where htdemucs runs once per
+    ///   chunk. Only the graph that actually breaks the memory budget pays the
+    ///   allocator cost. See `NaqiOrtArena.h`.
+    init(name: String, path: String, compute: ComputeUnit, threads: Int = 1,
+         disableArena: Bool = false) throws {
         self.name = name
         self.compute = compute
         self.threads = threads
@@ -105,16 +114,22 @@ final class OrtModel: @unchecked Sendable {
         // A spinning worker on Apple silicon *holds* a P-core between chunks,
         // which matters more here than the battery cost did on Android.
         try opts.addConfigEntry(withKey: "session.intra_op.allow_spinning", value: "0")
-        // Keeps htdemucs' 88 MB of initializers out of the arena. Android had
-        // to go further and disable the CPU arena and memory-pattern planner
-        // outright — without those, lmkd killed the app at 5.6 GB RSS on this
-        // graph, and the iOS equivalent is a jetsam kill with no warning.
-        // ponytail: ORT's ObjC wrapper exposes no DisableCpuMemArena /
-        // DisableMemPattern, only this config entry. Measured footprint on
-        // Apple is fine so far (see docs/apple-port/m0-results.md); if a device
-        // run shows the same blow-up, the fix is a small ObjC shim over the C
-        // API rather than a different runtime.
+        // Keeps htdemucs' 88 MB of initializers out of the arena.
         try opts.addConfigEntry(withKey: "session.use_device_allocator_for_initializers", value: "1")
+
+        // ...and for htdemucs that is not enough. Android had to disable the
+        // CPU arena and the memory-pattern planner outright on this same graph
+        // or lmkd killed it at 5.6 GB RSS; the iOS equivalent is a jetsam kill
+        // with no warning. The comment that used to live here said Apple's
+        // footprint "is fine so far" and deferred the shim — that was M0
+        // reading its own `phys_footprint` as unreadable. It was not, and this
+        // graph peaks well over the budget. `NaqiOrtArena` is that shim.
+        if disableArena, !NaqiOrtDisableArena(opts) {
+            Log.ml.warning("""
+                could not disable the ORT arena for \(name, privacy: .public) — \
+                the session is valid but will exceed the memory budget
+                """)
+        }
 
         var resolved = compute
         if compute != .cpu {
@@ -179,7 +194,12 @@ enum ModelRegistry {
                 """)
             cache[file] = nil
         }
-        let built = try OrtModel(bundledModel: file, compute: compute, threads: threads)
+        // Keyed on the graph, not passed by the caller: "this graph's arena
+        // exceeds the memory budget" is a fact about htdemucs, not about who is
+        // loading it. A parameter would be one call site away from being
+        // forgotten, and the symptom would be a jetsam kill on a long job.
+        let built = try OrtModel(bundledModel: file, compute: compute, threads: threads,
+                                 disableArena: file == Models.Demucs.file)
         cache[file] = built
         return built
     }

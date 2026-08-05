@@ -151,8 +151,15 @@ struct UITests {
         @Test("A shared-in video inherits the chosen folder, not the Photos default")
         @MainActor
         func sharedInInheritsTheDestination() async throws {
-            let dir = try #require(ShareInbox.container, "no App Group container")
-            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            // Write probe, not a nil check: on macOS the container URL resolves
+            // without the App Group entitlement and only the write fails. Share-in
+            // is iOS-only — see `JobTests.usableInbox`.
+            guard let dir = JobTests.usableInbox() else {
+                #if os(iOS)
+                Issue.record("App Group container unusable — the entitlement or the group id regressed")
+                #endif
+                return
+            }
             let saved = ExportTarget.loadLastUsed()
             defer { saved.saveAsLastUsed() }
 

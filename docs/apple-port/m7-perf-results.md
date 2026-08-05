@@ -1,8 +1,40 @@
 # M7 — performance and memory, measured
 
-> **Headline:** on the iPhone 17 Pro simulator the port runs the Android baseline clip **5.4×
-> slower** than the S23. Almost all of that is the simulator, not the port — and the evidence for
-> that claim is in §2, not an assertion. The memory findings are the ones that need action.
+> **Headline:** on an M-series Mac — real VideoToolbox codecs, Vision on its own compute device —
+> the port runs the Android baseline clip **1.50× faster than the S23 overall and 2.55× faster on
+> analyze**, at 234 MB peak.
+>
+> On the **iPhone 17 Pro simulator** the same clip runs **5.4× slower**. That difference is the
+> hardware the simulator does not have, and §2 is the evidence rather than the assertion. Anyone
+> quoting a number from this document must say which row it came from.
+
+## Summary — three platforms, one clip
+
+| stage | **M-series Mac** | ×real | S23 | ×real | Mac vs S23 | iPhone 17 Pro **simulator** |
+|---|---:|---:|---:|---:|---:|---:|
+| analyze | **45 018 ms** | 14.28× | 114 648 ms | 5.61× | **2.55×** | 337 172 ms (1.91×) |
+| render | **91 106 ms** | 7.06× | 89 411 ms | 7.19× | 0.98× | 767 335 ms (0.84×) |
+| **total** | **136 124 ms** | **4.72×** | 204 752 ms | 3.14× | **1.50×** | 1 104 507 ms (0.58×) |
+
+| | Mac | simulator |
+|---|---:|---:|
+| peak footprint, censor-only | **234 MB** | 472 MB |
+| detect failures | **0** | 6 |
+| face tracks found | 97 | 94 |
+
+Read the two interesting rows carefully:
+
+- **Analyze is the architectural win.** 2.55× the S23, and 7.5× the simulator. Vision on a real
+  compute device beats ML Kit on the S23's; the simulator's `pinned to CPU` fallback was hiding it
+  entirely.
+- **Render is at parity, not ahead** — 0.98×, despite the Mac's enormous power and thermal advantage
+  over a phone. Both sides are hardware-encoder-bound, so this stage is roughly a hardware draw and
+  the Mac's headroom buys almost nothing. That is the honest reading, and it is the number most
+  likely to get *worse* on a passively cooled phone.
+
+**An M-series Mac is not a phone.** It has far more sustained power and cooling than an iPhone, so
+1.50× is an upper bound on what a device will do, not a prediction. What it does establish — which
+the simulator could not — is that the port's architecture is sound and competitive on real silicon.
 
 ## 0. What was run
 
@@ -41,6 +73,12 @@ therefore ~1 % of render; the other ~99 % is inside Core Image and the H.264 enc
 18 %, so the sampler and the gate kernel are real but minor next to Vision itself.
 
 **Optimising this port's Swift cannot move these numbers.** That is a measurement, not an excuse.
+
+### 2.1b …and the Mac run confirms it directly
+
+The Debug→Release delta said the cost was not in our Swift. The Mac run says where it *was*: the
+same binary, the same clip, **7.5× faster analyze and 8.4× faster render** purely from running
+where the hardware exists. Nothing in this port changed between those two rows.
 
 ### 2.2 Both dominant costs are paths the simulator cannot accelerate
 
@@ -124,6 +162,26 @@ uncensored ranges, re-encode only the censored ones, concat. The machinery alrea
 (89.6 %)**. It only pays on sparsely-censored content, it can only cut on keyframe boundaries, and
 it buys those seams the costs in hazards 11–13. Not worth it on this evidence; worth revisiting if
 device numbers show render still dominating on lightly-censored sources.
+
+## 3.6 Parity on the Mac, and one thing it disproved
+
+Full suite on `platform=macOS`: **115 tests / 12 suites pass** at `-O`. The count ladder is
+121 (iOS Debug) − 3 `#if DEBUG` UI tests = 118 (iOS Release) − 3 iOS-only `ExtensionTests` = 115.
+
+Three tests had to be fixed first, and the bug was in the tests: they treated `ShareInbox.container`
+as a nil check. On macOS that URL **resolves** without the App Group entitlement — the build scopes
+`CODE_SIGN_ENTITLEMENTS` to `[sdk=iphone*]` on purpose — and only the write fails, with EPERM. The
+guard is now a write probe that still reports an iOS entitlement regression as a failure.
+
+**Hazard 14 is simulator-specific.** The Vision `kVTImageRotationNotSupportedErr` that killed a job
+fired 6 times on the simulator and **zero** times on the Mac over the identical clip. It is the
+CPU-pinned Vision path, not the content. The `DetectFailures` tolerance stays — a device can still
+fail transiently under thermal or memory pressure, and the cost of being wrong is a dead 90-minute
+job — but nobody should go hunting for it on hardware.
+
+Face tracks: 97 on the Mac against 94 on the simulator. Partly the 6 dropped frames, partly that
+CPU and GPU Vision do not have to agree exactly. Not a parity failure, but the reason two runs of
+"the same" analyze differ.
 
 ## 4. What still needs hardware
 

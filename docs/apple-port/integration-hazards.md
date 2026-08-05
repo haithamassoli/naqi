@@ -202,3 +202,15 @@ count.
 Do not "fix" this by feeding Vision BGRA. It removes the chroma constraint, but
 it reintroduces exactly the RGB conversion §10.5 measured at 38 % of the pass,
 to avoid a fault the pass already tolerates.
+
+> ### Hazard 14 UPDATE: it is the **simulator**, not the content
+>
+> Measured after the fact on an M-series Mac, same clip, same binary, `-O`: **zero** detect
+> failures, against **6** on the iPhone 17 Pro simulator. The failure is the CPU-pinned Vision
+> path the simulator forces (`Vision default compute device cannot run here`), not something in
+> 1080p landscape content. Do not go looking for this on hardware.
+>
+> The `DetectFailures` tolerance stays anyway. A device can still fail a request transiently under
+> thermal or memory pressure, the cost of being wrong is a dead 90-minute job, and the bound in the
+> other direction is what stops a broken detector shipping an uncensored video. The original text
+> above says "on real content" — that was true of where it was found, and wrong about why.

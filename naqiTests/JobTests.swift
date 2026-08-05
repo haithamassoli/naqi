@@ -1001,18 +1001,35 @@ struct JobTests {
     /// drain. This is the only test that can fail if the App Group entitlement
     /// regresses, because everything else on this path degrades to a silent
     /// no-op rather than an error.
+    /// Share-in is iOS-only, and "is it available here" is a **write probe**,
+    /// not a nil check.
+    ///
+    /// On macOS `ShareInbox.container` returns a perfectly good-looking URL
+    /// under `~/Library/Group Containers/` even though the build carries no App
+    /// Group entitlement — `CODE_SIGN_ENTITLEMENTS` is scoped to
+    /// `[sdk=iphone*]`, because requiring it on macOS would force a
+    /// provisioning profile for a container nothing on that platform reads, and
+    /// the extension itself embeds `platformFilters = (ios, )`. Only the
+    /// *write* fails, with EPERM. A nil check therefore passes straight through
+    /// and the test dies on `createDirectory`.
+    static func usableInbox() -> URL? {
+        guard let dir = ShareInbox.container else { return nil }
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            return dir
+        } catch {
+            return nil
+        }
+    }
+
     @Test("share inbox drains what the extension writes")
     func shareInboxDrains() async throws {
-        // The App Group is scoped to iOS: the share extension is iOS-only, and
-        // requiring the entitlement on macOS would force a provisioning profile
-        // for a container nothing on that platform reads.
-        guard let dir = ShareInbox.container else {
+        guard let dir = Self.usableInbox() else {
             #if os(iOS)
-            Issue.record("no App Group container — the entitlement or the group id regressed")
+            Issue.record("App Group container unusable — the entitlement or the group id regressed")
             #endif
             return
         }
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
 
         let id = UUID()
         let media = ShareManifest.mediaURL(dir, id: id, ext: "mp4")
@@ -1042,8 +1059,7 @@ struct JobTests {
     /// its two writes. It must be dropped, not retried forever.
     @Test("share inbox drops a manifest with no media")
     func shareInboxDropsOrphanManifest() async throws {
-        guard let dir = ShareInbox.container else { return }
-        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        guard let dir = Self.usableInbox() else { return }
         let id = UUID()
         let orphan = ShareManifest.manifestURL(dir, id: id)
         try JSONEncoder().encode(ShareManifest(id: id, fileName: "gone.mp4", receivedAt: Date()))

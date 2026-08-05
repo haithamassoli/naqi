@@ -155,3 +155,50 @@ measurement came back at ~0.5–0.7 s per export, so 31 segments cost ~19 s on a
 film and anything between 1 and 10 min performs the same
 (`long-film-plan.md:122`). `Checkpoint.segmentMs = 300000` is that constant. Do
 not add a tuning knob for a parameter with no measurable slope.
+
+## 14. Vision fails per *request*, on real content, and blames the wrong thing
+
+Hazards 1–13 came from Android's log. This one is Apple-native and was found by
+running the Android baseline clip (`tv1`, 1920×1080 **29.97 fps**) end to end.
+
+133 seconds into the analyze pass, one `DetectFaceRectanglesRequest` threw:
+
+```
+Error Domain=com.apple.Vision Code=3 "VNImageBuffer - Failed to transfer
+inputBufferForRotation (retain count = 1, type = 875704422) to
+vtSessionDestBuffer (retain count = 1, type = 875704422).
+Orientation 8. Crop 1. Rotation 270. Error -12914"
+```
+
+Three things about that message are misleading:
+
+- **`-12914` is `kVTImageRotationNotSupportedErr`** and `875704422` is `'420v'`
+  — `kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange`, the format the sampler
+  hands Vision on purpose (§10.5: converting to RGB cost Android 38 % of the
+  pass). This is a `VTPixelTransferSession` failure, not a Vision logic error.
+- **"Orientation 8" is not the orientation the caller passed.** The sampler logs
+  `rot=0` and passes `.up` (= 1). The 270° rotation is Vision rotating a face
+  chip *internally*; a 4:2:0 crop cannot always be rotated, because chroma
+  subsampling needs even extents. Chasing the caller's orientation here is a
+  dead end.
+- **It is content-dependent, so it does not reproduce on the short fixtures.**
+  The 12.8 s portrait QA clip analyzes 83 faces across 19 tracks with no
+  failure. Only the long landscape clip hits it, and only after two minutes.
+
+**The defect this exposed was not the Vision bug.** `AnalyzePass` let the throw
+propagate, so one failed request killed a ten-minute job with
+`resumable=false` — and would kill a 90-minute one identically. A detector
+failure is per-frame and per-frame is survivable: at 10 fps sampling one skipped
+frame costs 100 ms of tracking, well inside `associateWindowMs`.
+
+The tolerance is bounded in **both** directions (`DetectFailures`), and the
+reason is specific to this app: swallowing every failure would let a wholly
+broken detector return an empty EDL, and an empty EDL publishes an
+**uncensored** video. Ten consecutive failures means the detector is broken now;
+more than 2 % scattered means it was broken all along. Neither is survivable and
+neither is silent — every skip logs its pts and the pass summary carries the
+count.
+
+Do not "fix" this by feeding Vision BGRA. It removes the chroma constraint, but
+it reintroduces exactly the RGB conversion §10.5 measured at 38 % of the pass,
+to avoid a fault the pass already tolerates.

@@ -105,6 +105,13 @@ struct UITests {
         /// `publishFailed` — Photos will not take a bare audio file — so the
         /// picker has to *force* the folder, not merely prefer it, and Start
         /// has to stay disabled until there is a folder to force it into.
+        // `Flow.seed` is the `#if DEBUG` screenshot harness, so the three tests
+        // that pose flow state cannot exist in a Release test bundle — which
+        // `BenchTests.tv1EndToEnd` needs, since the app's own `-naqiScreen`
+        // hook is DEBUG-only and a Debug binary can only measure `-Onone`.
+        // Their absence in Release is the harness being unreachable there,
+        // which is the whole point of it.
+        #if DEBUG
         @Test("An audio-only source forces the folder destination and gates Start")
         @MainActor
         func audioOnlyForcesFolder() throws {
@@ -135,6 +142,7 @@ struct UITests {
             flow.setDestination(.photos)
             #expect(flow.destination == .userFolder)
         }
+        #endif
 
         /// The share extension carries no options, so the app decides where a
         /// shared-in video lands. It used to decide `.photos` unconditionally —
@@ -180,6 +188,7 @@ struct UITests {
         /// `Publish` a destination directly, so all of them would still pass if
         /// `Flow.start` dropped the folder on the floor and the job published to
         /// Photos — the exact class of bug the last integration pass found twice.
+        #if DEBUG
         @Test("Start puts the chosen destination and folder on the job it enqueues")
         @MainActor
         func startCarriesTheDestination() async throws {
@@ -227,6 +236,7 @@ struct UITests {
             #expect(flow.destination == .photos)
             #expect(flow.canStart)
         }
+        #endif
     }
 
     // MARK: - Drag and drop

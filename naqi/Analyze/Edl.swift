@@ -191,8 +191,17 @@ enum AnalyzeConstants {
     static let minFullFrameMs: Int64 = 500
 
     /// Consecutive failed detections that mean the detector is broken rather
-    /// than unlucky. See `DetectFailures`.
-    static let detectFailStreakCap = 10
+    /// than unlucky — 3 s of source at `sampleFPS`. See `DetectFailures`.
+    ///
+    /// Measured, not guessed, and deliberately generous. The tv1 clip failed
+    /// in a **burst of four consecutive** frames: at 100 ms apart they are the
+    /// same shot, same face, same size, so failures correlate and a burst is
+    /// the expected shape rather than the surprise. The costs are asymmetric —
+    /// too high wastes ~3 s before giving up on a detector that is genuinely
+    /// broken, too low kills a 90-minute job on a bad second of content. The
+    /// scattered-rate check is the real safety net; this one only has to fail
+    /// fast enough that a broken detector does not analyze a whole film first.
+    static let detectFailStreakCap = 30
     /// ...and the share of the whole pass that may fail scattered, in percent.
     static let detectFailPercentCap = 2
 }

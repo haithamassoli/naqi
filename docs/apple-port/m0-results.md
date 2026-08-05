@@ -110,11 +110,31 @@ escaping it.
 | htdemucs loaded + one inference | 1102 MB |
 | **delta** | **+842 MB** |
 
-Android measured **1.30 GB** for the same 2.6 s segment, so Apple is meaningfully leaner, with ~694 MB
-of the 1536 MB budget left for the video pipeline. The absolute figure is still a *simulator* number
-(`phys_footprint` there reports the host process) — only the delta is trustworthy, and M7 must
-re-take this on a device. `ModelRegistry.evict(_:)` exists so the arena is released once a job ends
-rather than held while the user browses.
+Android measured **1.30 GB** for the same 2.6 s segment, so Apple is leaner on the delta.
+
+> ### CORRECTION (M7): the absolute is a real number, and the headroom is smaller
+>
+> This section originally said `phys_footprint` on the simulator "reports the host process", so
+> "only the delta is trustworthy". **That is wrong.** `MemoryFootprint.current()` calls
+> `task_info(mach_task_self_, TASK_VM_INFO, …)` — `mach_task_self_` is the *calling* task, and a
+> simulator app is its own native macOS process. It reads that process's own footprint, not the
+> Mac's and not the host tooling's.
+>
+> The measurement that settles it: on the **same** 12.8 s clip, a censor-only job peaked at
+> **471 MB** and a music-only job at **1629 MB**. A figure that tracks which models were loaded by
+> 3.5× is reporting this app's allocations. An ambient host reading could not do that.
+>
+> What stays true is narrower: a simulator process is not a phone. Different framework set,
+> different allocator behaviour, x86-free but still macOS. So the absolute **bounds** the device
+> figure rather than predicting it — but it is a real, workload-driven number, and treating it as
+> unreadable hid a budget violation for a whole milestone.
+>
+> **Consequence.** Read as an absolute, 1102 MB of the 1536 MB budget leaves **434 MB** for the
+> video pipeline, not the ~694 MB this section inferred from the delta. And the music-only job's
+> measured 1629 MB peak is already **over** budget — see `docs/apple-port/m7-perf-results.md`.
+
+`ModelRegistry.evict(_:)` exists so the arena is released once a job ends rather than held while the
+user browses.
 
 ## Graph IO — dumped from the shipped artifacts, not from docs
 

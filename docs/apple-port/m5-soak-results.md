@@ -81,6 +81,13 @@ Sampled externally with `footprint -p` every 60 s for the whole run:
 
 Flatness across segments is the anti-leak evidence; the absolute is a simulator figure.
 
+> **This 236 MB is NOT a proof of the 1.5 GB budget, and must not be read as one.** The asset is
+> 480×854, chosen so 90 minutes of output would fit the disk. Footprint scales with **frame area**,
+> not duration: the same build peaks at **471 MB** on a *12.8-second* 1080×1920 clip — twice this
+> figure at 1/400th the length. What this run proves is that memory is **flat across segments**,
+> i.e. no per-segment leak over 90 minutes. The budget question is answered at full resolution in
+> `m7-perf-results.md`.
+
 > **`ps -o rss` is the wrong tool and reads 10× high here** — 2700 MB against 236 MB of real
 > footprint, because a simulator app is a host process whose RSS includes shared mappings and the
 > simulator's own address space. `phys_footprint` is what jetsam measures.

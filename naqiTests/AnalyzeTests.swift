@@ -345,6 +345,16 @@ struct AnalyzeTests {
     func detectFailureTolerance() {
         var f = DetectFailures()
 
+        // The shape tv1 actually produced: a burst of four consecutive, twice
+        // isolated. The cap must clear an observed burst with room to spare,
+        // or a bad second of content kills a 90-minute job.
+        for _ in 0..<4 {
+            let giveUp = f.failed()
+            #expect(giveUp == false, "a 4-frame burst tripped the cap")
+        }
+        f.succeeded()
+        f = DetectFailures()
+
         // The real shape: one bad frame between good ones, over and over.
         // `failed()` mutates, so it cannot be called inside the `#expect`
         // macro's captured expression.

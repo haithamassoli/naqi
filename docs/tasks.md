@@ -94,7 +94,7 @@ Android carry-overs are cited inline — they are measured findings, not guesses
 **Exit:** submitted for review.
 
 - [ ] Full parity suite on floor iPhone + M-series Mac; record numbers next to S23 baselines — **needs hardware**
-- [ ] 90-min film on passively cooled iPhone: completes despite throttling; peak RAM ≤ 1.5 GB — **needs hardware.** The simulator reports the *host* process's `phys_footprint`, so only the +842 MB delta from M0 is a real number
+- [ ] 90-min film on passively cooled iPhone: completes despite throttling; peak RAM ≤ 1.5 GB — **needs hardware** for the device figure, but the simulator number is real and already shows a problem. `phys_footprint` is this app's own task, not the host's (CORRECTION in `m0-results.md`): censor-only on a 12.8 s 1080p clip peaks at **471 MB**, music-only at **1629 MB — over the 1536 MB budget**. The M5 soak's 236 MB does not clear this: that asset was 480×854, and footprint scales with frame area, not duration
 - [ ] Kill/reboot/resume matrix re-run on **release** build. Debug-only coverage already hid one bug here (`AVAssetTrack.asset` is weak; an optimised build releases it before the reader is made)
 - [x] Privacy nutrition label — `naqi/PrivacyInfo.xcprivacy`: no tracking, no collected data, three required-reason APIs each traced to its call site. "No networking" **verified**, not asserted: no `URLSession` symbols in the binary, no networking framework linked
 - [x] App Store listing EN/AR — `docs/apple-port/store-listing-apple.md`. Four Play-listing claims are false on Apple and are removed rather than softened (bundled models not a download; no MKV/WebM — AVFoundation cannot demux Matroska; iOS 18/macOS 15; resume rather than background work)

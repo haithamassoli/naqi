@@ -1,6 +1,9 @@
 import Testing
+import AVFoundation
+import CoreMedia
 import Foundation
 import OnnxRuntimeBindings
+import os
 @testable import naqi
 
 /// Records the numbers the PRD asks for next to the Android S23 baselines.
@@ -32,6 +35,10 @@ struct BenchTests {
     /// container is what the shell harness already did, and it is the only
     /// location proven readable from inside.
     static let tv1 = URL.documentsDirectory.appending(path: "bench-tv1.mp4")
+
+    /// 32 min of 29.97 fps — past the real 30-minute gate, and no segment cut
+    /// lands on a frame boundary. See `longSoak2997`.
+    static let soak2997 = URL.documentsDirectory.appending(path: "soak-2997.mp4")
 
 
     /// Swift's String(format:) has no %s; pad explicitly.
@@ -250,6 +257,127 @@ struct BenchTests {
                      baseline < 400 ? "" : "  ⚠ shared process, peak is cumulative"))
 
         #expect(peak > 0)
+    }
+
+    /// The soak M5 could not run: **29.97 fps, past the real 30-minute gate.**
+    ///
+    /// `m5-soak-results.md` proved resume and no per-segment leak on a 90-minute
+    /// asset, and said plainly what it did *not* prove: that asset is 30/1 fps,
+    /// so every 300 000 ms cut is an exact frame time and the run never touched
+    /// the path the reader head-guard exists for. At 29.97 fps **no** cut is
+    /// frame-aligned — 8991.009, 17982.018, 26973.027 — which is the case where
+    /// `AVAssetReader` hands back the straddling sample with its PTS rewritten
+    /// to the range start, and the pre-roll test then writes that frame into
+    /// *both* neighbouring segments.
+    ///
+    /// The symptom of that bug is duplicate PTS and nothing else, so that is
+    /// what this counts, over every frame of the output. Covered at unit level
+    /// by `RenderTests` cutting at 3010/7010 ms; this is the end-to-end proof.
+    ///
+    ///     ffmpeg -f concat -safe 0 -i <(printf "file '$PWD/qa-assets/tv1-h264.mp4'\n%.0s" 1 2 3) \
+    ///            -c copy qa-assets/long-2997.mp4
+    ///     D=$(xcrun simctl get_app_container <udid> com.haithamassoli.naqi data)  # or the Mac container
+    ///     cp qa-assets/long-2997.mp4 "$D/Documents/soak-2997.mp4"
+    @Test("29.97 fps past the 30-minute gate: segmented, and no duplicated seam frames",
+          .enabled(if: FileManager.default.fileExists(atPath: BenchTests.soak2997.path)),
+          .timeLimit(.minutes(60)))
+    func longSoak2997() async throws {
+        defer { try? FileManager.default.removeItem(at: Self.soak2997) }
+        let src = try await MediaSource.probe(Self.soak2997)
+        let durationMs = Int64(src.duration.seconds * 1000)
+        #expect(durationMs >= Checkpoint.longSourceThresholdMs,
+                "\(durationMs) ms is under the \(Checkpoint.longSourceThresholdMs) ms gate — not segmented")
+
+        var ops = FilterOps()
+        ops.removeMusic = false
+        ops.censor = true
+
+        // Deliberately NOT cleaned up: when this fails, the output is the
+        // evidence, and re-running to get it back costs seven minutes.
+        let folder = Fixtures.scratch("soak-2997-out")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        let job = Job.capture(source: Self.soak2997, ops: ops, destination: .userFolder, folder: folder)
+        WorkDir.clear(Checkpoint.key(source: Self.soak2997, ops: ops))
+
+        let stages = OSAllocatedUnfairLock<Set<Job.Stage>>(initialState: [])
+        MemoryFootprint.resetPeak()
+        let t = ContinuousClock.now
+        let done = try await JobRunner.run(job, progress: { p in
+            if let s = p.stage { stages.withLock { _ = $0.insert(s) } }
+        })
+        let ms = t.duration(to: .now).milliseconds
+
+        #expect(done.shape == .segmented, "a \(durationMs) ms source ran as \(done.shape)")
+        #expect(stages.withLock { $0.contains(.concat) }, "the concat stage never posted")
+
+        let out = try await MediaSource.probe(try #require(done.output.url))
+        let (frames, duplicateMs) = try await Self.scanPTS(out.url)
+        let duplicates = duplicateMs.count
+        let inFrames = try await RenderTests.sampleCount(src.url, .video)
+        // Where they land relative to the 5-minute cuts is the whole diagnosis:
+        // at a seam it is the head guard, anywhere else it is not.
+        let seams = stride(from: Checkpoint.segmentMs, to: durationMs, by: Int(Checkpoint.segmentMs))
+            .map { Int64($0) }
+        let nearSeam = duplicateMs.filter { d in seams.contains { abs($0 - d) < 2_000 } }.count
+
+        print("""
+
+            === 29.97 fps soak (\(String(format: "%.1f", src.duration.seconds)) s, \
+            \(durationMs / Checkpoint.segmentMs + 1) segments) ===
+            \(String(format: "wall %.0f s, peak %.0f MB", ms / 1000,
+                     Double(MemoryFootprint.peakBytes) / 1_048_576))
+            frames in \(inFrames) → out \(frames)   duplicate PTS: \(duplicates) \
+            (\(nearSeam) within 2 s of a cut, \(duplicates - nearSeam) elsewhere)
+            duplicate times (ms): \(duplicateMs.prefix(20).map(String.init).joined(separator: ", "))
+            segment cuts (ms):    \(seams.map(String.init).joined(separator: ", "))
+            duration in \(String(format: "%.3f", src.duration.seconds)) s → \
+            out \(String(format: "%.3f", out.duration.seconds)) s
+            """)
+
+        // KNOWN ISSUE, diagnosed down to a 1.2-second reproduction in
+        // `RenderTests.segmentedConcat2997` — read that comment, not this one.
+        // Short version: the render side is correct, the composition geometry
+        // is exact, and `AVAssetExportPresetPassthrough` emits ~1 frame per
+        // seam that the composition does not contain. Only at non-integer
+        // frame durations, which is why M5's 30/1 fps soak saw none.
+        withKnownIssue("passthrough export duplicates ~1 frame per seam at 29.97 fps") {
+            #expect(duplicates == 0, """
+                \(duplicates) duplicated frames at \(duplicateMs.prefix(10)) ms
+                """)
+            #expect(frames == inFrames, "the join holds \(frames) of \(inFrames) frames")
+        }
+        #expect(abs(out.duration.seconds - src.duration.seconds) < 1.0,
+                "the join is \(out.duration.seconds)s against the source's \(src.duration.seconds)s")
+    }
+
+    /// Frame count and every duplicated presentation time, without decoding —
+    /// `outputSettings: nil` is passthrough, so this walks 57 000 samples in
+    /// seconds rather than re-running the whole decoder.
+    ///
+    /// Returns the duplicates **sorted by time**, not in the order they were
+    /// met: `copyNextSampleBuffer` yields decode order, so with B-frames the
+    /// first duplicate encountered says nothing about where in the movie the
+    /// problem is.
+    static func scanPTS(_ url: URL) async throws -> (frames: Int, duplicateMs: [Int64]) {
+        let asset = AVURLAsset(url: url)
+        guard let track = try await asset.loadTracks(withMediaType: .video).first else { return (0, []) }
+        let reader = try AVAssetReader(asset: asset)
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
+        reader.add(output)
+        reader.startReading()
+
+        var frames = 0
+        var seen = Set<Int64>()
+        var dups: [Int64] = []
+        while let sb = output.copyNextSampleBuffer() {
+            let pts = CMSampleBufferGetPresentationTimeStamp(sb)
+            guard pts.isNumeric else { continue }
+            frames += 1
+            let us = pts.convertScale(1_000_000, method: .default).value
+            if !seen.insert(us).inserted { dups.append(us / 1000) }
+        }
+        reader.cancelReading()
+        return (frames, dups.sorted())
     }
 
     /// The like-for-like end-to-end number the PRD's performance goal is judged

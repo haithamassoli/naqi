@@ -214,3 +214,38 @@ to avoid a fault the pass already tolerates.
 > thermal or memory pressure, the cost of being wrong is a dead 90-minute job, and the bound in the
 > other direction is what stops a broken detector shipping an uncensored video. The original text
 > above says "on real content" — that was true of where it was found, and wrong about why.
+
+## 15. Passthrough export duplicates ~1 frame per seam at non-integer frame rates
+
+Found by the 29.97 fps soak M5 said it could not run (`m5-soak-results.md` was explicit that its
+30/1 fps asset made every cut frame-aligned, so the seam paths went untested). Reproduced in **1.2
+seconds** by `RenderTests.segmentedConcat2997`, which is where the working notes live.
+
+**What is NOT wrong**, each measured rather than assumed:
+
+- `RenderPass`'s range filter. Three 10 s segments of a 900-frame 29.97 clip render exactly
+  300 + 300 + 300 = 900 frames. Asserted live in that test.
+- The integer-millisecond truncation at the boundary. Frame 8991 lands at 299999 ms and 8992 at
+  300033 ms, cleanly either side of a 300000 ms cut.
+- `Remux`'s running cursor and edit lists. Every segment reports
+  `trackRange 0.0000..+10.0100, assetDur 10.0100` — identical, no edit-list discrepancy — so the
+  composition places them at 0, 10.01, 20.02 with no overlap.
+
+**What is wrong:** 900 frames go into the composition and **904 come out of the export**, with
+duplicate PTS at 66, 10143, 20220 and 30030 ms. The last is *past the source's final frame* at
+29996 ms, so the exporter is emitting frames the composition does not contain. That points at
+`AVAssetExportPresetPassthrough` over a composition whose frame duration (1001/30000) is not a whole
+number of timescale ticks.
+
+At 32 minutes: 7 duplicates, 9 extra frames, total duration 7 ms **short**.
+
+**Severity: low, and no worse than the app being replaced.** Hazard 12 records that Android *loses*
+~2 frames per seam and accepts a ~100 ms freeze at each; this gains ~1. It ships playable output —
+M5's 90-minute soak produced a correct 702 MB file. Held as a `withKnownIssue` in both
+`RenderTests.segmentedConcat2997` (fast) and `BenchTests.longSoak2997` (end-to-end), so either one
+fails the moment it is fixed.
+
+**Do not start by rewriting the concat.** The next experiment is one step: read the composition
+directly with `AVAssetReader` instead of exporting it. Right frame count there → the fix is the
+export (re-encode the join, or write it sample-by-sample with `AVAssetWriter`). Wrong there → it is
+`insertTimeRange` after all, and the geometry above is lying.

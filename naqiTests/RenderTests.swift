@@ -557,6 +557,109 @@ struct RenderTests {
     /// does not care about resolution, and five 1080p transcodes in one process
     /// is what got this test's own process killed on a loaded machine while it
     /// was being written. `segmentCensorOffset` runs the real QA clip.
+    /// The 29.97 fps seam, in seconds instead of the seven minutes a real soak
+    /// costs.
+    ///
+    /// `segmentedConcatMatchesMonolithic` below is 30 fps on a 600 timescale, so
+    /// its cuts land between frames but the segment *durations* stay exact
+    /// multiples of the frame duration. At 30000/1001 they do not, and a
+    /// 32-minute end-to-end soak found the consequence: **7 duplicated PTS,
+    /// 9 extra frames, and a total 7 ms SHORTER than the source** — more frames
+    /// in less time, which only overlapping segments can produce. Six of the
+    /// seven sat just past a cut, at a growing offset (146, 211, 293, 358, 407,
+    /// 472 ms), which is the accumulating-cursor shape hazard 11 warned about.
+    ///
+    /// Pre-existing, not a regression: M5's 90-minute soak found 0 duplicates
+    /// across 162 049 frames — because that asset is 30/1 fps.
+    @Test("29.97 fps segments concatenate without duplicating a frame")
+    func segmentedConcat2997() async throws {
+        let sourceURL = Fixtures.scratch("seg2997-source.mp4")
+        // 30000/1001 is exactly 29.97. 900 frames = 30.03 s.
+        try await Self.syntheticClip(sourceURL, size: CGSize(width: 320, height: 240),
+                                     frames: 900, tickStride: 1_001, timescale: 30_000)
+        let src = try await MediaSource.probe(sourceURL)
+        let durationMs = src.duration.convertScale(1000, method: .default).value
+
+        var ops = FilterOps()
+        ops.blurAmount = 0
+        ops.grayscale = true
+        let edl = Edl(censorIntervalsMs: [])
+
+        // Three 10 s segments. At 29.97 none of these is a frame time:
+        // 10000 ms is frame 299.700, 20000 ms is frame 599.400.
+        let cuts: [Int64] = [0, 10_000, 20_000, durationMs]
+        #expect(cuts.dropFirst().dropLast().allSatisfy { $0 * 30_000 % (1_001 * 1_000) != 0 },
+                "a cut landed exactly on a frame, which is the case that already works")
+
+        var parts: [URL] = []
+        var rendered = 0
+        for (i, pair) in zip(cuts, cuts.dropFirst()).enumerated() {
+            let url = Fixtures.scratch("seg2997-\(i).mp4")
+            let r = try await RenderPass.run(source: src, edl: edl, ops: ops, output: url,
+                                             range: pair.0...pair.1)
+            parts.append(url)
+            rendered += r.frames
+        }
+
+        // Per-segment geometry, printed because the join's failure mode depends
+        // on whether the media range and the presentation duration agree.
+        for (i, u) in parts.enumerated() {
+            let a = AVURLAsset(url: u)
+            let t = try #require(try await a.loadTracks(withMediaType: .video).first)
+            let tr = try await t.load(.timeRange)
+            let assetDur = try await a.load(.duration)
+            let n = try await Self.sampleCount(u, .video)
+            print(String(format: "seg %d: %d frames  trackRange %.4f..+%.4f  assetDur %.4f",
+                         i, n, tr.start.seconds, tr.duration.seconds, assetDur.seconds))
+        }
+
+        let joined = Fixtures.scratch("seg2997-joined.mp4")
+        try await Remux.concat(parts, to: joined)
+        let (frames, duplicateMs) = try await BenchTests.scanPTS(joined)
+        let sourceFrames = try await Self.sampleCount(sourceURL, .video)
+
+        // The render side is CORRECT and is asserted live: the segments contain
+        // exactly the source's frames, so nothing above this line is at fault.
+        #expect(rendered == sourceFrames,
+                "the segments rendered \(rendered) of \(sourceFrames) frames before the join")
+
+        // KNOWN ISSUE — the join, and only at non-integer frame durations.
+        //
+        // Diagnosis so far, all of it printed above: each segment is 300 frames
+        // with `trackRange 0..+10.0100` and `assetDur 10.0100`, so the
+        // composition geometry is exact — segments land at 0, 10.01, 20.02 with
+        // no overlap and no edit-list discrepancy. 900 frames go in and **904
+        // come out**, with duplicates at [66, 10143, 20220, 30030] ms. The last
+        // of those is past the source's final frame at 29996 ms, so the
+        // exporter is emitting frames the composition does not contain rather
+        // than segments overlapping.
+        //
+        // That points at `AVAssetExportPresetPassthrough` over a composition
+        // whose frame duration (1001/30000) is not an integer number of
+        // timescale ticks — not at `Remux`'s cursor, which the geometry above
+        // clears.
+        //
+        // NOT a regression, and no worse than the app it replaces: M5's
+        // 90-minute soak found 0 duplicates in 162 049 frames because that
+        // asset is 30/1 fps, and Android's own join *loses* ~2 frames per seam
+        // with a ~100 ms freeze at each (hazard 12). This gains ~1 frame per
+        // seam — 7 across 32 minutes, 7 ms of duration.
+        //
+        // NEXT EXPERIMENT, before changing anything: read the composition
+        // directly with `AVAssetReader` instead of exporting it. If the frame
+        // count is right there, the fix is the export step (re-encode the join,
+        // or write it with `AVAssetWriter` sample-by-sample); if it is already
+        // wrong, it is `insertTimeRange`.
+        withKnownIssue("passthrough export duplicates ~1 frame per seam at 29.97 fps") {
+            #expect(duplicateMs.isEmpty, """
+                \(duplicateMs.count) duplicated PTS at \(duplicateMs) ms
+                """)
+            #expect(frames == sourceFrames, "the join holds \(frames) of \(sourceFrames) frames")
+        }
+
+        for u in parts + [joined, sourceURL] { try? FileManager.default.removeItem(at: u) }
+    }
+
     @Test("N segments concatenate back into the monolithic render")
     func segmentedConcatMatchesMonolithic() async throws {
         let sourceURL = Fixtures.scratch("seg-source.mp4")
@@ -980,15 +1083,21 @@ struct RenderTests {
     ///   value buys **duration without frames**, which is the only affordable
     ///   way to build a source past `Checkpoint.longSourceThresholdMs`: 31
     ///   minutes at 30 fps is 55 800 frames to encode and then decode again.
+    /// - Parameter timescale: 600 with `tickStride` 20 is the 30 fps default.
+    ///   Pass **30000 / 1001** for true 29.97, which 600 cannot express
+    ///   (600/29.97 = 20.02) — and which is the only frame rate where a
+    ///   5-minute segment cut never lands on a frame.
     static func syntheticClip(_ url: URL, size: CGSize, frames: Int,
                               rotation: CGAffineTransform = .identity,
-                              tickStride: Int64 = 20) async throws {
+                              tickStride: Int64 = 20,
+                              timescale: CMTimeScale = 600) async throws {
         let info = MediaSource.VideoInfo(
             naturalSize: size,
             transform: VideoTransform(preferredTransform: rotation, naturalSize: size),
-            nominalFrameRate: Float(600 / tickStride), estimatedBitrate: 2_000_000,
+            nominalFrameRate: Float(Double(timescale) / Double(tickStride)),
+            estimatedBitrate: 2_000_000,
             codec: kCMVideoCodecType_H264, isHDR: false,
-            naturalTimeScale: 600, formatDescription: nil)
+            naturalTimeScale: timescale, formatDescription: nil)
         let w = try OutputWriter(url: url)
         w.addEncodedVideo(info, bitrate: 2_000_000)
         try w.start()
@@ -1005,7 +1114,7 @@ struct RenderTests {
                   let px else { throw MediaError.writerFailed("pool exhausted") }
             fill(px, y: UInt8(60 + (n.v * 7) % 140), cb: 100, cr: 170)
             guard sink.append(px, withPresentationTime: CMTime(value: Int64(n.v) * tickStride,
-                                                              timescale: 600))
+                                                              timescale: timescale))
             else { throw MediaError.writerFailed("append frame \(n.v)") }
             n.v += 1
             return true

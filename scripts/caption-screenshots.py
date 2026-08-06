@@ -1,10 +1,14 @@
 #!/usr/bin/env python3
 """Compose App Store caption plates over the raw in-app captures.
 
-Reads `docs/apple-port/screenshots/6.9/<n>-<screen>-<lang>.png` (1320x2868, the
-only iPhone size App Store Connect accepts) and writes `.../plated/` at the same
-size — the plate is drawn INTO the frame rather than added above it, because a
-letterboxed composite is a different pixel size and gets rejected at upload.
+Usage: caption-screenshots.py [6.9|13]   (default 6.9)
+
+Reads `docs/apple-port/screenshots/<set>/<n>-<screen>-<lang>.png` and writes
+`.../plated/` at the same size — the plate is drawn INTO the frame rather than
+added above it, because a letterboxed composite is a different pixel size and
+gets rejected at upload. `6.9` is 1320x2868 (iPhone 17 Pro Max), `13` is
+2064x2752 (iPad Pro 13-inch); those are the two slots App Store Connect
+requires for this app.
 
 Arabic is laid out right-to-left and shaped: PIL renders Unicode Arabic
 unshaped and in logical order, so the glyphs come out disconnected and
@@ -17,7 +21,10 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFont
 
 ROOT = Path(__file__).resolve().parent.parent
-SRC = ROOT / "docs/apple-port/screenshots/6.9"
+# Which device set to plate: `6.9` (iPhone, 1320x2868) or `13` (iPad,
+# 2064x2752). Plate geometry is derived from the frame in `plate()`, so a new
+# accepted size needs a directory of captures and nothing here.
+SRC = ROOT / "docs/apple-port/screenshots" / (sys.argv[1] if len(sys.argv) > 1 else "6.9")
 DST = SRC / "plated"
 
 # From docs/apple-port/store-listing-apple.md — kept in one place there, copied
@@ -36,8 +43,13 @@ CAPTIONS = {
 INK = (16, 24, 22)
 PAPER = (247, 249, 248)
 
-PLATE_H = 520          # of 2868; leaves the device art dominant
-MARGIN = 88
+# Proportions, not pixels — measured on the 6.9" frame (1320x2868) and applied
+# to whatever size the capture is, so the iPad set composes from the same
+# numbers. Plate height and type scale with height, the margin with width.
+PLATE_FRAC = 520 / 2868   # leaves the device art dominant
+MARGIN_FRAC = 88 / 1320
+TYPE_FRAC = 92 / 2868
+TYPE_MIN_FRAC = 56 / 2868
 
 
 def shape_arabic(text):
@@ -121,15 +133,17 @@ def wrap(draw, text, f, max_w):
 def plate(src_path, caption, arabic, out_path):
     img = Image.open(src_path).convert("RGB")
     W, H = img.size
+    plate_h = round(H * PLATE_FRAC)
+    margin = round(W * MARGIN_FRAC)
     canvas = Image.new("RGB", (W, H), PAPER)
     # Device art keeps its aspect ratio and sits below the plate.
-    art_h = H - PLATE_H
+    art_h = H - plate_h
     scale = min(W / img.width, art_h / img.height)
     art = img.resize((int(img.width * scale), int(img.height * scale)), Image.LANCZOS)
-    canvas.paste(art, ((W - art.width) // 2, PLATE_H))
+    canvas.paste(art, ((W - art.width) // 2, plate_h))
 
     d = ImageDraw.Draw(canvas)
-    size = 92
+    size = round(H * TYPE_FRAC)
     # Wrap in LOGICAL order, then shape+bidi each line separately.
     #
     # Doing it the other way round — bidi the whole caption, then word-wrap the
@@ -138,14 +152,14 @@ def plate(src_path, caption, arabic, out_path):
     # splitting on spaces stranded it alone on a second line.
     probe = shape_arabic(caption) if arabic else caption
     f = font(size, arabic, probe)
-    lines = wrap(d, caption, f, W - 2 * MARGIN)
-    while len(lines) > 2 and size > 56:
+    lines = wrap(d, caption, f, W - 2 * margin)
+    while len(lines) > 2 and size > round(H * TYPE_MIN_FRAC):
         size -= 8
         f = font(size, arabic, probe)
-        lines = wrap(d, caption, f, W - 2 * MARGIN)
+        lines = wrap(d, caption, f, W - 2 * margin)
 
     total = sum(int(size * 1.22) for _ in lines)
-    y = (PLATE_H - total) // 2
+    y = (plate_h - total) // 2
     for line in lines:
         visual = shape_arabic(line) if arabic else line
         w = d.textlength(visual, font=f)

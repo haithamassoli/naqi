@@ -92,8 +92,12 @@ struct PickScreen: View {
         // it has to be the original bytes.
         .photosPicker(isPresented: $showPhotosPicker, selection: $photoItem,
                       matching: .videos, preferredItemEncoding: .current)
+        // The two roots, not a list of containers: `.video`, `.mpeg4Movie` and
+        // `.quickTimeMovie` all conform to `.movie`, and `.mp3`, `.wav`,
+        // `.mpeg4Audio` and the rest to `.audio`. A bare audio file is a job
+        // shape of its own (`Job.shape`, `audioOnly`) — music removal only.
         .fileImporter(isPresented: $showFileImporter,
-                      allowedContentTypes: [.movie, .video, .mpeg4Movie, .quickTimeMovie]) { result in
+                      allowedContentTypes: [.movie, .audio]) { result in
             if case .success(let url) = result { flow.adoptFileImport(url) }
         }
         .confirmationDialog(Text(.pickVideoNone), isPresented: $showSourceChoice, titleVisibility: .visible) {
@@ -206,7 +210,7 @@ struct PickScreen: View {
         // reports `isTargeted` without ever showing the payload — so the target
         // highlights for a PDF and then refuses it.
         .dropDestination(for: URL.self) { urls, _ in
-            guard let url = urls.first(where: isDroppableMovie) else { return false }
+            guard let url = urls.first(where: isDroppableSource) else { return false }
             flow.adoptFileImport(url)
             return true
         } isTargeted: { isDropTargeted = $0 }
@@ -214,24 +218,32 @@ struct PickScreen: View {
 
     /// One card, two rows — the pair is a single decision about what this run
     /// does, so it is one card and not two.
+    ///
+    /// An audio file drops to one row. The censor row is *removed* rather than
+    /// disabled: unlike the Photos row on Options, which is greyed with a
+    /// caption explaining why, there is nothing to explain here beyond "this
+    /// file has no picture", which the row's own absence says.
     private var operationCard: some View {
         NaqiCard(padding: 0) {
             ToggleTile(icon: .musicOff,
                        title: .pickOpMusicTitle,
                        desc: .pickOpMusicDesc,
                        isOn: $flow.ops.removeMusic)
-            NaqiRowDivider()
-            ToggleTile(icon: .shield,
-                       title: .pickOpFacesTitle,
-                       // The substituted line asserts what IS happening; the
-                       // off line describes what turning it on would do. An off
-                       // row reading "Women · and flagged scenes." would assert
-                       // censoring that is not running.
-                       desc: flow.ops.censor
-                           ? .pickOpFacesDesc(String(localized: flow.ops.who.label))
-                           : .pickOpFacesDescOff,
-                       isOn: $flow.ops.censor)
+            if !flow.isAudioOnly {
+                NaqiRowDivider()
+                ToggleTile(icon: .shield,
+                           title: .pickOpFacesTitle,
+                           // The substituted line asserts what IS happening; the
+                           // off line describes what turning it on would do. An off
+                           // row reading "Women · and flagged scenes." would assert
+                           // censoring that is not running.
+                           desc: flow.ops.censor
+                               ? .pickOpFacesDesc(String(localized: flow.ops.who.label))
+                               : .pickOpFacesDescOff,
+                           isOn: $flow.ops.censor)
+            }
         }
+        .animation(Naqi.spring, value: flow.isAudioOnly)
     }
 
     // MARK: - Photos

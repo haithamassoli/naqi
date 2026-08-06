@@ -1850,13 +1850,13 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "MP4 · MOV · M4V"
+            "value" : "MP4 · MOV · MP3 · M4A · WAV"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "MP4 · MOV · M4V"
+            "value" : "MP4 · MOV · MP3 · M4A · WAV"
           }
         }
       }
@@ -1867,13 +1867,13 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "اختر فيديو"
+            "value" : "اختر فيديو أو ملفًا صوتيًا"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Pick a video"
+            "value" : "Pick a video or audio file"
           }
         }
       }
@@ -1884,13 +1884,13 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "تم اختيار الفيديو"
+            "value" : "تم اختيار الملف"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Video selected"
+            "value" : "File selected"
           }
         }
       }

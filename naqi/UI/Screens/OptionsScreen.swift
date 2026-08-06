@@ -178,8 +178,8 @@ struct OptionsScreen: View {
                 // Disabled rather than hidden: a row that vanishes teaches
                 // nothing, and the caption under the card says why this one
                 // cannot be picked.
-                .disabled(flow.mustUseFolder)
-                .opacity(flow.mustUseFolder ? 0.4 : 1)
+                .disabled(flow.isAudioOnly)
+                .opacity(flow.isAudioOnly ? 0.4 : 1)
 
                 NaqiRowDivider()
 
@@ -199,7 +199,7 @@ struct OptionsScreen: View {
                     }
                 }
             }
-            if flow.mustUseFolder {
+            if flow.isAudioOnly {
                 Text(.optDestAudioOnly)
                     .font(Naqi.F.bodySmall)
                     .foregroundStyle(Naqi.C.onSurfaceVariant)
@@ -208,7 +208,7 @@ struct OptionsScreen: View {
                     .padding(.horizontal, Naqi.S.s1)
             }
         }
-        .animation(Naqi.spring, value: flow.mustUseFolder)
+        .animation(Naqi.spring, value: flow.isAudioOnly)
     }
 
     // MARK: - Music

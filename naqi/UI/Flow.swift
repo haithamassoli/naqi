@@ -49,15 +49,17 @@ struct MovieFile: Transferable {
 /// otherwise become a job that dies at preflight as "the file could not be
 /// read", which blames the pipeline for a mis-drop.
 ///
-/// Type comes from the file when the file is there, and from the extension
-/// when it is not; `public.movie` covers every case the importer lists, since
-/// `.video`, `.mpeg4Movie` and `.quickTimeMovie` all conform to it. An
-/// audio-only `.mp4` is a movie container and is deliberately still accepted —
-/// `removeMusic` is a real job shape for it (`Job.shape`, `audioOnly`).
-func isDroppableMovie(_ url: URL) -> Bool {
+/// Type comes from the file when the file is there, and from the extension when
+/// it is not. `public.movie` and `public.audio` are the two roots the importer
+/// lists — `.video`, `.mpeg4Movie`, `.mp3`, `.wav` and the rest all conform to
+/// one of them. A bare audio file is accepted because `removeMusic` is a real
+/// job shape for it (`Job.shape`, `audioOnly`); censoring is not, which is what
+/// `Flow.isAudioOnly` turns off.
+func isDroppableSource(_ url: URL) -> Bool {
     let type = (try? url.resourceValues(forKeys: [.contentTypeKey]).contentType)
         ?? UTType(filenameExtension: url.pathExtension)
-    return type?.conforms(to: .movie) ?? false
+    guard let type else { return false }
+    return type.conforms(to: .movie) || type.conforms(to: .audio)
 }
 
 /// Four steps in a straight line. There is no route DSL because there is no
@@ -94,14 +96,18 @@ func isDroppableMovie(_ url: URL) -> Bool {
     var canContinue: Bool { source != nil && ops.isValid }
     var estimateMs: Int64 { Eta.estimateMs(durationMs: durationMs, ops: ops) }
 
-    /// A file with no video track cannot go to Photos: `PHAssetCreationRequest`
-    /// refuses a bare audio resource and the runner turns that into
-    /// `publishFailed`, a failure with no sentence the user can act on. So the
-    /// audio-only shape is **forced** to a folder rather than defaulted to one —
-    /// a default can be overridden back into a job that is certain to fail.
-    var mustUseFolder: Bool { sourceHasVideo == false }
+    /// The picked file has no picture, so there is nothing to censor and
+    /// removing music is the only thing that can be done to it. Two consequences
+    /// hang off this: the censor row is not offered, and Photos is not reachable
+    /// — `PHAssetCreationRequest` refuses a bare audio resource and the runner
+    /// turns that into `publishFailed`, a failure with no sentence the user can
+    /// act on. The folder is therefore **forced** rather than defaulted: a
+    /// default can be overridden back into a job that is certain to fail.
+    ///
+    /// `nil` — still probing, or the probe threw — is not audio-only.
+    var isAudioOnly: Bool { sourceHasVideo == false }
 
-    var destination: Destination { mustUseFolder ? .userFolder : export.destination }
+    var destination: Destination { isAudioOnly ? .userFolder : export.destination }
 
     /// Start, as opposed to Pick's Continue. A folder destination with no
     /// folder throws `destinationUnwritable("no folder chosen")` at the last
@@ -121,8 +127,24 @@ func isDroppableMovie(_ url: URL) -> Bool {
         Task { [url = new.url] in
             let probed = await Self.probe(url)
             guard source?.url == url else { return }
-            durationMs = probed.ms
-            sourceHasVideo = probed.hasVideo
+            adoptProbe(ms: probed.ms, hasVideo: probed.hasVideo)
+        }
+    }
+
+    /// What the probe's answer changes. Split out so the screenshot harness
+    /// poses the same state the probe would rather than a subset of it.
+    private func adoptProbe(ms: Int64, hasVideo: Bool?) {
+        durationMs = ms
+        sourceHasVideo = hasVideo
+        // Options carried over from the last run can only produce a job an
+        // audio file is certain to fail: censor has no picture to work on.
+        // Removing music is the one operation it *can* have done, so it is the
+        // one that is on. That row stays editable — turning it off simply
+        // leaves nothing to do, and Continue greys out the way it does for a
+        // video with both operations off.
+        if hasVideo == false {
+            ops.censor = false
+            ops.removeMusic = true
         }
     }
 
@@ -164,7 +186,7 @@ func isDroppableMovie(_ url: URL) -> Bool {
     ///   real `naqi-queue.json`.
     @discardableResult
     func drainSharedIn(into queue: JobQueue = .shared) async -> Int {
-        // `export`, not `destination`: `mustUseFolder` describes the *picked*
+        // `export`, not `destination`: `isAudioOnly` describes the *picked*
         // source, and a shared-in file is a different one.
         await ShareInbox.drain(into: queue,
                                destination: export.destination, folder: export.folder)
@@ -185,8 +207,7 @@ func isDroppableMovie(_ url: URL) -> Bool {
     /// answer would otherwise land after the seed and reset the duration.
     func seed(source: PickedSource, durationMs: Int64, hasVideo: Bool = true) {
         self.source = source
-        self.durationMs = durationMs
-        self.sourceHasVideo = hasVideo
+        adoptProbe(ms: durationMs, hasVideo: hasVideo)
     }
     #endif
 

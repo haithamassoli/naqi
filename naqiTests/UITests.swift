@@ -120,11 +120,20 @@ struct UITests {
             ExportTarget(destination: .photos, folder: nil).saveAsLastUsed()
 
             let flow = Flow()
+            // The censoring default the picker starts on, so the coercion below
+            // is asserted against a state that really had to change.
+            flow.ops = FilterOps(removeMusic: false, censor: true)
             let clip = FileManager.default.temporaryDirectory.appendingPathComponent("clip.m4a")
             flow.seed(source: PickedSource(url: clip, name: "clip.m4a"),
                       durationMs: 60_000, hasVideo: false)
 
-            #expect(flow.mustUseFolder)
+            #expect(flow.isAudioOnly)
+            // There is no picture to censor and exactly one operation left, so
+            // the file arrives on Options as a music-removal job rather than as
+            // one that dies at preflight with `noVideoTrack`.
+            #expect(!flow.ops.censor)
+            #expect(flow.ops.removeMusic)
+            #expect(Job.shape(ops: flow.ops, hasVideoTrack: false, segmented: false) == .audioOnly)
             #expect(flow.destination == .userFolder)
             // Continue must stay live: Options is the only screen that can pick
             // the folder, so gating Pick on it would strand the source.
@@ -239,7 +248,7 @@ struct UITests {
             let flow = Flow()
             let clip = FileManager.default.temporaryDirectory.appendingPathComponent("clip.mp4")
             flow.seed(source: PickedSource(url: clip, name: "clip.mp4"), durationMs: 60_000)
-            #expect(!flow.mustUseFolder)
+            #expect(!flow.isAudioOnly)
             #expect(flow.destination == .photos)
             #expect(flow.canStart)
         }
@@ -252,27 +261,28 @@ struct UITests {
     /// `allowedContentTypes` — so this is the filter the Files importer gets for
     /// free. Without it a dropped PDF becomes a job that dies at preflight and
     /// blames the pipeline for a mis-drop.
-    @Test("Only movie files are accepted from a drop")
+    @Test("Only movie and audio files are accepted from a drop")
     func dropFiltersByType() {
         let tmp = FileManager.default.temporaryDirectory
-        for name in ["clip.mp4", "clip.mov", "clip.m4v", "CLIP.MP4"] {
-            #expect(isDroppableMovie(tmp.appendingPathComponent(name)), "\(name)")
+        for name in ["clip.mp4", "clip.mov", "clip.m4v", "CLIP.MP4",
+                     "song.mp3", "song.m4a", "song.wav", "song.aiff", "SONG.MP3"] {
+            #expect(isDroppableSource(tmp.appendingPathComponent(name)), "\(name)")
         }
-        for name in ["notes.pdf", "song.mp3", "poster.jpg", "readme.txt", "noextension"] {
-            #expect(!isDroppableMovie(tmp.appendingPathComponent(name)), "\(name)")
+        for name in ["notes.pdf", "poster.jpg", "readme.txt", "noextension"] {
+            #expect(!isDroppableSource(tmp.appendingPathComponent(name)), "\(name)")
         }
         // A directory is a URL a Finder drag produces constantly.
         let dir = tmp.appendingPathComponent("naqi-drop-\(UUID().uuidString)", isDirectory: true)
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
-        #expect(!isDroppableMovie(dir))
+        #expect(!isDroppableSource(dir))
 
         // The file on disk wins over the extension, which is how an extensionless
         // export from another app still gets in.
         let real = tmp.appendingPathComponent("naqi-drop-\(UUID().uuidString).mov")
         FileManager.default.createFile(atPath: real.path, contents: Data())
         defer { try? FileManager.default.removeItem(at: real) }
-        #expect(isDroppableMovie(real))
+        #expect(isDroppableSource(real))
     }
 
     // MARK: - Sliders

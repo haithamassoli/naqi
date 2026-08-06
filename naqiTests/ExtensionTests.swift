@@ -50,6 +50,58 @@ struct ExtensionTests {
         }
     }
 
+    /// The one guard on the share sheet's admission rule.
+    ///
+    /// A predicate here fails **silently and completely**: a typo, a stale UTI
+    /// or a bad `BETWEEN` does not fail the build, logs nothing, and shows up
+    /// only as Naqi never appearing in the share sheet. So this reads the
+    /// string out of the built `.appex` — not a copy of it — and evaluates it
+    /// against the same attachment graph the share sheet supplies.
+    @Test("the share extension admits video and audio, and nothing else")
+    func shareActivationRule() throws {
+        let appex = try #require(embedded.first { $0.lastPathComponent == "NaqiShare.appex" })
+        let dict = try #require(NSDictionary(contentsOf: appex.appendingPathComponent("Info.plist"))
+            as? [String: Any])
+        let attrs = try #require((dict["NSExtension"] as? [String: Any])?["NSExtensionAttributes"]
+            as? [String: Any])
+        let rule = try #require(attrs["NSExtensionActivationRule"] as? String,
+                                "the rule is not a predicate string — the dictionary form has no audio key")
+        let predicate = NSPredicate(format: rule)
+
+        func shares(_ ids: [String], count: Int = 1) -> Bool {
+            predicate.evaluate(with: MockContext([MockItem((0..<count).map { _ in MockAttachment(ids) })]))
+        }
+        for uti in ["public.mpeg-4", "com.apple.quicktime-movie", "public.mp3",
+                    "com.apple.m4a-audio", "com.microsoft.waveform-audio", "org.xiph.flac"] {
+            #expect(shares([uti]), "\(uti) should reach the extension")
+        }
+        for uti in ["com.adobe.pdf", "public.jpeg", "public.url", "public.plain-text"] {
+            #expect(!shares([uti]), "\(uti) must not reach the extension")
+        }
+        // The cap is the share-in promise — the app's queue is serial — and it
+        // is the part of the dictionary form the predicate had to reproduce.
+        #expect(shares(["public.mp3"], count: 10))
+        #expect(!shares(["public.mp3"], count: 11))
+        #expect(!predicate.evaluate(with: MockContext([MockItem([])])))
+    }
+
+    /// The share sheet is the one surface the app's own catalog cannot reach:
+    /// `String(localized:)` resolves against `Bundle.main`, which inside an
+    /// `.appex` is the `.appex`, so the extension carries its own. A catalog
+    /// dropped from the target — or a new string added with no Arabic — shows
+    /// the English `defaultValue` and reports nothing anywhere.
+    @Test("the share extension ships its strings in both languages")
+    func shareStringsLocalized() throws {
+        let appex = try #require(embedded.first { $0.lastPathComponent == "NaqiShare.appex" })
+        func keys(_ lang: String) -> Set<String> {
+            let url = appex.appendingPathComponent("\(lang).lproj/Localizable.strings")
+            return Set((NSDictionary(contentsOf: url) as? [String: String] ?? [:]).keys)
+        }
+        let untranslated = keys("en").subtracting(keys("ar"))
+        #expect(!keys("en").isEmpty, "no en.lproj in the appex — the catalog left the NaqiShare target")
+        #expect(untranslated.isEmpty, "English-only in the share sheet: \(untranslated.sorted())")
+    }
+
     /// The App Group is the entire share-in transport. Nil container means every
     /// drain returns 0 forever and nothing anywhere reports a problem.
     @Test("the App Group container resolves")
@@ -73,4 +125,24 @@ struct ExtensionTests {
                 "activities disabled — either the plist key or the widget target regressed")
     }
     #endif
+}
+
+// MARK: - Activation-rule mocks
+
+/// What the share sheet evaluates `NSExtensionActivationRule` against. Only the
+/// three key paths the predicate walks; `@objc` because NSPredicate reaches them
+/// through KVC, which pure-Swift properties do not answer.
+private final class MockAttachment: NSObject {
+    @objc let registeredTypeIdentifiers: [String]
+    init(_ ids: [String]) { registeredTypeIdentifiers = ids }
+}
+
+private final class MockItem: NSObject {
+    @objc let attachments: [MockAttachment]
+    init(_ a: [MockAttachment]) { attachments = a }
+}
+
+private final class MockContext: NSObject {
+    @objc let extensionItems: [MockItem]
+    init(_ i: [MockItem]) { extensionItems = i }
 }

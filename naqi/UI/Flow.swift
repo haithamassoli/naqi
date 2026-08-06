@@ -137,15 +137,10 @@ func isDroppableSource(_ url: URL) -> Bool {
         durationMs = ms
         sourceHasVideo = hasVideo
         // Options carried over from the last run can only produce a job an
-        // audio file is certain to fail: censor has no picture to work on.
-        // Removing music is the one operation it *can* have done, so it is the
-        // one that is on. That row stays editable — turning it off simply
-        // leaves nothing to do, and Continue greys out the way it does for a
-        // video with both operations off.
-        if hasVideo == false {
-            ops.censor = false
-            ops.removeMusic = true
-        }
+        // audio file is certain to fail. The row stays editable — turning music
+        // removal off simply leaves nothing to do, and Continue greys out the
+        // way it does for a video with both operations off.
+        ops.fit(hasVideo: hasVideo)
     }
 
     func adoptFileImport(_ url: URL) {

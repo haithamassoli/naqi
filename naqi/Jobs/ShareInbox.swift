@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import os
 
@@ -5,7 +6,7 @@ import os
 ///
 /// A share extension gets roughly 120 MB and is killed for exceeding it, so it
 /// cannot open a model, decode a frame or touch a video byte beyond copying the
-/// file. It therefore does exactly two things — copy the shared movie into the
+/// file. It therefore does exactly two things — copy the shared media into the
 /// App Group container, then write a manifest beside it — and the app drains
 /// the result at launch and on every foreground.
 ///
@@ -44,10 +45,8 @@ enum ShareInbox {
             // container is not the app's to keep a multi-hour job's input in,
             // and a second share of the same file must not race this one.
             let owned = adopt(media, named: handoff.fileName)
-            // Always last-used: the extension deliberately carries no options,
-            // so this is the single place share-in settings are decided.
             let job = Job.capture(source: owned,
-                                  ops: FilterOps.loadLastUsed(),
+                                  ops: await ops(for: owned),
                                   destination: destination,
                                   folder: folder,
                                   title: (handoff.fileName as NSString).deletingPathExtension)
@@ -57,6 +56,24 @@ enum ShareInbox {
         }
         if taken > 0 { Log.job.info("share inbox: enqueued \(taken)") }
         return taken
+    }
+
+    /// Last-used options, minus what the shared file cannot do — `FilterOps.fit`
+    /// is the same coercion `Flow` applies to a pick. The extension deliberately
+    /// carries no options UI, so this is the single place share-in settings are
+    /// decided, and a censor job queued on an audio file would die at
+    /// `Preflight` *after* the share sheet said it was added.
+    ///
+    /// The video-track question is asked of the file, never of its extension:
+    /// an audio-only `.mp4` is a movie container and gets this too.
+    private static func ops(for url: URL) async -> FilterOps {
+        var ops = FilterOps.loadLastUsed()
+        // Not `MediaSource.probe`: this runs for every shared item at launch,
+        // and precise-duration loading would read far more of the file than
+        // "does it have a video track" needs.
+        let tracks = try? await AVURLAsset(url: url).loadTracks(withMediaType: .video)
+        ops.fit(hasVideo: tracks.map { !$0.isEmpty })
+        return ops
     }
 
     private static func olderFirst(_ a: URL, _ b: URL) -> Bool {

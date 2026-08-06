@@ -49,6 +49,18 @@ struct FilterOps: Codable, Sendable, Equatable {
     /// At least one operation must be selected.
     var isValid: Bool { removeMusic || censor }
 
+    /// Drops what a source with no picture cannot do. Censoring has nothing to
+    /// work on and the job would die at `Preflight` with `noVideoTrack`, so
+    /// removing music — the one operation left — is the one that goes on.
+    /// `nil` (nothing could read the file) leaves the options alone: "could not
+    /// read" is not "has no picture", and `Preflight` tells that story with the
+    /// right error.
+    mutating func fit(hasVideo: Bool?) {
+        guard hasVideo == false else { return }
+        censor = false
+        removeMusic = true
+    }
+
     /// The three job shapes have disjoint performance walls, so the pipeline
     /// branches on this rather than on the two flags (`perf-plan-v4.md` §1).
     enum Shape: Sendable, Equatable {

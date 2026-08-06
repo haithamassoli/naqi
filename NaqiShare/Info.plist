@@ -6,13 +6,32 @@
 	<dict>
 		<key>NSExtensionAttributes</key>
 		<dict>
-			<!-- Videos only, and up to ten of them: "multiple shares run in
-			     order" is the share-in promise, and the app's queue is serial. -->
+			<!-- Video and audio, and up to ten of them: "multiple shares run in
+			     order" is the share-in promise, and the app's queue is serial.
+
+			     A predicate rather than the NSExtensionActivationSupports*
+			     dictionary, because that dictionary has no audio key at all —
+			     Movie/Image/File/Text/WebURL/WebPage/Attachments is the whole
+			     list, and NSExtensionActivationSupportsFileWithMaxCount would
+			     put us in the share sheet for PDFs. The BETWEEN keeps the cap
+			     the dictionary form gave for free.
+
+			     Silent-failure warning: a typo here does not fail the build and
+			     does not log — the extension simply never appears in the share
+			     sheet. `ExtensionTests.shareActivationRule` reads this exact
+			     string back out of the built .appex and evaluates it against a
+			     mock attachment graph, which is the only guard there is. -->
 			<key>NSExtensionActivationRule</key>
-			<dict>
-				<key>NSExtensionActivationSupportsMovieWithMaxCount</key>
-				<integer>10</integer>
-			</dict>
+			<string>SUBQUERY (
+				extensionItems,
+				$item,
+				SUBQUERY (
+					$item.attachments,
+					$att,
+					ANY $att.registeredTypeIdentifiers UTI-CONFORMS-TO "public.movie"
+					|| ANY $att.registeredTypeIdentifiers UTI-CONFORMS-TO "public.audio"
+				).@count BETWEEN { 1, 10 }
+			).@count == 1</string>
 		</dict>
 		<!-- No NSExtensionMainStoryboard: an EMPTY one here is not the same as
 		     an absent one, and installd rejects the whole app for it with

@@ -718,6 +718,75 @@ struct JobTests {
         try? FileManager.default.removeItem(at: folder)
     }
 
+    /// The shape with no picture anywhere in it: no analyze, no render, no mux —
+    /// the separated track *is* the output, and `publish` closes it.
+    ///
+    /// Nothing ran it end to end before. `shapeDispatch` proves `Job.shape`
+    /// *returns* `.audioOnly`, which is not the same claim: the `.m4a` extension
+    /// swap, the `separate → publish` two-stage band and the Photos refusal all
+    /// live past that call, and until the picker took audio the only source that
+    /// could reach them was an audio-only `.mp4` nobody had.
+    @Test("an audio-only source runs the audioOnly shape end to end")
+    func audioOnlySourceRuns() async throws {
+        var ops = FilterOps()
+        ops.removeMusic = true
+        ops.censor = false
+
+        let song = try Fixtures.audioClip("jobs-audio-only.m4a")
+        let folder = Fixtures.scratch("jobs-audio-only-out")
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let job = Job.capture(source: song, ops: ops, destination: .userFolder, folder: folder)
+        let key = Checkpoint.key(source: song, ops: ops)
+        WorkDir.clear(key)
+
+        let posts = OSAllocatedUnfairLock<[Job.Stage]>(initialState: [])
+        let done = try await JobRunner.run(job, progress: { p in
+            if let s = p.stage { posts.withLock { if $0.last != s { $0.append(s) } } }
+        })
+
+        #expect(done.shape == .audioOnly)
+        // The whole strip: no analyze, no render, no mux, no concat.
+        #expect(Set(posts.withLock { $0 }) == [.separate, .publish])
+
+        let out = try #require(done.output.url)
+        #expect(out.pathExtension == "m4a", "an audio-only job published .\(out.pathExtension)")
+        let probed = try await MediaSource.probe(out)
+        #expect(probed.video == nil, "a source with no picture produced one")
+        #expect(probed.audio != nil, "the published file has no audio track")
+        let source = try await MediaSource.probe(song)
+        #expect(abs(probed.duration.seconds - source.duration.seconds) < 0.5,
+                "published \(probed.duration.seconds)s from a \(source.duration.seconds)s source")
+        #expect(!FileManager.default.fileExists(atPath: WorkDir.root.appendingPathComponent(key).path),
+                "a completed job leaves no work directory")
+    }
+
+    /// Photos cannot take a bare audio resource — `PHAssetCreationRequest`
+    /// refuses it — so the runner rejects the pairing before spending htdemucs
+    /// on a job whose last step is certain to fail. `Flow` already forces the
+    /// folder in the UI; this is the guard behind it, for the queued and
+    /// shared-in routes that never touch `Flow`.
+    @Test("an audio-only job refuses Photos before it separates anything")
+    func audioOnlyRefusesPhotos() async throws {
+        var ops = FilterOps()
+        ops.removeMusic = true
+        ops.censor = false
+
+        let song = try Fixtures.audioClip("jobs-audio-photos.m4a", seconds: 1)
+        let job = Job.capture(source: song, ops: ops, destination: .photos)
+
+        var thrown: (any Error)?
+        let started = ContinuousClock.now
+        do { _ = try await JobRunner.run(job) } catch { thrown = error }
+
+        #expect(thrown as? JobFailure == .publishFailed)
+        // Before, not after: separating even one second of audio costs far more
+        // than this, so the timing is what distinguishes an up-front refusal
+        // from a wasted run that failed at the last step.
+        #expect(msSince(started) < 2_000,
+                "the job separated audio before refusing: \(Int(msSince(started)))ms")
+    }
+
     /// The route question the debug hook cannot answer: `forcedSegmentMs` drives
     /// every other segmented test, so all of them would still pass if the
     /// production gate were wired to `segmented: false`. This one runs a source

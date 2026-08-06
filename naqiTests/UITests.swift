@@ -200,6 +200,74 @@ struct UITests {
             try? FileManager.default.removeItem(at: job.source)
         }
 
+        /// The share sheet admits audio, and the extension carries no options —
+        /// so a song shared in while "Censor faces" was the last-used setting
+        /// would be queued as a censor job, reported as added, and then die at
+        /// `Preflight` with `noVideoTrack`. `Flow` coerces a *picked* audio
+        /// file; nothing coerced a shared-in one.
+        @Test("A shared-in audio file is queued as a music-removal job, not a censor job")
+        @MainActor
+        func sharedInAudioDropsCensoring() async throws {
+            guard let dir = JobTests.usableInbox() else {
+                #if os(iOS)
+                Issue.record("App Group container unusable — the entitlement or the group id regressed")
+                #endif
+                return
+            }
+            let savedOps = FilterOps.loadLastUsed()
+            defer { savedOps.saveAsLastUsed() }
+            // The combination that produces the failure: censoring on, music
+            // removal off, carried over from the user's last video.
+            FilterOps(removeMusic: false, censor: true).saveAsLastUsed()
+
+            let id = UUID()
+            let song = try Fixtures.audioClip("sharein-song.m4a", seconds: 1)
+            try FileManager.default.copyItem(at: song, to: ShareManifest.mediaURL(dir, id: id, ext: "m4a"))
+            try JSONEncoder().encode(ShareManifest(id: id, fileName: "song.m4a", receivedAt: Date()))
+                .write(to: ShareManifest.manifestURL(dir, id: id), options: .atomic)
+
+            let flow = Flow()
+            let queue = JobQueue(storeURL: Fixtures.scratch("ui-sharein-audio.json"))
+            #expect(await flow.drainSharedIn(into: queue) == 1)
+
+            let job = try #require(await queue.jobs.first)
+            #expect(!job.ops.censor, "a file with no picture was queued to be censored")
+            #expect(job.ops.removeMusic)
+            #expect(Job.shape(ops: job.ops, hasVideoTrack: false, segmented: false) == .audioOnly)
+
+            await queue.cancel(job.id)
+            try? FileManager.default.removeItem(at: job.source)
+        }
+
+        /// The other half of the same rule: a shared-in *video* must keep the
+        /// options the user last chose. A coercion that fired on everything
+        /// would silently turn censoring off for every share.
+        @Test("A shared-in video keeps the last-used options untouched")
+        @MainActor
+        func sharedInVideoKeepsOps() async throws {
+            guard let dir = JobTests.usableInbox() else { return }
+            let savedOps = FilterOps.loadLastUsed()
+            defer { savedOps.saveAsLastUsed() }
+            FilterOps(removeMusic: false, censor: true).saveAsLastUsed()
+
+            let source = try requireQAVideo()
+            let id = UUID()
+            try FileManager.default.copyItem(at: source, to: ShareManifest.mediaURL(dir, id: id, ext: "mp4"))
+            try JSONEncoder().encode(ShareManifest(id: id, fileName: "clip.mp4", receivedAt: Date()))
+                .write(to: ShareManifest.manifestURL(dir, id: id), options: .atomic)
+
+            let flow = Flow()
+            let queue = JobQueue(storeURL: Fixtures.scratch("ui-sharein-video.json"))
+            #expect(await flow.drainSharedIn(into: queue) == 1)
+
+            let job = try #require(await queue.jobs.first)
+            #expect(job.ops.censor)
+            #expect(!job.ops.removeMusic)
+
+            await queue.cancel(job.id)
+            try? FileManager.default.removeItem(at: job.source)
+        }
+
         /// The hop between the picker and the runner. Every pipeline test hands
         /// `Publish` a destination directly, so all of them would still pass if
         /// `Flow.start` dropped the folder on the floor and the job published to

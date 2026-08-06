@@ -2,7 +2,7 @@ import OSLog
 import UIKit
 import UniformTypeIdentifiers
 
-/// Share-sheet target for videos.
+/// Share-sheet target for video and audio.
 ///
 /// **This extension copies bytes and nothing else.** iOS gives a share
 /// extension roughly 120 MB and kills it for exceeding that, so it never opens
@@ -15,6 +15,12 @@ import UniformTypeIdentifiers
 /// settings, which is what the PRD's flow promises; an extension that asked
 /// again would be a second place for those defaults to live.
 final class ShareViewController: UIViewController {
+
+    /// The two roots the activation rule admits, **in the order they are tried**.
+    /// Movie first is load-bearing: an audio-only `.mp4` conforms to both, and
+    /// asking a movie provider for `public.audio` can hand back a re-encoded
+    /// extraction instead of the file the user shared.
+    private static let accepted: [UTType] = [.movie, .audio]
 
     private let label = UILabel()
     private let spinner = UIActivityIndicatorView(style: .large)
@@ -48,9 +54,10 @@ final class ShareViewController: UIViewController {
     }
 
     private func accept() async {
+        // Unfiltered: `copy` has to pick *which* accepted type to load anyway,
+        // and returns false for an attachment that is neither.
         let providers = (extensionContext?.inputItems as? [NSExtensionItem] ?? [])
             .flatMap { $0.attachments ?? [] }
-            .filter { $0.hasItemConformingToTypeIdentifier(UTType.movie.identifier) }
 
         var taken = 0
         if let dir = AppGroup.inbox {
@@ -61,10 +68,10 @@ final class ShareViewController: UIViewController {
         spinner.stopAnimating()
         // The extension is the only place the user learns this failed. An
         // entitlement mismatch or a full disk here would otherwise look exactly
-        // like success and the video would simply never appear in the app.
+        // like success and the file would simply never appear in the app.
         label.text = taken > 0
             ? String(localized: "share.queued", defaultValue: "Added to Naqi")
-            : String(localized: "share.failed", defaultValue: "Couldn’t add this video")
+            : String(localized: "share.failed", defaultValue: "Couldn’t add this file")
 
         try? await Task.sleep(for: .milliseconds(taken > 0 ? 600 : 1600))
         extensionContext?.completeRequest(returningItems: nil)
@@ -72,13 +79,16 @@ final class ShareViewController: UIViewController {
 
     /// Stream one item into the inbox. Returns whether the app will see it.
     private func copy(_ provider: NSItemProvider, into dir: URL) async -> Bool {
+        guard let type = Self.accepted.first(where: {
+            provider.hasItemConformingToTypeIdentifier($0.identifier)
+        }) else { return false }
         let id = UUID()
         do {
             // `loadFileRepresentation` hands back a URL that is valid only for
             // the duration of the call, hence the copy inside the continuation
             // rather than after it.
             let name = try await withCheckedThrowingContinuation { (k: CheckedContinuation<String, Error>) in
-                provider.loadFileRepresentation(forTypeIdentifier: UTType.movie.identifier) { url, error in
+                provider.loadFileRepresentation(forTypeIdentifier: type.identifier) { url, error in
                     guard let url else {
                         k.resume(throwing: error ?? CocoaError(.fileNoSuchFile)); return
                     }
@@ -99,10 +109,15 @@ final class ShareViewController: UIViewController {
             try data.write(to: ShareManifest.manifestURL(dir, id: id), options: .atomic)
             return true
         } catch {
-            // Drop the half-copied movie: with no manifest the app would ignore
-            // it anyway, and it would sit in the shared container forever.
-            try? FileManager.default.removeItem(
-                at: ShareManifest.mediaURL(dir, id: id, ext: "mp4"))
+            // Drop the half-copied media: with no manifest the app would ignore
+            // it anyway, and it would sit in the shared container forever. By
+            // id prefix rather than by a guessed extension — the copy above
+            // keeps the source's own, so the old `ext: "mp4"` here missed every
+            // `.mov`, and would now miss every `.mp3` too.
+            for f in (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
+            where f.hasPrefix(id.uuidString) {
+                try? FileManager.default.removeItem(at: dir.appendingPathComponent(f))
+            }
             Logger(subsystem: "com.haithamassoli.naqi", category: "share")
                 .error("share copy failed: \(error.localizedDescription, privacy: .public)")
             return false

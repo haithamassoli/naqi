@@ -1,0 +1,60 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "share.adding" : {
+      "comment" : "Shown while the extension copies the shared file into the App Group inbox.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "جارٍ الإضافة إلى نقي…"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adding to Naqi…"
+          }
+        }
+      }
+    },
+    "share.failed" : {
+      "comment" : "The only place the user learns a share failed — the app never sees the file at all.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تعذّرت إضافة هذا الملف"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn’t add this file"
+          }
+        }
+      }
+    },
+    "share.queued" : {
+      "comment" : "The share succeeded; the app runs the job at its next launch or foreground.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تمت الإضافة إلى نقي"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Added to Naqi"
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.1"
+}

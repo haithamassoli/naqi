@@ -327,7 +327,7 @@ struct JobTests {
         #expect(JobFailure.of(CocoaError(.fileNoSuchFile)) == .sourceUnreadable)
         #expect(JobFailure.of(PreflightFailure.lowSpace(requiredBytes: 1, availableBytes: 0)) == .lowSpace)
         #expect(JobFailure.of(PreflightFailure.drmProtected) == .drmProtected)
-        #expect(JobFailure.of(PublishError.photosDenied) == .publishFailed)
+        #expect(JobFailure.of(PublishError.photosDenied) == .photosDenied)
     }
 
     @Test("the up-front ETA is a floor, and a no-op job estimates nothing")

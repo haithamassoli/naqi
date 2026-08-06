@@ -4,7 +4,7 @@
     "" : {
 
     },
-    "a11y_blur_hint" : {
+    "opt_blur_hint" : {
       "extractionState" : "manual",
       "localizations" : {
         "ar" : {
@@ -21,7 +21,7 @@
         }
       }
     },
-    "a11y_progress_label" : {
+    "progress_bar_label" : {
       "extractionState" : "manual",
       "localizations" : {
         "ar" : {
@@ -38,7 +38,7 @@
         }
       }
     },
-    "a11y_strictness_hint" : {
+    "opt_strictness_hint" : {
       "extractionState" : "manual",
       "localizations" : {
         "ar" : {

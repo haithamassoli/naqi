@@ -50,7 +50,7 @@ struct WavyProgress: View {
         .accessibilityElement()
         .accessibilityIdentifier("progress.wavy")
         // Without a label VoiceOver reads a bare "37 %" — a number with no noun.
-        .accessibilityLabel(Text(.a11yProgressLabel))
+        .accessibilityLabel(Text(.progressBarLabel))
         .accessibilityValue(Text(value, format: .percent.precision(.fractionLength(0))))
         // A determinate bar that never re-announces is a bar read once.
         .accessibilityAddTraits(.updatesFrequently)

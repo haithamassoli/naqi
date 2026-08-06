@@ -78,6 +78,18 @@ enum JobRunner {
             throw JobFailure.publishFailed
         }
 
+        // Photos add-only is asked here rather than in the publish stage where
+        // it used to live: the same refusal costs the user one second here and
+        // an entire render there.
+        //
+        // *After* the checks above, not before them. A permission sheet is the
+        // wrong first answer to an unreadable file or an audio-only source
+        // bound for Photos — both of those fail no matter what the user taps,
+        // so asking first would collect a decision that changes nothing.
+        if let denied = await Preflight.photosAccess(for: job.destination) {
+            throw JobFailure.of(denied)
+        }
+
         let key = Checkpoint.key(source: url, ops: job.ops, forcedSegmentMs: forcedSegmentMs)
         let dir = WorkDir.job(key)
         let ext = shape == .audioOnly ? "m4a" : "mp4"

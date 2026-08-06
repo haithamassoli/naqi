@@ -4,6 +4,57 @@
     "" : {
 
     },
+    "a11y_blur_hint" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "القيم الأعلى تُموّه الوجوه بقوّة أكبر."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Higher values blur faces more heavily."
+          }
+        }
+      }
+    },
+    "a11y_progress_label" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تقدّم الفلترة"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Filtering progress"
+          }
+        }
+      }
+    },
+    "a11y_strictness_hint" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "القيم الأعلى تحجب مشاهد أكثر."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Higher values censor more scenes."
+          }
+        }
+      }
+    },
     "about_eyebrow_privacy" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -259,6 +310,23 @@
         }
       }
     },
+    "action_discard" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تجاهل"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Discard"
+          }
+        }
+      }
+    },
     "action_keep" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -306,6 +374,57 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Open"
+          }
+        }
+      }
+    },
+    "action_open_in_photos" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "فتح في تطبيق الصور"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open in Photos"
+          }
+        }
+      }
+    },
+    "action_open_settings" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "فتح الإعدادات"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Settings"
+          }
+        }
+      }
+    },
+    "action_preview" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "معاينة ١٥ ثانية"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preview 15 seconds"
           }
         }
       }
@@ -463,6 +582,74 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Run smoke test"
+          }
+        }
+      }
+    },
+    "dlg_cancel_body" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "سيُحذف ما أُنجز حتى الآن ولا يمكن استرجاعه."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The work done so far will be deleted and can't be recovered."
+          }
+        }
+      }
+    },
+    "dlg_cancel_confirm" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "إلغاء المهمة"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancel job"
+          }
+        }
+      }
+    },
+    "dlg_cancel_keep" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "متابعة الفلترة"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Keep filtering"
+          }
+        }
+      }
+    },
+    "dlg_cancel_title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "إلغاء هذه المهمة؟"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancel this job?"
           }
         }
       }
@@ -705,6 +892,40 @@
         }
       }
     },
+    "err_import_failed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تعذّر فتح هذا الملف. جرّب ملفًا آخر."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't open that file. Try a different one."
+          }
+        }
+      }
+    },
+    "err_interrupted" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "توقّف نقي عندما انتقل إلى الخلفية. استأنف ليكمل من حيث توقّف."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Naqi stopped when it left the foreground. Resume to pick up where it left off."
+          }
+        }
+      }
+    },
     "err_low_space" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -718,6 +939,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Not enough free space. Filtering needs room for a temporary copy plus about 2 GB."
+          }
+        }
+      }
+    },
+    "err_low_space_gb" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تحتاج هذه العملية إلى نحو ‏%1$.1f غيغابايت خالية، ولا يتوفّر سوى ‏%2$.1f غيغابايت."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This needs about %1$.1f GB free, but only %2$.1f GB is available."
           }
         }
       }
@@ -769,6 +1007,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "The device ran out of space while saving the filtered copy."
+          }
+        }
+      }
+    },
+    "err_photos_denied" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لا يستطيع نقي الحفظ في مكتبة الصور. اسمح بالوصول من الإعدادات، أو اختر مجلّدًا بدلًا من ذلك."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Naqi can't save to your photo library. Allow access in Settings, or choose a folder instead."
           }
         }
       }
@@ -1045,6 +1300,57 @@
         }
       }
     },
+    "notif_done_body" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "‏%1$@ جاهز."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ is ready."
+          }
+        }
+      }
+    },
+    "notif_done_title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "انتهت الفلترة"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Filtering done"
+          }
+        }
+      }
+    },
+    "notif_failed_title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "توقّفت الفلترة"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Filtering stopped"
+          }
+        }
+      }
+    },
     "opt_blur_amount_desc" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1313,6 +1619,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Voices only"
+          }
+        }
+      }
+    },
+    "opt_preview_desc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تُفلتر أول ١٥ ثانية لترى النتيجة قبل تشغيل الفيديو كاملًا."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Filter the first 15 seconds to check how it looks before running the whole video."
+          }
+        }
+      }
+    },
+    "opt_preview_title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "معاينة"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Preview"
           }
         }
       }
@@ -1742,6 +2082,40 @@
         }
       }
     },
+    "pick_resume_body" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "‏%1$@ توقّف قبل أن يكتمل."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ stopped before it finished."
+          }
+        }
+      }
+    },
+    "pick_resume_title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "مهمة لم تكتمل"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unfinished job"
+          }
+        }
+      }
+    },
     "pick_seal_on_device" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1929,6 +2303,40 @@
         }
       }
     },
+    "preview_building" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "جارٍ إنشاء المعاينة…"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Building preview…"
+          }
+        }
+      }
+    },
+    "preview_failed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تعذّر إنشاء المعاينة."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Couldn't build the preview."
+          }
+        }
+      }
+    },
     "progress_keep_open" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1963,6 +2371,23 @@
         }
       }
     },
+    "progress_paused_title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "متوقّفة مؤقتًا"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Paused"
+          }
+        }
+      }
+    },
     "progress_title" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1976,6 +2401,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Filtering"
+          }
+        }
+      }
+    },
+    "settings_defaults_note" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "هذه هي الإعدادات الافتراضية لمقاطع الفيديو الجديدة، بما فيها المقاطع التي تُشاركها إلى نقي."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "These are the defaults for new videos, including ones shared into Naqi."
+          }
+        }
+      }
+    },
+    "settings_title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "الإعدادات"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Settings"
           }
         }
       }

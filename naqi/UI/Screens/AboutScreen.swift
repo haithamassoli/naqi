@@ -71,7 +71,7 @@ struct AboutScreen: View {
     }
 
     private var wordmark: some View {
-        VStack(alignment: .leading, spacing: Naqi.S.s2) {
+        VStack(spacing: Naqi.S.s2) {
             NaqiMark().fill(Naqi.C.primary).frame(width: 56, height: 56)
             Text(.pickWordmarkAr)
                 .font(Naqi.F.display)
@@ -84,6 +84,8 @@ struct AboutScreen: View {
                 .foregroundStyle(Naqi.C.onSurfaceVariant)
                 .padding(.top, Naqi.S.s2)
         }
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: .infinity)
     }
 
     static var shortVersion: String {

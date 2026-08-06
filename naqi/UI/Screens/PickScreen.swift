@@ -107,7 +107,7 @@ struct PickScreen: View {
     // MARK: - Panels
 
     private var brandPanel: some View {
-        VStack(alignment: .leading, spacing: Naqi.S.s2) {
+        VStack(spacing: Naqi.S.s2) {
             NaqiMark().fill(Naqi.C.primary).frame(width: 56, height: 56)
             Text(.pickWordmarkAr)
                 .font(Naqi.F.display)
@@ -123,7 +123,8 @@ struct PickScreen: View {
                 .padding(.top, Naqi.S.s2)
             TrustSeal().padding(.top, Naqi.S.s4)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .multilineTextAlignment(.center)
+        .frame(maxWidth: .infinity)
     }
 
     private var controls: some View {

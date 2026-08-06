@@ -86,49 +86,40 @@ struct NaqiIcon: Shape {
     }
 }
 
-/// The brand mark: the bowl of ن holding a droplet. It rhymes with the نـ of the
-/// wordmark, so mark and wordmark read as one lockup rather than a logo parked
-/// above a title. Ported from `res/drawable/ic_naqi_mark.xml`, including that
-/// file's group transform (scale 2.1 about (54, 55.1), then translate y −1.1).
+/// The brand mark: the bowl of ن whose dot is a play triangle — the same two
+/// paths the app icon is built from, copied from `branding/naqi-icon.svg` in
+/// that file's 1024 viewport. One shape rather than two, so a single `.fill`
+/// covers both: the icon's white bowl and mint triangle only read against its
+/// dark gradient, and every in-app placement sits on paper.
 struct NaqiMark: Shape {
     /// A mirrored brand mark is a different brand mark.
     var layoutDirectionBehavior: LayoutDirectionBehavior { .fixed }
 
     func path(in rect: CGRect) -> Path {
-        var p = Path()
+        // Bowl: the lower half of a circle, stroked with round caps.
+        var bowl = Path()
+        bowl.addArc(center: CGPoint(x: 512, y: 556), radius: 190,
+                    startAngle: .degrees(0), endAngle: .degrees(180), clockwise: false)
+        var p = bowl.strokedPath(StrokeStyle(lineWidth: 112, lineCap: .round))
 
-        // Bowl.
-        p.move(to: CGPoint(x: 30.2, y: 36.2))
-        p.addLine(to: CGPoint(x: 30.2, y: 52))
-        p.addCurve(to: CGPoint(x: 54, y: 78.4),
-                   control1: CGPoint(x: 30.2, y: 68.37), control2: CGPoint(x: 39.24, y: 78.4))
-        p.addCurve(to: CGPoint(x: 77.8, y: 52),
-                   control1: CGPoint(x: 68.76, y: 78.4), control2: CGPoint(x: 77.8, y: 68.37))
-        p.addLine(to: CGPoint(x: 77.8, y: 36.2))
-        p.addLine(to: CGPoint(x: 68.1, y: 40.2))
-        p.addLine(to: CGPoint(x: 68.1, y: 50))
-        p.addCurve(to: CGPoint(x: 54, y: 68.7),
-                   control1: CGPoint(x: 68.1, y: 61.59), control2: CGPoint(x: 62.74, y: 68.7))
-        p.addCurve(to: CGPoint(x: 39.9, y: 50),
-                   control1: CGPoint(x: 45.26, y: 68.7), control2: CGPoint(x: 39.9, y: 61.59))
-        p.addLine(to: CGPoint(x: 39.9, y: 40.2))
-        p.closeSubpath()
+        // The dot, as a play triangle. Filled *and* stroked exactly as the SVG
+        // does it — the stroke is what rounds the three corners. Overlapping
+        // subpaths union under the non-zero fill rule SwiftUI fills with.
+        var dot = Path()
+        dot.move(to: CGPoint(x: 446, y: 232))
+        dot.addLine(to: CGPoint(x: 446, y: 412))
+        dot.addLine(to: CGPoint(x: 614, y: 322))
+        dot.closeSubpath()
+        p.addPath(dot)
+        p.addPath(dot.strokedPath(StrokeStyle(lineWidth: 46, lineJoin: .round)))
 
-        // Droplet held in the bowl.
-        p.move(to: CGPoint(x: 54, y: 31.8))
-        p.addCurve(to: CGPoint(x: 46.17, y: 45.57),
-                   control1: CGPoint(x: 51.2, y: 35.72), control2: CGPoint(x: 46.17, y: 40.53))
-        p.addCurve(to: CGPoint(x: 54, y: 53.4),
-                   control1: CGPoint(x: 46.17, y: 49.93), control2: CGPoint(x: 49.64, y: 53.4))
-        p.addCurve(to: CGPoint(x: 61.83, y: 45.57),
-                   control1: CGPoint(x: 58.36, y: 53.4), control2: CGPoint(x: 61.83, y: 49.93))
-        p.addCurve(to: CGPoint(x: 54, y: 31.8),
-                   control1: CGPoint(x: 61.83, y: 40.53), control2: CGPoint(x: 56.8, y: 35.72))
-        p.closeSubpath()
-
-        let group = CGAffineTransform(translationX: 54, y: 55.1 - 1.1)
-            .scaledBy(x: 2.1, y: 2.1)
-            .translatedBy(x: -54, y: -55.1)
-        return p.applying(group).applying(NaqiIcon.fit(108, in: rect))
+        // Fit the ink, not the viewport: the SVG's generous margin is app-icon
+        // padding, and inside a 22pt toolbar frame it would shrink the mark to
+        // nothing. `NaqiIcon.fit` can't do this — its viewport is square.
+        let ink = p.boundingRect
+        let s = min(rect.width / ink.width, rect.height / ink.height)
+        return p.applying(CGAffineTransform(translationX: rect.midX, y: rect.midY)
+            .scaledBy(x: s, y: s)
+            .translatedBy(x: -ink.midX, y: -ink.midY))
     }
 }

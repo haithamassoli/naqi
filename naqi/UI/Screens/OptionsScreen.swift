@@ -1,5 +1,6 @@
 import SwiftUI
 import UniformTypeIdentifiers
+import os
 
 /// Step 2. Every control is shown **only when the op it applies to is on** — an
 /// option that cannot affect the output would be a lie on screen.
@@ -10,7 +11,6 @@ struct OptionsScreen: View {
     #endif
 
     @State private var showLongJobConfirm = false
-    @State private var showFolderPicker = false
 
     private var wide: Bool {
         #if canImport(UIKit)
@@ -27,21 +27,21 @@ struct OptionsScreen: View {
                     if wide && flow.ops.censor && flow.ops.removeMusic {
                         VStack(alignment: .leading, spacing: Naqi.S.s5) {
                             HStack(alignment: .top, spacing: Naqi.S.s5) {
-                                censorSection
-                                musicSection
+                                CensorSection(flow: flow)
+                                MusicSection(flow: flow)
                             }
                             // Full width under the two columns, not a third
                             // one: it is one short card and a column of its own
                             // would leave a hole beside it on every shape.
-                            destinationSection
+                            DestinationSection(flow: flow, audioOnly: flow.isAudioOnly)
                         }
                         .frame(maxWidth: 860)
                     } else {
                         ReadableColumn {
                             VStack(alignment: .leading, spacing: Naqi.S.s5) {
-                                if flow.ops.censor { censorSection }
-                                if flow.ops.removeMusic { musicSection }
-                                destinationSection
+                                if flow.ops.censor { CensorSection(flow: flow) }
+                                if flow.ops.removeMusic { MusicSection(flow: flow) }
+                                DestinationSection(flow: flow, audioOnly: flow.isAudioOnly)
                             }
                         }
                     }
@@ -71,9 +71,6 @@ struct OptionsScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Naqi.C.background, for: .navigationBar)
         #endif
-        .fileImporter(isPresented: $showFolderPicker, allowedContentTypes: [.folder]) { result in
-            if case .success(let url) = result { flow.setFolder(url) }
-        }
         // Placed in front of any permission dance so the user is never asked
         // for something only to then back out (spec §7.3). It is a warning,
         // never a cap: confirming lands exactly where a short job's Start does.
@@ -94,10 +91,26 @@ struct OptionsScreen: View {
             Task { await flow.start() }
         }
     }
+}
 
-    // MARK: - Censor
+// MARK: - Sections
 
-    private var censorSection: some View {
+// The three cards are views of their own rather than computed properties on the
+// screen because Options is no longer the only screen that shows them: Settings
+// edits the same `flow.ops` without a picked video. Left as properties they
+// would have had to be copied, and the copy is what drifts the day an option is
+// added to one of them.
+//
+// Only `DestinationSection` needed a parameter to make the move — see its
+// `audioOnly`. The other two read `flow.ops` and nothing else, so they are the
+// same view on both screens.
+
+/// What "censor faces" means for this run: who, how much of the frame, how
+/// aggressive the gate is, how heavy the blur is, and whether to desaturate.
+struct CensorSection: View {
+    @Bindable var flow: Flow
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             SectionHeader(.optSectionCensorFaces)
             NaqiCard(padding: 0) {
@@ -111,12 +124,17 @@ struct OptionsScreen: View {
                            isOn: Binding(get: { flow.ops.censorMode == .wholeFrame },
                                          set: { flow.ops.censorMode = $0 ? .wholeFrame : .regions }))
                 NaqiRowDivider()
+                // The hint is what VoiceOver reads *after* the value, and it is
+                // the only thing that says which way to drag: "Strictness, 50"
+                // on its own gives a direction to nothing.
                 SliderRow(title: .optStrictnessTitle,
                           desc: .optStrictnessDesc,
+                          hint: .optStrictnessHint,
                           value: $flow.ops.strictness)
                 NaqiRowDivider()
                 SliderRow(title: .optBlurAmountTitle,
                           desc: .optBlurAmountDesc,
+                          hint: .optBlurHint,
                           value: $flow.ops.blurAmount)
                 NaqiRowDivider()
                 ToggleTile(icon: nil,
@@ -147,7 +165,13 @@ struct OptionsScreen: View {
                         Text(who.label)
                             .font(Naqi.F.titleSmall)
                             .foregroundStyle(selected ? Naqi.C.onPrimary : Naqi.C.onSurfaceVariant)
-                            .frame(maxWidth: .infinity, minHeight: 36)
+                            // 44 and not 36: the segments were below the
+                            // minimum tap target at the *default* text size,
+                            // not only at accessibility ones. A flat floor
+                            // rather than a `@ScaledMetric` because the label
+                            // inside grows the capsule past it on its own —
+                            // this only has to stop it shrinking below.
+                            .frame(maxWidth: .infinity, minHeight: 44)
                             .background(selected ? Naqi.C.primary : .clear, in: .capsule)
                             .contentShape(.capsule)
                     }
@@ -161,61 +185,14 @@ struct OptionsScreen: View {
         .padding(.horizontal, Naqi.S.s4)
         .padding(.vertical, Naqi.S.s3)
     }
+}
 
-    // MARK: - Destination
+/// The two wire values are `vocals` / `vocalsAndOther`; drums and bass are
+/// never kept whichever is picked.
+struct MusicSection: View {
+    @Bindable var flow: Flow
 
-    /// The one section that is shown on every shape: unlike the op sections
-    /// above, "where does the copy go" is a decision every job has.
-    private var destinationSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            SectionHeader(.optSectionSaveTo)
-            NaqiCard(padding: 0) {
-                SelectRow(title: .optDestPhotosTitle,
-                          desc: .optDestPhotosDesc,
-                          isSelected: flow.destination == .photos) {
-                    withAnimation(Naqi.spring) { flow.setDestination(.photos) }
-                }
-                // Disabled rather than hidden: a row that vanishes teaches
-                // nothing, and the caption under the card says why this one
-                // cannot be picked.
-                .disabled(flow.isAudioOnly)
-                .opacity(flow.isAudioOnly ? 0.4 : 1)
-
-                NaqiRowDivider()
-
-                SelectRow(title: .optDestFolderTitle,
-                          desc: flow.export.folderName
-                              .map { LocalizedStringResource.optDestFolderChosen($0) }
-                              ?? .optDestFolderDesc,
-                          isSelected: flow.destination == .userFolder) {
-                    // Tapping the row that is already chosen re-opens the
-                    // picker: it is the only way to change folders, and a
-                    // second control on a two-row card would be a third tap
-                    // target for a once-a-year action.
-                    if flow.destination == .userFolder || flow.export.folder == nil {
-                        showFolderPicker = true
-                    } else {
-                        withAnimation(Naqi.spring) { flow.setDestination(.userFolder) }
-                    }
-                }
-            }
-            if flow.isAudioOnly {
-                Text(.optDestAudioOnly)
-                    .font(Naqi.F.bodySmall)
-                    .foregroundStyle(Naqi.C.onSurfaceVariant)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.top, Naqi.S.s2)
-                    .padding(.horizontal, Naqi.S.s1)
-            }
-        }
-        .animation(Naqi.spring, value: flow.isAudioOnly)
-    }
-
-    // MARK: - Music
-
-    /// The two wire values are `vocals` / `vocalsAndOther`; drums and bass are
-    /// never kept whichever is picked.
-    private var musicSection: some View {
+    var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             SectionHeader(.optSectionRemoveMusic)
             NaqiCard(padding: 0) {
@@ -232,5 +209,93 @@ struct OptionsScreen: View {
                 }
             }
         }
+    }
+}
+
+/// The one section that is shown on every shape: unlike the op sections above,
+/// "where does the copy go" is a decision every job has.
+struct DestinationSection: View {
+    @Bindable var flow: Flow
+    /// The picked source has no picture, so Photos cannot take it — see
+    /// `Flow.isAudioOnly`. Always `false` on Settings, which has no picked
+    /// source: greying Photos out there because the *last* pick was an MP3
+    /// would refuse a destination to every video that comes after it.
+    var audioOnly = false
+
+    @State private var showFolderPicker = false
+    /// The folder picker's own refusal. Same treatment as the pick screen's —
+    /// in place, in the app's own type, and cleared by the next folder that
+    /// lands.
+    @State private var folderFailed = false
+
+    /// `Flow.destination` with the lock made a parameter. Options passes the
+    /// picked source's answer and gets exactly `flow.destination` back;
+    /// Settings passes `false` and gets the stored default.
+    private var selected: Destination { audioOnly ? .userFolder : flow.export.destination }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SectionHeader(.optSectionSaveTo)
+            NaqiCard(padding: 0) {
+                SelectRow(title: .optDestPhotosTitle,
+                          desc: .optDestPhotosDesc,
+                          isSelected: selected == .photos) {
+                    withAnimation(Naqi.spring) { flow.setDestination(.photos) }
+                }
+                // Disabled rather than hidden: a row that vanishes teaches
+                // nothing, and the caption under the card says why this one
+                // cannot be picked.
+                .disabled(audioOnly)
+                .opacity(audioOnly ? 0.4 : 1)
+
+                NaqiRowDivider()
+
+                SelectRow(title: .optDestFolderTitle,
+                          desc: flow.export.folderName
+                              .map { LocalizedStringResource.optDestFolderChosen($0) }
+                              ?? .optDestFolderDesc,
+                          isSelected: selected == .userFolder) {
+                    // Tapping the row that is already chosen re-opens the
+                    // picker: it is the only way to change folders, and a
+                    // second control on a two-row card would be a third tap
+                    // target for a once-a-year action.
+                    if selected == .userFolder || flow.export.folder == nil {
+                        showFolderPicker = true
+                    } else {
+                        withAnimation(Naqi.spring) { flow.setDestination(.userFolder) }
+                    }
+                }
+            }
+            if folderFailed {
+                Text(.errImportFailed)
+                    .font(Naqi.F.bodySmall)
+                    .foregroundStyle(Naqi.C.error)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, Naqi.S.s2)
+                    .padding(.horizontal, Naqi.S.s1)
+            }
+            if audioOnly {
+                Text(.optDestAudioOnly)
+                    .font(Naqi.F.bodySmall)
+                    .foregroundStyle(Naqi.C.onSurfaceVariant)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, Naqi.S.s2)
+                    .padding(.horizontal, Naqi.S.s1)
+            }
+        }
+        .fileImporter(isPresented: $showFolderPicker, allowedContentTypes: [.folder]) { result in
+            switch result {
+            case .success(let url):
+                folderFailed = false
+                flow.setFolder(url)
+            // Silence here left the row still reading "Choose a folder" with
+            // Start disabled and no sentence connecting the two.
+            case .failure(let error):
+                Log.app.error("folder pick failed: \(error.localizedDescription, privacy: .public)")
+                folderFailed = true
+            }
+        }
+        .animation(Naqi.spring, value: audioOnly)
+        .animation(Naqi.spring, value: folderFailed)
     }
 }

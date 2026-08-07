@@ -70,7 +70,11 @@ func isDroppableSource(_ url: URL) -> Bool {
 /// exactly the failure the Android version had to fix (spec contract 7.1.1).
 @MainActor @Observable final class Flow {
 
-    enum Step: Hashable, Sendable { case options, progress, done, about, diagnostics }
+    /// `settings` sits with `about` and `diagnostics` as a leaf off the overflow
+    /// menu, not in the line: it edits the same `ops` Options does, but it is
+    /// reachable without a picked video — which is the only way to see what a
+    /// shared-in file will inherit.
+    enum Step: Hashable, Sendable { case options, progress, done, settings, about, diagnostics }
 
     var path: [Step] = []
     var ops: FilterOps = .loadLastUsed()
@@ -85,6 +89,9 @@ func isDroppableSource(_ url: URL) -> Bool {
     /// `nil` until the probe answers, and it never becomes `nil` again for a
     /// source that probed. Only `false` locks the destination.
     private(set) var sourceHasVideo: Bool?
+    /// Jobs a relaunch left in the queue file. Read once and never started on
+    /// their own — the Pick screen offers them and the user decides.
+    private(set) var resumableJobs: [Job] = []
 
     let monitor: JobMonitor
 
@@ -191,6 +198,59 @@ func isDroppableSource(_ url: URL) -> Bool {
         await monitor.cancel()
         path = []
     }
+
+    // MARK: - Unfinished jobs
+
+    /// What a relaunch left behind. Read **once, at launch**, and deliberately
+    /// not refreshed on every activation: `resumable()` answers "pending", and a
+    /// share-in of four files leaves three rows pending behind the one that is
+    /// running. At launch nothing is live and the two sets are the same, which
+    /// is the only moment "pending" means "died with the app".
+    ///
+    /// - Parameter queue: the app always reads the shared one; the parameter is
+    ///   there for the same reason `drainSharedIn` has one.
+    func loadResumable(from queue: JobQueue = .shared) async {
+        resumableJobs = await queue.resumable()
+    }
+
+    /// Puts a survivor back in flight and points the screens at it.
+    ///
+    /// Two calls, because they do two different things. `resume` is what starts
+    /// the row. `monitor.start` is the only way to bind `JobMonitor` to a job it
+    /// did not enqueue itself: `JobQueue.enqueue` is KEEP-not-REPLACE, so the
+    /// identical (source, options) matches the row we just revived and hands
+    /// back *its* id instead of creating a second one.
+    ///
+    /// Order is load-bearing — `resume` after `start` would write the row that
+    /// is now running back to `.pending`.
+    ///
+    /// The source is deliberately **not** adopted as the picked one: `setSource`
+    /// probes the file and lets `ops.fit` rewrite `ops` from the answer, so
+    /// resuming an audio-only job would turn the user's *saved* censoring
+    /// default off as a side effect of tapping Resume. The job carries its own
+    /// options anyway. The cost is that Progress cannot name the file.
+    func resumeJob(_ job: Job, in queue: JobQueue = .shared) async {
+        forget(job)
+        // Revive first, then bind. `adopt` watches the row the queue already
+        // holds instead of re-enqueuing a rebuilt copy of it — the rebuilt one
+        // only ever matched because `enqueue` is a KEEP and the checkpoint key
+        // happened to agree, which is a lot of coincidence to rely on.
+        await queue.resume(job.id)
+        monitor.adopt(job.id)
+        path = [.progress]
+    }
+
+    /// Drops the row **and** the scratch it was holding — on a half-rendered
+    /// film that is gigabytes the user has just said they do not want.
+    func discardJob(_ job: Job, in queue: JobQueue = .shared) async {
+        forget(job)
+        await queue.discard(job.id)
+    }
+
+    /// Local, not a re-read: the queue is the authority on the row, but the card
+    /// has to leave the moment it is acted on, and re-asking would either race
+    /// the resume or pick up rows a share-in has since queued.
+    private func forget(_ job: Job) { resumableJobs.removeAll { $0.id == job.id } }
 
     func finishAndPickAnother() async {
         await monitor.finish()

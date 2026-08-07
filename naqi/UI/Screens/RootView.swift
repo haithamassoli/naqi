@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Pick → Options → Progress → Done, plus two leaf screens off the overflow
+/// Pick → Options → Progress → Done, plus three leaf screens off the overflow
 /// menu. A straight line does not need a route graph; `path` is an array so a
 /// step can replace the stack rather than push onto it — starting a job must
 /// not leave Options behind a back button that would re-enqueue it.
@@ -16,6 +16,7 @@ struct RootView: View {
                     case .options: OptionsScreen(flow: flow)
                     case .progress: ProgressScreen(flow: flow)
                     case .done: DoneScreen(flow: flow)
+                    case .settings: SettingsScreen(flow: flow)
                     case .about: AboutScreen()
                     case .diagnostics: DeviceRuntimeView()
                     }
@@ -32,7 +33,15 @@ struct RootView: View {
         // a shared-in video that ignored the folder the user picked would be
         // the only route in the app that saves somewhere they did not choose —
         // and on an audio-only share it would fail at publish outright.
-        .task { await flow.drainSharedIn() }
+        //
+        // Survivors are read first and in the same task, not in a second one:
+        // `drainSharedIn` enqueues rows that are `.pending` for the moment
+        // before the queue starts them, so a drain that won the race would make
+        // a share that has just arrived look like a job that died with the app.
+        .task {
+            await flow.loadResumable()
+            await flow.drainSharedIn()
+        }
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             Task { await flow.drainSharedIn() }

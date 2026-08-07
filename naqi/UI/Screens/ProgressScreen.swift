@@ -1,9 +1,17 @@
 import SwiftUI
+#if os(iOS)
+import UIKit
+#endif
 
 /// Step 3. One card — the pass strip — carrying the stage label, the percent,
 /// the wavy bar and Cancel.
 struct ProgressScreen: View {
     @Bindable var flow: Flow
+
+    @State private var showCancelConfirm = false
+    #if os(iOS)
+    @Environment(\.openURL) private var openURL
+    #endif
 
     var body: some View {
         ScrollView {
@@ -60,25 +68,60 @@ struct ProgressScreen: View {
         .task(id: flow.monitor.isDone) {
             if flow.monitor.isDone { flow.path = [.done] }
         }
+        // Replacing the pass strip with the failure card is a silent change:
+        // VoiceOver keeps its focus on an element that no longer exists and
+        // nothing says why. Same `task(id:)` reasoning as above — a job can
+        // fail before this screen appears — and it runs once per transition
+        // rather than on every redraw.
+        .task(id: flow.monitor.failure) {
+            guard let failure = flow.monitor.failure else { return }
+            AccessibilityNotification.Announcement(String(localized: failureText(failure))).post()
+        }
+        // The same warning starting a long job gets (`OptionsScreen`), for the
+        // step that throws the hours away: `JobRunner` deletes the work
+        // directory on cancel, so there is nothing to undo it with.
+        .confirmationDialog(Text(.dlgCancelTitle),
+                            isPresented: $showCancelConfirm,
+                            titleVisibility: .visible) {
+            Button(role: .destructive) { Task { await flow.cancelJob() } } label: {
+                Text(.dlgCancelConfirm)
+            }
+            Button(role: .cancel) {} label: { Text(.dlgCancelKeep) }
+        } message: {
+            Text(.dlgCancelBody)
+        }
     }
 
     private var passStrip: some View {
         NaqiCard {
-            HStack(alignment: .firstTextBaseline, spacing: Naqi.S.s3) {
-                Text(flow.monitor.stage?.label ?? .jobsStageStarting)
-                    .font(Naqi.F.titleMedium)
-                    .foregroundStyle(Naqi.C.onSurface)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Text(.jobsProgressPercent(Int32(flow.monitor.percent)))
-                    .font(Naqi.F.titleMedium)
-                    .monospacedDigit()
-                    .foregroundStyle(Naqi.C.primary)
-            }
-            .padding(.bottom, Naqi.S.s3)
-
-            WavyProgress(value: Double(flow.monitor.percent) / 100,
-                         animating: flow.monitor.isRunning)
+            // Stage, percent and bar are one statement about one thing, and
+            // VoiceOver read them as three. Cancel stays outside the merge so
+            // it is still an element that can be activated, and the bar's own
+            // value and `updatesFrequently` trait carry into the group.
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(alignment: .firstTextBaseline, spacing: Naqi.S.s3) {
+                    Text(flow.monitor.stage?.label ?? .jobsStageStarting)
+                        .font(Naqi.F.titleMedium)
+                        .foregroundStyle(Naqi.C.onSurface)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    Text(.jobsProgressPercent(Int32(flow.monitor.percent)))
+                        .font(Naqi.F.titleMedium)
+                        .monospacedDigit()
+                        .foregroundStyle(Naqi.C.primary)
+                        // The bar says the same number with a noun in front of
+                        // it. Two elements reading "37 %" is one too many.
+                        .accessibilityHidden(true)
+                }
                 .padding(.bottom, Naqi.S.s3)
+
+                WavyProgress(value: Double(flow.monitor.percent) / 100,
+                             animating: flow.monitor.isRunning)
+                    .padding(.bottom, Naqi.S.s3)
+            }
+            .accessibilityElement(children: .combine)
+            // Merging drops the children's identifiers, and the bar's is the
+            // documented handle on this row, so it moves up to the group.
+            .accessibilityIdentifier("progress.wavy")
 
             HStack {
                 if flow.monitor.etaMs > 0 {
@@ -87,7 +130,7 @@ struct ProgressScreen: View {
                         .foregroundStyle(Naqi.C.onSurfaceVariant)
                 }
                 Spacer(minLength: 0)
-                Button { Task { await flow.cancelJob() } } label: {
+                Button { showCancelConfirm = true } label: {
                     Text(.actionCancel)
                         .font(Naqi.F.labelLarge)
                         .foregroundStyle(Naqi.C.primary)
@@ -97,12 +140,50 @@ struct ProgressScreen: View {
         }
     }
 
+    /// The sentence the card shows, and the one VoiceOver announces.
+    ///
+    /// `.lowSpace` is the one failure whose fixed wording says nothing the user
+    /// can act on. The job records what the preflight wanted against what the
+    /// volume had, so say those instead when it has them.
+    private func failureText(_ failure: JobFailure) -> LocalizedStringResource {
+        failure == .lowSpace ? lowSpaceText(flow.monitor.shortfall) : failure.sentence
+    }
+
     private func failureCard(_ failure: JobFailure) -> some View {
-        NaqiCard {
-            Text(failure.sentence)
+        // `.interrupted` is not a failure: the OS took the app away and the
+        // work is sitting in the work directory. In error red it headlined
+        // "broken" directly above a button offering to carry on. It gets the
+        // paused title and ordinary body colour; every other cause keeps red.
+        let paused = failure == .interrupted
+        return NaqiCard {
+            if paused {
+                Text(.progressPausedTitle)
+                    .font(Naqi.F.titleMedium)
+                    .foregroundStyle(Naqi.C.onSurface)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.bottom, Naqi.S.s2)
+            }
+
+            Text(failureText(failure))
                 .font(Naqi.F.bodyMedium)
-                .foregroundStyle(Naqi.C.error)
+                .foregroundStyle(paused ? Naqi.C.onSurfaceVariant : Naqi.C.error)
                 .frame(maxWidth: .infinity, alignment: .leading)
+
+            #if os(iOS)
+            // The one failure with a fix the user can reach. Sending them to it
+            // beats a sentence that names Settings and leaves them to find it.
+            // macOS has no equivalent URL, so the sentence stands alone there.
+            if failure == .photosDenied,
+               let settings = URL(string: UIApplication.openSettingsURLString) {
+                Button { openURL(settings) } label: {
+                    Text(.actionOpenSettings)
+                        .font(Naqi.F.labelLarge)
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                }
+                .buttonStyle(NaqiOutlineButtonStyle())
+                .padding(.top, Naqi.S.s4)
+            }
+            #endif
 
             // The hint and the button appear together or not at all: offering
             // Resume when nothing was checkpointed would restart the film from

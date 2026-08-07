@@ -588,5 +588,19 @@ struct UITests {
         // Library
         .jobsLibrary, .jobsLibraryEmpty, .jobsNoneRunning, .jobsTitle,
         .jobsSizeMb(120), .jobsSizeGb(1.7),
+        // Settings, and the unfinished-job card that offers a survivor back
+        .settingsTitle, .settingsDefaultsNote,
+        .pickResumeTitle, .pickResumeBody("clip.mp4"), .actionDiscard,
+        // Failures that used to share the generic sentence, and the import
+        // errors that used to be silent
+        .errPhotosDenied, .errInterrupted, .errImportFailed,
+        .errLowSpaceGb(14.2, 1.5), .actionOpenSettings, .progressPausedTitle,
+        // Cancel confirmation
+        .dlgCancelTitle, .dlgCancelBody, .dlgCancelConfirm, .dlgCancelKeep,
+        // Notifications — not on screen, but the same failure mode
+        .notifDoneTitle, .notifDoneBody("clip.mp4"), .notifFailedTitle,
+        // Spoken, never drawn: a missing translation here is invisible until
+        // someone turns VoiceOver on in Arabic.
+        .progressBarLabel, .optStrictnessHint, .optBlurHint,
     ]
 }

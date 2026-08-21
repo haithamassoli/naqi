@@ -1,5 +1,10 @@
 import SwiftUI
 
+// Automation ids read `<kind>.<name>`: `toggle.grayscale`, `select.destPhotos`,
+// `slider.strictness`, `action.start`, plus the fixed `seal.trust` and
+// `progress.wavy`. A component given no `id` falls back to its title's
+// string-catalog key, so every call site is addressable before it is named.
+
 // MARK: - Card
 
 /// Container fill, 24 pt corners, hairline border. Depth in Naqi is never a
@@ -71,6 +76,7 @@ struct TrustSeal: View {
         .background(Naqi.C.primary.opacity(0.08), in: .capsule)
         .overlay(Capsule().strokeBorder(Naqi.C.primary.opacity(0.22), lineWidth: Naqi.Border.hairline))
         .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("seal.trust")
     }
 }
 
@@ -84,7 +90,14 @@ struct ToggleTile: View {
     let icon: NaqiIcon.Glyph?
     let title: LocalizedStringResource
     var desc: LocalizedStringResource?
+    var id: String?
     @Binding var isOn: Bool
+
+    /// Tied to the title's own text style: a 42 pt square left at 42 pt beside
+    /// a 50 pt title reads as a bullet, not as an icon. The row itself has no
+    /// fixed height, so it just grows.
+    @ScaledMetric(relativeTo: .subheadline) private var tile: CGFloat = 42
+    @ScaledMetric(relativeTo: .subheadline) private var glyph: CGFloat = 22
 
     var body: some View {
         Button {
@@ -97,9 +110,9 @@ struct ToggleTile: View {
                             .fill(isOn ? Naqi.C.primary.opacity(0.16) : Naqi.C.surfaceContainerHighest)
                         NaqiIcon(icon)
                             .fill(isOn ? Naqi.C.primary : Naqi.C.onSurfaceVariant)
-                            .frame(width: 22, height: 22)
+                            .frame(width: glyph, height: glyph)
                     }
-                    .frame(width: 42, height: 42)
+                    .frame(width: tile, height: tile)
                     .padding(.trailing, Naqi.S.s3)
                 }
                 VStack(alignment: .leading, spacing: 2) {
@@ -128,7 +141,11 @@ struct ToggleTile: View {
         }
         .buttonStyle(.plain)
         .accessibilityRepresentation {
+            // The id goes *inside*: the representation substitutes this row's
+            // accessibility node with the Toggle's, so anything attached to the
+            // row outside would be attached to the node that got replaced.
             Toggle(isOn: $isOn) { Text(title) }
+                .accessibilityIdentifier(id ?? title.key)
         }
     }
 }
@@ -137,6 +154,11 @@ struct ToggleTile: View {
 /// Both the scale and the colours are spring-animated.
 struct SelectDot: View {
     let isSelected: Bool
+
+    /// Scaled with the row title beside it — and it is also the row's hit
+    /// target, which must not stay a 24 pt dot for someone who needs 50 pt text.
+    @ScaledMetric(relativeTo: .subheadline) private var dot: CGFloat = 24
+    @ScaledMetric(relativeTo: .subheadline) private var check: CGFloat = 15
 
     var body: some View {
         ZStack {
@@ -147,10 +169,10 @@ struct SelectDot: View {
             if isSelected {
                 NaqiIcon(.check)
                     .fill(Naqi.C.onPrimary)
-                    .frame(width: 15, height: 15)
+                    .frame(width: check, height: check)
             }
         }
-        .frame(width: 24, height: 24)
+        .frame(width: dot, height: dot)
         .scaleEffect(isSelected ? 1.0 : 0.85)
         .animation(Naqi.spring, value: isSelected)
     }
@@ -161,6 +183,7 @@ struct SelectRow: View {
     let title: LocalizedStringResource
     var desc: LocalizedStringResource?
     let isSelected: Bool
+    var id: String?
     let select: () -> Void
 
     var body: some View {
@@ -185,6 +208,7 @@ struct SelectRow: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? [.isButton, .isSelected] : .isButton)
+        .accessibilityIdentifier(id ?? title.key)
     }
 }
 
@@ -202,6 +226,11 @@ func clampedSliderValue(_ raw: Double) -> Int {
 struct SliderRow: View {
     let title: LocalizedStringResource
     let desc: LocalizedStringResource
+    /// What the number *means*. The visible `desc` is a separate element that
+    /// VoiceOver reads before reaching the slider, so it cannot double as the
+    /// hint: "Strictness, 50" alone gives no direction to drag in.
+    var hint: LocalizedStringResource?
+    var id: String?
     @Binding var value: Int
 
     private var proxy: Binding<Double> {
@@ -231,9 +260,14 @@ struct SliderRow: View {
                 // negotiation and the sentence truncates instead of wrapping —
                 // visible only in the iPad two-column layout.
                 .fixedSize(horizontal: false, vertical: true)
+            // The slider, not the VStack, carries the identity: it is the only
+            // element of the row a test or VoiceOver can act on.
             Slider(value: proxy, in: 0...100, step: 1)
                 .tint(Naqi.C.primary)
                 .accessibilityLabel(Text(title))
+                // No optional form of the modifier; an empty hint is no hint.
+                .accessibilityHint(hint.map { Text($0) } ?? Text(verbatim: ""))
+                .accessibilityIdentifier(id ?? title.key)
         }
         .padding(.horizontal, Naqi.S.s4)
         .padding(.vertical, Naqi.S.s3)
@@ -245,11 +279,14 @@ struct NoteLine: View {
     let icon: NaqiIcon.Glyph
     let text: LocalizedStringResource
 
+    /// Inline with the sentence, so it tracks the sentence's own text style.
+    @ScaledMetric(relativeTo: .footnote) private var glyph: CGFloat = 15
+
     var body: some View {
         HStack(spacing: Naqi.S.s1) {
             NaqiIcon(icon)
                 .fill(Naqi.C.primary)
-                .frame(width: 15, height: 15)
+                .frame(width: glyph, height: glyph)
             Text(text)
                 .font(Naqi.F.bodySmall)
                 .foregroundStyle(Naqi.C.onSurfaceVariant)
@@ -267,6 +304,7 @@ struct NoteLine: View {
 struct NaqiBottomAction<Above: View>: View {
     let title: LocalizedStringResource
     var enabled: Bool = true
+    var id: String?
     let action: () -> Void
     @ViewBuilder var above: Above
 
@@ -283,6 +321,7 @@ struct NaqiBottomAction<Above: View>: View {
                 }
                 .buttonStyle(NaqiPrimaryButtonStyle(enabled: enabled))
                 .disabled(!enabled)
+                .accessibilityIdentifier(id ?? title.key)
             }
         }
         .padding(.horizontal, Naqi.S.gutter)
@@ -292,8 +331,9 @@ struct NaqiBottomAction<Above: View>: View {
 }
 
 extension NaqiBottomAction where Above == EmptyView {
-    init(title: LocalizedStringResource, enabled: Bool = true, action: @escaping () -> Void) {
-        self.init(title: title, enabled: enabled, action: action) { EmptyView() }
+    init(title: LocalizedStringResource, enabled: Bool = true, id: String? = nil,
+         action: @escaping () -> Void) {
+        self.init(title: title, enabled: enabled, id: id, action: action) { EmptyView() }
     }
 }
 

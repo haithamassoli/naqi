@@ -77,6 +77,11 @@ import os
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
+    /// The library asset a Photos publish created. The counterpart to `output`
+    /// for the destination that leaves no readable path: it is the only handle
+    /// the Done screen has to show the user what was just made.
+    var assetID: String? { published?.assetID }
+
     var isDone: Bool { if case .done = job?.state { true } else { false } }
 
     /// Read back off the job rather than off the flow's current setting: the
@@ -96,6 +101,11 @@ import os
         return false
     }
 
+    /// What the preflight wanted against what the volume had, for the one
+    /// failure whose sentence says nothing useful without them. `nil` on every
+    /// other failure, and on a queue file written before the field existed.
+    var shortfall: Job.Shortfall? { job?.shortfall }
+
     // MARK: Commands
 
     func start(source: PickedSource, ops: FilterOps,
@@ -111,6 +121,22 @@ import os
         // we made up would bind the screen to a row the queue never created,
         // and the progress card would sit on "Starting…" forever.
         jobID = await queue.enqueue(candidate)
+        observe()
+    }
+
+    /// Binds to a row the queue already holds, rather than one this flow just
+    /// enqueued — a job that outlived the app and is being resumed from the pick
+    /// screen. `observe` resolves the row out of the next snapshot, so there is
+    /// nothing to hand in but the id.
+    ///
+    /// The caller revives the row *before* calling this: adopting a row that is
+    /// still `.pending` is correct, but writing one back to `.pending` after the
+    /// queue has started it is not.
+    func adopt(_ id: Job.ID) {
+        jobID = id
+        job = nil
+        progress = nil
+        startedAt = .now
         observe()
     }
 

@@ -60,6 +60,10 @@ enum Publish {
     }
 
     private static func saveToPhotos(_ temp: URL, named name: String) async throws -> Published {
+        // `Preflight.photosAccess` asked the same question at the head of the
+        // job so a refusal costs seconds instead of an hour. It is an early
+        // exit, not a promise: the user can revoke access from Settings during
+        // the hour in between, and this is the call that would actually fail.
         let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
         guard status == .authorized || status == .limited else { throw PublishError.photosDenied }
         // Captured inside the change block and read after it commits — the

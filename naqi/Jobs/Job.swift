@@ -25,6 +25,16 @@ struct Job: Identifiable, Codable, Sendable, Equatable {
     /// would fail at publish — after the whole render — with no way back.
     var folderBookmark: Data?
     var state: State = .pending
+    /// The two numbers behind a `.lowSpace` failure, when there is one.
+    ///
+    /// They cannot ride on the failure case itself: `JobFailure` is
+    /// `String`-raw-valued and is what `naqi-queue.json` persists, so an
+    /// associated value there would break both the raw-value conformance and
+    /// the on-disk format — and widening `State.failed` would break every
+    /// `case .failed(let f, _)` in the app. An optional field is purely
+    /// additive instead: a queue file written before this existed decodes it
+    /// as nil.
+    var shortfall: Shortfall?
     var enqueuedAt = Date()
 
     static func capture(source: URL, ops: FilterOps, destination: Destination,
@@ -76,6 +86,14 @@ struct Job: Identifiable, Codable, Sendable, Equatable {
             case .done, .failed, .cancelled: true
             }
         }
+    }
+
+    /// Bytes the preflight wanted against bytes the volume had. Recorded for
+    /// `JobFailure.lowSpace`, the one failure whose sentence says nothing
+    /// useful without the numbers that produced it.
+    struct Shortfall: Codable, Sendable, Equatable {
+        var requiredBytes: Int64
+        var availableBytes: Int64
     }
 }
 
@@ -292,7 +310,14 @@ enum JobFailure: String, Error, Codable, Sendable, Equatable {
     case lowSpace
     case outOfSpace
     case sourceUnreadable
+    /// Its own case and not `publishFailed`: it is the one publish failure the
+    /// user can actually fix, and the only one worth naming.
+    case photosDenied
     case publishFailed
+    /// The OS took the app away — the work is paused, not broken. Separate
+    /// from `.generic` so the screen can stop putting "Filtering failed." above
+    /// a Resume button.
+    case interrupted
     case generic
 
     /// Concatenates the whole cause chain, lowercases, then matches in this
@@ -307,8 +332,10 @@ enum JobFailure: String, Error, Codable, Sendable, Equatable {
             case .unsupportedContainer: return .unsupportedContainer
             case .lowSpace: return .lowSpace
             case .sourceUnreadable: return .sourceUnreadable
+            case .photosDenied: return .photosDenied
             }
         }
+        if let p = error as? PublishError, case .photosDenied = p { return .photosDenied }
         if error is PublishError { return .publishFailed }
 
         let text = causeChain(error).lowercased()

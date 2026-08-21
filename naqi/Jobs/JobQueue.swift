@@ -25,6 +25,10 @@ actor JobQueue {
     private let storeURL: URL
     private(set) var jobs: [Job] = []
     private var runningID: Job.ID?
+    /// When the running job actually started working. Not its `enqueuedAt`:
+    /// time spent waiting behind another job is not time this one has spent,
+    /// and the live ETA divides by it.
+    private var runningSince: Date?
     private var progress: JobProgress?
     private var running: Task<Void, Never>?
     private var observers: [UUID: AsyncStream<Snapshot>.Continuation] = [:]
@@ -104,6 +108,43 @@ actor JobQueue {
         commit()
     }
 
+    // MARK: Survivors
+
+    /// Jobs a relaunch left behind. `load()` resets a `.running` row to
+    /// `.pending` and nothing drains at init, so without this they sit in
+    /// `naqi-queue.json` forever and the bookmark and checkpoint machinery
+    /// built to survive a relaunch has no trigger.
+    ///
+    /// Read-only on purpose: a job that resumes itself while the user is
+    /// looking at the picker — burning an hour of battery they did not ask
+    /// for — is worse than one that waits to be asked.
+    ///
+    /// ponytail: "pending" and not "left over", so a row merely queued behind a
+    /// live job is in here too. At launch, which is the only time anything asks,
+    /// nothing is live and the two sets are the same.
+    func resumable() -> [Job] {
+        jobs.filter { if case .pending = $0.state { true } else { false } }
+    }
+
+    /// Puts one back in flight. The same path `retry` takes, because it is the
+    /// same thing: the row is already `.pending` and `drain()` is what starts
+    /// it.
+    func resume(_ id: Job.ID) { retry(id) }
+
+    /// Drops the row *and* the scratch it was holding. `remove` alone leaves a
+    /// work directory behind for the 7-day sweep, which on a half-rendered film
+    /// is gigabytes the user just said they did not want.
+    ///
+    /// ponytail: keyed off `job.source`, the same way `enqueue` dedupes. A
+    /// bookmark that re-resolves to a different URL than the one stored took a
+    /// different key in `JobRunner`, and that directory is left to the sweep.
+    func discard(_ id: Job.ID) {
+        if let job = jobs.first(where: { $0.id == id }) {
+            WorkDir.clear(Checkpoint.key(source: job.source, ops: job.ops))
+        }
+        remove(id)
+    }
+
     // MARK: Observation
 
     func observe() -> AsyncStream<Snapshot> {
@@ -135,6 +176,7 @@ actor JobQueue {
               let next = jobs.first(where: { if case .pending = $0.state { true } else { false } })
         else { return }
         runningID = next.id
+        runningSince = .now
         progress = nil
         stopFlag.withLock { $0 = nil }
         update(next.id) { $0.state = .running }
@@ -146,6 +188,7 @@ actor JobQueue {
             Task { await self?.flush() }
         }
         await LiveActivity.start(title: job.title)
+        await Notify.requestAuthorization()
         let flag = stopFlag
         defer {
             Task {
@@ -164,17 +207,34 @@ actor JobQueue {
                 done \(done.shape.rawValue, privacy: .public) in \(Int(done.wallMs))ms \
                 resumed=\(done.resumed.map(\.rawValue).sorted().joined(separator: ","), privacy: .public)
                 """)
+            await Notify.done(name: done.output.name)
         } catch let stopped as JobStopped {
+            // An interruption is not a failure of the work — the OS took the
+            // app away and the checkpoint survived. Saying so is what lets the
+            // screen stop printing "Filtering failed." above a Resume button.
             update(job.id) {
                 $0.state = stopped.reason == .userCancelled
                     ? .cancelled
-                    : .failed(.generic, resumable: stopped.resumable)
+                    : .failed(.interrupted, resumable: stopped.resumable)
             }
+            // A deliberate cancel needs no announcement; an interruption is by
+            // definition something that happened while the user was elsewhere.
+            if stopped.reason != .userCancelled { await Notify.failed() }
         } catch {
-            update(job.id) { $0.state = .failed(JobFailure.of(error), resumable: false) }
+            let failure = JobFailure.of(error)
+            // The byte counts cannot ride on the failure case — see
+            // `Job.shortfall` — so they are picked up from the preflight that
+            // just computed them, and only for the failure they belong to.
+            let shortfall = failure == .lowSpace ? Preflight.lastShortfall.withLock({ $0 }) : nil
+            update(job.id) {
+                $0.shortfall = shortfall
+                $0.state = .failed(failure, resumable: false)
+            }
+            await Notify.failed()
         }
 
         runningID = nil
+        runningSince = nil
         progress = nil
         running = nil
         notify()
@@ -185,7 +245,13 @@ actor JobQueue {
         guard id == runningID else { return }
         progress = p
         notify()
-        Task { await LiveActivity.update(p) }
+        // The same straight-line extrapolation the Progress screen shows, off
+        // the same clock — the lock screen is where a 90-minute job actually
+        // lives, and `Eta.liveMs` returning 0 early on is what hides the line
+        // rather than printing a number that will be wrong.
+        let eta = Eta.liveMs(elapsedMs: Date.now.timeIntervalSince(runningSince ?? .now) * 1000,
+                             pct: p.pct)
+        Task { await LiveActivity.update(p, etaSeconds: Int(eta / 1000)) }
     }
 
     private func update(_ id: Job.ID, _ transform: (inout Job) -> Void) {

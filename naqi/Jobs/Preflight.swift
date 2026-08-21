@@ -1,5 +1,6 @@
 import AVFoundation
 import Foundation
+import Photos
 import os
 
 /// Reasons a job may not start. Each maps to one user-facing string.
@@ -10,6 +11,7 @@ enum PreflightFailure: Error, Equatable, Sendable {
     case unsupportedContainer(String)
     case lowSpace(requiredBytes: Int64, availableBytes: Int64)
     case sourceUnreadable
+    case photosDenied
 }
 
 /// Guards run before any decoding starts. Order matters: DRM is checked before
@@ -19,6 +21,27 @@ enum Preflight {
 
     /// 2 GiB of headroom on top of the computed requirement.
     static let slackBytes: Int64 = 2 * 1024 * 1024 * 1024
+
+    /// The numbers behind the most recent `.lowSpace` verdict.
+    ///
+    /// A side channel because the failure cannot carry them itself: `JobRunner`
+    /// collapses a `PreflightFailure` into a raw-valued `JobFailure` before it
+    /// leaves the run, and that enum is what `naqi-queue.json` stores. Written
+    /// here, read once by `JobQueue` on the failure path of the job that just
+    /// set it — exact because the queue runs one job at a time.
+    static let lastShortfall = OSAllocatedUnfairLock<Job.Shortfall?>(initialState: nil)
+
+    /// Photos add-only, asked before the render instead of after it.
+    ///
+    /// `Publish.saveToPhotos` still asks — this is the early exit, not a
+    /// guarantee that survives the hour in between — but asking *only* there
+    /// meant a user who declines paid for the whole job first and then got a
+    /// sentence that did not even say why.
+    static func photosAccess(for destination: Destination) async -> PreflightFailure? {
+        guard destination == .photos else { return nil }
+        let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
+        return status == .authorized || status == .limited ? nil : .photosDenied
+    }
 
     /// Separated audio is held as int16 stereo 44.1 kHz: 176 400 B per second
     /// of source, ~1.6 GB on a 155-minute film. It scales with **duration**,
@@ -94,7 +117,11 @@ enum Preflight {
                                             segmented: segmented))
         let available = availableBytes()
         Log.job.info("preflight need=\(required / 1_048_576)MiB have=\(available / 1_048_576)MiB")
-        if available < required { return .lowSpace(requiredBytes: required, availableBytes: available) }
+        if available < required {
+            lastShortfall.withLock { $0 = Job.Shortfall(requiredBytes: required,
+                                                        availableBytes: available) }
+            return .lowSpace(requiredBytes: required, availableBytes: available)
+        }
         return nil
     }
 

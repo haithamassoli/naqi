@@ -15,6 +15,16 @@ struct PickScreen: View {
     @State private var showFileImporter = false
     @State private var photoItem: PhotosPickerItem?
     @State private var isDropTargeted = false
+    /// A pick that did not land, cleared by the next one that does. The app has
+    /// no alert anywhere: a failure says so in place, the way the Done screen
+    /// reports a delete it could not perform.
+    @State private var importFailed = false
+
+    /// Tied to the card's own title, the way `ToggleTile`'s tile is: a 52 pt
+    /// square left at 52 pt beside a 50 pt filename reads as a bullet rather
+    /// than as an icon, and the row has no fixed height to fight.
+    @ScaledMetric(relativeTo: .body) private var tile: CGFloat = 52
+    @ScaledMetric(relativeTo: .body) private var glyph: CGFloat = 26
 
     private var wide: Bool {
         #if canImport(UIKit)
@@ -72,6 +82,11 @@ struct PickScreen: View {
             }
             ToolbarItem(placement: .primaryAction) {
                 Menu {
+                    // First, and above the two informational leaves: it is the
+                    // only route to the defaults a shared-in file inherits, and
+                    // reaching them otherwise costs a video the user does not
+                    // want to filter.
+                    Button { flow.path = [.settings] } label: { Text(.settingsTitle) }
                     Button { flow.path = [.about] } label: { Text(.aboutOpen) }
                     // The device-runtime panel is how the model smoke test is
                     // run on a real phone; it stays one tap from the first
@@ -98,7 +113,17 @@ struct PickScreen: View {
         // shape of its own (`Job.shape`, `audioOnly`) — music removal only.
         .fileImporter(isPresented: $showFileImporter,
                       allowedContentTypes: [.movie, .audio]) { result in
-            if case .success(let url) = result { flow.adoptFileImport(url) }
+            switch result {
+            case .success(let url):
+                importFailed = false
+                flow.adoptFileImport(url)
+            // A refused import used to be dropped on the floor, which left the
+            // card exactly as unpicked as before the picker opened — with
+            // nothing on screen distinguishing that from a tap that missed.
+            case .failure(let error):
+                Log.app.error("file import failed: \(error.localizedDescription, privacy: .public)")
+                importFailed = true
+            }
         }
         .confirmationDialog(Text(.pickVideoNone), isPresented: $showSourceChoice, titleVisibility: .visible) {
             Button { showPhotosPicker = true } label: { Text(.pickSourcePhotos) }
@@ -133,7 +158,23 @@ struct PickScreen: View {
 
     private var controls: some View {
         VStack(alignment: .leading, spacing: 0) {
+            // Above the picker: a job that outlived the app is the one thing on
+            // this screen the user did not just decide to do, and it has to be
+            // answered before picking something else buries it.
+            if let job = flow.resumableJobs.first {
+                resumeCard(job)
+                Spacer().frame(height: Naqi.S.s5)
+            }
+
             pickCard
+            if importFailed {
+                Text(.errImportFailed)
+                    .font(Naqi.F.bodySmall)
+                    .foregroundStyle(Naqi.C.error)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.top, Naqi.S.s2)
+                    .padding(.horizontal, Naqi.S.s1)
+            }
             #if os(macOS)
             // Drag-and-drop is the Mac way in; the card accepts a drop on every
             // platform but only says so where a pointer exists to do it with.
@@ -144,6 +185,48 @@ struct PickScreen: View {
 
             SectionHeader(.pickEyebrowChoose)
             operationCard
+        }
+        .animation(Naqi.spring, value: importFailed)
+        .animation(Naqi.spring, value: flow.resumableJobs.count)
+    }
+
+    /// A job that died with the app, offered rather than restarted: one that
+    /// resumed itself while the user was looking at the picker would burn an
+    /// hour of battery they did not ask for (`JobQueue.resumable`).
+    ///
+    /// One card for the first row, never a list. `pick_resume_body` names a
+    /// single job, and acting on this one brings the next one up in its place —
+    /// so a queue of survivors is answered one card at a time. A real queue
+    /// screen is Q2's problem, the same call `JobMonitor.othersQueued` made.
+    private func resumeCard(_ job: Job) -> some View {
+        NaqiCard {
+            Text(.pickResumeTitle)
+                .font(Naqi.F.titleMedium)
+                .foregroundStyle(Naqi.C.onSurface)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text(.pickResumeBody(job.title))
+                .font(Naqi.F.bodySmall)
+                .foregroundStyle(Naqi.C.onSurfaceVariant)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.top, 2)
+
+            HStack(spacing: Naqi.S.s3) {
+                Button { Task { await flow.resumeJob(job) } } label: {
+                    Text(.actionResume)
+                        .font(Naqi.F.labelLarge)
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                }
+                .buttonStyle(NaqiPrimaryButtonStyle())
+
+                Button { Task { await flow.discardJob(job) } } label: {
+                    Text(.actionDiscard)
+                        .font(Naqi.F.labelLarge)
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                }
+                .buttonStyle(NaqiOutlineButtonStyle())
+            }
+            .padding(.top, Naqi.S.s4)
         }
     }
 
@@ -164,9 +247,9 @@ struct PickScreen: View {
                         .fill(picked ? Naqi.C.primary : Naqi.C.surfaceContainerHighest)
                     NaqiIcon(picked ? .check : .video)
                         .fill(picked ? Naqi.C.onPrimary : Naqi.C.onSurfaceVariant)
-                        .frame(width: 26, height: 26)
+                        .frame(width: glyph, height: glyph)
                 }
-                .frame(width: 52, height: 52)
+                .frame(width: tile, height: tile)
                 .padding(.trailing, Naqi.S.s4)
 
                 VStack(alignment: .leading, spacing: 2) {
@@ -203,14 +286,21 @@ struct PickScreen: View {
         .buttonStyle(.plain)
         .animation(Naqi.spring, value: picked)
         .animation(Naqi.spring, value: isDropTargeted)
-        // Returning `false` is the whole rejection: the system slides the item
+        // Returning `false` is still the rejection: the system slides the item
         // back to where it came from, which is what every Mac app does with a
-        // drop it cannot take, and it needs no error state of our own. There is
-        // no hover-time filter available — `dropDestination(for: URL.self)`
-        // reports `isTargeted` without ever showing the payload — so the target
-        // highlights for a PDF and then refuses it.
+        // drop it cannot take. There is no hover-time filter available —
+        // `dropDestination(for: URL.self)` reports `isTargeted` without ever
+        // showing the payload — so the target highlights for a PDF and then
+        // refuses it.
+        //
+        // The sentence is for iPad, where nothing slides back: the item simply
+        // vanishes, and a refusal is indistinguishable from a dead target.
         .dropDestination(for: URL.self) { urls, _ in
-            guard let url = urls.first(where: isDroppableSource) else { return false }
+            guard let url = urls.first(where: isDroppableSource) else {
+                importFailed = true
+                return false
+            }
+            importFailed = false
             flow.adoptFileImport(url)
             return true
         } isTargeted: { isDropTargeted = $0 }
@@ -252,7 +342,15 @@ struct PickScreen: View {
         guard let item = photoItem else { return }
         Task {
             do {
-                guard let movie = try await item.loadTransferable(type: MovieFile.self) else { return }
+                // `nil` is a failed transfer, not an empty one: the provider had
+                // an item and could not produce the file. Both it and the throw
+                // used to leave the card unpicked with nothing saying why.
+                guard let movie = try await item.loadTransferable(type: MovieFile.self) else {
+                    Log.app.error("photos pick produced no file")
+                    importFailed = true
+                    return
+                }
+                importFailed = false
                 flow.setSource(PickedSource(url: movie.url,
                                             name: movie.url.lastPathComponent,
                                             // Present only when the app has
@@ -262,6 +360,7 @@ struct PickScreen: View {
                                             assetID: item.itemIdentifier))
             } catch {
                 Log.app.error("photos pick failed: \(error.localizedDescription, privacy: .public)")
+                importFailed = true
             }
         }
     }

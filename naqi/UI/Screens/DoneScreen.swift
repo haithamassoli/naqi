@@ -1,4 +1,5 @@
 import AVKit
+import Photos
 import SwiftUI
 
 /// Step 4. Where the filtered copy went, and the three things that can be done
@@ -9,12 +10,34 @@ struct DoneScreen: View {
     @State private var showPlayer = false
     @State private var showDeleteConfirm = false
     @State private var deleteResult: LocalizedStringResource?
+    /// The published copy fetched back out of the photo library. A Photos
+    /// publish *moves* the temp in and keeps only an identifier, so this is the
+    /// only thing Open has to play on the app's default destination.
+    @State private var libraryVideo: AVAsset?
+    /// Set once the library has declined to hand the asset back — access
+    /// refused, or an identifier that no longer resolves. Open is withdrawn
+    /// rather than left as a button that opens an empty sheet.
+    @State private var libraryRefused = false
+
+    /// The check tile tracks the title beside it: a 36 pt circle left at 36 pt
+    /// next to a 50 pt title crushes the two lines it is there to introduce.
+    @ScaledMetric(relativeTo: .subheadline) private var tile: CGFloat = 36
+    @ScaledMetric(relativeTo: .subheadline) private var glyph: CGFloat = 20
 
     /// The name the publish actually used — not the job's `title`, which is the
     /// **source** name and would read as the filtered copy's. Available on both
     /// destinations now that the publish records it, including the Photos path
     /// that leaves no file behind to take a name from.
     private var outputName: String? { flow.monitor.outputName }
+
+    /// The library asset the publish created, for the Photos destination.
+    private var assetID: String? { flow.monitor.assetID }
+
+    /// Whether Open has anything to show: a file still on disk, or a library
+    /// asset the library has not already refused.
+    private var canOpen: Bool {
+        flow.monitor.output != nil || (assetID != nil && !libraryRefused)
+    }
 
     /// Only offered when there is something we can actually delete: a photo
     /// library asset, or a file the user imported in place. A Photos pick
@@ -68,6 +91,9 @@ struct DoneScreen: View {
         .sheet(isPresented: $showPlayer) {
             if let url = flow.monitor.output {
                 VideoPlayer(player: AVPlayer(url: url)).ignoresSafeArea()
+            } else if let libraryVideo {
+                VideoPlayer(player: AVPlayer(playerItem: AVPlayerItem(asset: libraryVideo)))
+                    .ignoresSafeArea()
             }
         }
         .confirmationDialog(Text(.dlgDeleteOriginalTitle),
@@ -86,9 +112,9 @@ struct DoneScreen: View {
             HStack(spacing: Naqi.S.s3) {
                 ZStack {
                     Circle().fill(Naqi.C.primary)
-                    NaqiIcon(.check).fill(Naqi.C.onPrimary).frame(width: 20, height: 20)
+                    NaqiIcon(.check).fill(Naqi.C.onPrimary).frame(width: glyph, height: glyph)
                 }
-                .frame(width: 36, height: 36)
+                .frame(width: tile, height: tile)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(.jobsSavedLabel)
@@ -111,22 +137,27 @@ struct DoneScreen: View {
                     .padding(.top, Naqi.S.s3)
             }
 
-            // Open and Share appear only when a shareable file exists.
-            if let url = flow.monitor.output {
+            // Open works on either destination — the library asset plays in the
+            // same sheet the file does. Share still needs a file: a Photos
+            // publish leaves none, and exporting a second full-size copy out of
+            // the library to make one is not a thing to do behind a button.
+            if canOpen {
                 HStack(spacing: Naqi.S.s3) {
-                    Button { showPlayer = true } label: {
+                    Button { openTapped() } label: {
                         Text(.actionOpen)
                             .font(Naqi.F.labelLarge)
                             .frame(maxWidth: .infinity, minHeight: 48)
                     }
                     .buttonStyle(NaqiPrimaryButtonStyle())
 
-                    ShareLink(item: url) {
-                        Text(.actionShare)
-                            .font(Naqi.F.labelLarge)
-                            .frame(maxWidth: .infinity, minHeight: 48)
+                    if let url = flow.monitor.output {
+                        ShareLink(item: url) {
+                            Text(.actionShare)
+                                .font(Naqi.F.labelLarge)
+                                .frame(maxWidth: .infinity, minHeight: 48)
+                        }
+                        .buttonStyle(NaqiOutlineButtonStyle())
                     }
-                    .buttonStyle(NaqiOutlineButtonStyle())
                 }
                 .padding(.top, Naqi.S.s4)
             }
@@ -143,6 +174,49 @@ struct DoneScreen: View {
         .buttonStyle(.plain)
         .overlay(RoundedRectangle(cornerRadius: Naqi.R.button)
             .strokeBorder(Naqi.C.outlineVariant, lineWidth: Naqi.Border.hairline))
+    }
+
+    /// A folder publish opens straight away. A Photos publish has to go back to
+    /// the library first, and reading the library needs an access level the job
+    /// never asked for — the publish only ever wanted add-only. So the request
+    /// happens on the tap, where the user has just said they want to see the
+    /// video, and never unbidden as the screen appears.
+    private func openTapped() {
+        guard flow.monitor.output == nil, libraryVideo == nil else {
+            showPlayer = true
+            return
+        }
+        Task {
+            libraryVideo = await Self.libraryVideo(assetID)
+            // Always answers, one way or the other: a refusal takes Open away
+            // rather than leaving a button that does nothing when pressed.
+            if libraryVideo == nil { libraryRefused = true } else { showPlayer = true }
+        }
+    }
+
+    /// The published asset as something `AVPlayer` can play.
+    ///
+    /// `PHImageManager` hands back an `AVAsset` that reads the library file in
+    /// place, which is the point: the device has just spent its whole space
+    /// budget on the render and cannot afford a copy to play from. Limited
+    /// access is enough — an asset the app itself created is always in the
+    /// user's selection.
+    private static func libraryVideo(_ id: String?) async -> AVAsset? {
+        guard let id else { return nil }
+        let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+        guard status == .authorized || status == .limited,
+              let asset = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil).firstObject
+        else { return nil }
+        let options = PHVideoRequestOptions()
+        // Not `.automatic`, which may deliver a degraded version first and so
+        // call back twice — and a continuation resumed twice traps.
+        options.deliveryMode = .highQualityFormat
+        return await withCheckedContinuation { continuation in
+            PHImageManager.default().requestAVAsset(forVideo: asset, options: options) { avAsset, _, _ in
+                nonisolated(unsafe) let video = avAsset
+                continuation.resume(returning: video)
+            }
+        }
     }
 
     private func deleteOriginal() {

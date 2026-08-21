@@ -22,57 +22,95 @@ final class AudioDecoder {
     /// stereo pair.
     static let halfPower: Float = 0.70710678
 
-    private let reader: AVAssetReader
-    private let output: AVAssetReaderTrackOutput
-    private let ranges: [CMTimeRange]
+    /// Held strongly for the life of the decode: `AVAssetTrack.asset` is weak,
+    /// and every window below builds its reader from it.
+    private let asset: AVAsset
+    private let track: AVAssetTrack
+    /// One reader per element. `nil` is the whole track, which is what an empty
+    /// `timeRanges` collapses to, so there is one path and not two.
+    private let windows: [CMTimeRange?]
+    private var index = 0
+    private var reader: AVAssetReader?
+    private var output: AVAssetReaderTrackOutput?
     private var out: UnsafeMutablePointer<Float>
     private var capacity = 0
 
+    /// No `AVNumberOfChannelsKey` on purpose: that is what keeps the source
+    /// layout intact for the fold below.
+    private static var outputSettings: [String: Any] { [
+        AVFormatIDKey: kAudioFormatLinearPCM,
+        AVSampleRateKey: Models.Demucs.sampleRate,
+        AVLinearPCMBitDepthKey: 32,
+        AVLinearPCMIsFloatKey: true,
+        AVLinearPCMIsBigEndianKey: false,
+        AVLinearPCMIsNonInterleaved: false,
+    ] }
+
     /// - Parameter timeRanges: empty decodes the whole track; otherwise only
-    ///   these ranges are read, in one pass over one decoder.
+    ///   these ranges are read, one reader each.
     init(track: AVAssetTrack, timeRanges: [CMTimeRange] = []) throws {
         guard let asset = track.asset else { throw MediaError.readerFailed("track has no asset") }
-        reader = try AVAssetReader(asset: asset)
-        output = AVAssetReaderTrackOutput(track: track, outputSettings: [
-            AVFormatIDKey: kAudioFormatLinearPCM,
-            AVSampleRateKey: Models.Demucs.sampleRate,
-            AVLinearPCMBitDepthKey: 32,
-            AVLinearPCMIsFloatKey: true,
-            AVLinearPCMIsBigEndianKey: false,
-            AVLinearPCMIsNonInterleaved: false,
-            // No AVNumberOfChannelsKey on purpose: that is what keeps the source
-            // layout intact for the fold below.
-        ])
-        output.alwaysCopiesSampleData = false
-        ranges = timeRanges
-        output.supportsRandomAccess = !timeRanges.isEmpty
-        reader.add(output)
+        self.asset = asset
+        self.track = track
+        windows = timeRanges.isEmpty ? [nil] : timeRanges.map { $0 }
         out = .zeroed(0)
     }
 
     deinit {
-        reader.cancelReading()
+        reader?.cancelReading()
         out.deallocate()
     }
 
-    func start() throws {
-        guard reader.startReading() else {
-            throw MediaError.readerFailed(reader.error?.localizedDescription ?? "startReading")
+    func start() throws { _ = try open() }
+
+    /// Opens the next window, or reports that there are none left.
+    ///
+    /// **One reader per window, not one reader reset onto each in turn.**
+    /// `AVAssetReaderOutput.supportsRandomAccess` is the API for the latter and
+    /// it is closed on both sides: `reset(forReadingTimeRanges:)` raises
+    /// `NSInternalInconsistencyException` — an ObjC exception no Swift `catch`
+    /// can see, so it terminates the app — unless the range being read has been
+    /// drained, and with random access on, `copyNextSampleBuffer` *blocks* at
+    /// the end of a range instead of returning the nil that would say so. There
+    /// is no moment at which the call is both legal and reachable. Handing it
+    /// the window list up front is what killed every music job on a source over
+    /// 80 s; under that `AudioStats.windows` returns nothing and the whole path
+    /// was unreachable, which is why the QA clip never showed it.
+    ///
+    /// ponytail: twenty `AVAssetReader` setups on a pass that decodes forty
+    /// seconds of audio. Reader construction is not the cost here; the decode is.
+    private func open() throws -> Bool {
+        reader?.cancelReading()
+        reader = nil
+        output = nil
+        guard index < windows.count else { return false }
+        let window = windows[index]
+        index += 1
+
+        let r = try AVAssetReader(asset: asset)
+        let o = AVAssetReaderTrackOutput(track: track, outputSettings: Self.outputSettings)
+        o.alwaysCopiesSampleData = false
+        r.add(o)
+        if let window { r.timeRange = window }
+        guard r.startReading() else {
+            throw MediaError.readerFailed(r.error?.localizedDescription ?? "startReading")
         }
-        if !ranges.isEmpty {
-            output.reset(forReadingTimeRanges: ranges.map { NSValue(timeRange: $0) })
-            output.markConfigurationAsFinal()
-        }
+        reader = r
+        output = o
+        return true
     }
 
     /// The next block of interleaved stereo f32, or nil at end of stream. The
     /// buffer belongs to the decoder and is valid until the next call.
     func next() throws -> (samples: UnsafePointer<Float>, frames: Int)? {
         while true {
+            guard let output else { return nil }
             guard let sb = output.copyNextSampleBuffer() else {
-                if reader.status == .failed {
-                    throw MediaError.readerFailed(reader.error?.localizedDescription ?? "unknown")
+                if reader?.status == .failed {
+                    throw MediaError.readerFailed(reader?.error?.localizedDescription ?? "unknown")
                 }
+                // End of *this* window, not of the pass, while windows remain.
+                if try open() { continue }
                 return nil
             }
             let frames = CMSampleBufferGetNumSamples(sb)

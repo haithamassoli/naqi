@@ -124,6 +124,31 @@ struct AudioTests {
         #expect(zip(w, w.dropFirst()).allSatisfy { $0.end <= $1.start })
     }
 
+    /// The windows have to be *readable*, not just well-shaped. Handing all
+    /// twenty to `reset(forReadingTimeRanges:)` up front raises
+    /// `NSInternalInconsistencyException` — an ObjC exception, so not a failure
+    /// any caller can catch: it terminates the app. Every music job on a source
+    /// over 80 s died this way, and the pure-function test above passed the
+    /// whole time. This one decodes them.
+    @Test("a source past the 80 s threshold decodes all twenty sampled windows")
+    func statsOverThreshold() async throws {
+        let url = try Fixtures.audioClip("stats-100s.m4a", seconds: 100)
+        let asset = AVURLAsset(url: url)
+        let track = try #require(try await asset.loadTracks(withMediaType: .audio).first)
+        let duration = try await asset.load(.duration)
+        #expect(AudioStats.windows(duration: duration).count == 20)
+
+        let stats = try AudioStats.measure(track: track, duration: duration)
+        // 20 windows x 2 s at 44.1 kHz, less whatever the decoder trims at each
+        // seam — an order of magnitude under a full decode, and nowhere near a
+        // single window.
+        #expect(stats.frames > 20 * 44_100 / 2, "only \(stats.frames) frames: windows were skipped")
+        #expect(stats.frames < 60 * 44_100, "\(stats.frames) frames: the whole track was decoded")
+        // A 440 Hz tone at 0.25 amplitude: mean ~0, std ~0.25/sqrt(2).
+        #expect(abs(stats.mean) < 0.02)
+        #expect(abs(stats.std - 0.25 / Float(2).squareRoot()) < 0.02)
+    }
+
     // MARK: Overlap-add driver
 
     @Test("soft clip is transparent below 0.95 and bounded at 1.0")

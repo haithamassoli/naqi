@@ -23,6 +23,7 @@ final class Demucs {
     typealias Infer = (_ wav: UnsafePointer<Float>, _ spec: UnsafePointer<Float>,
                        _ specSum: UnsafeMutablePointer<Float>,
                        _ timeSum: UnsafeMutablePointer<Float>) throws -> Void
+    typealias MusicScore = (_ mono: UnsafePointer<Float>, _ frames: Int) throws -> Float
 
     // MARK: Geometry — fixed by the exported graph (spec-audio §1.2)
 
@@ -32,10 +33,11 @@ final class Demucs {
     static let stride = 103_194
     /// 0.5 s zero pre-pad, demucs' deterministic `shift_offset = 0` draw.
     static let maxShift = 22_050
-    /// The gate's ±2-chunk dilation window. No gate is wired yet (yamnet is not
-    /// bundled), but the lag is part of the shipped ring geometry and dropping
-    /// it would re-derive `inCap` for a saving of 1.7 MB.
-    static let lookahead = 2 * stride                 // 206_388
+    static let dilation = 2
+    static let dilation2MinScore: Float = 0.02
+    private static let gateRing = 8
+    /// The gate's ±2-chunk dilation window.
+    static let lookahead = dilation * stride          // 206_388
     static let inCap = 2 * seg + lookahead            // 435_708
     static let outCap = seg + stride                  // 217_854
     static let specSize = 4 * Models.Demucs.specBins * Models.Demucs.specFrames  // 917_504
@@ -58,6 +60,7 @@ final class Demucs {
     private let mean: Float
     private let std: Float
     private let infer: Infer
+    private let musicScore: MusicScore?
     private let onChunk: (Int, Int) -> Void
     private let emit: (UnsafePointer<Float>, Int) throws -> Void
     private let totalChunks: Int
@@ -90,25 +93,34 @@ final class Demucs {
     private let waveR: UnsafeMutablePointer<Float>
     private let emitBuf: UnsafeMutablePointer<Float> // 2*stride, interleaved
 
+    // Music gate: one denormalized mono chunk and the five live dilation scores.
+    private let gateMono: UnsafeMutablePointer<Float>
+    private var gateScores = [Float](repeating: 0, count: Demucs.gateRing)
+    private var gateFrom = Int.max
+    private var gateTo = -1
+
     /// Frames the stream actually delivered — the authoritative output length.
     private(set) var framesFed = 0
     /// Frames handed to `emit`. `emitted == framesFed` after `finish()`.
     private(set) var emitted = 0
     private(set) var chunksDone = 0
+    private(set) var skippedChunks = 0
     /// Model samples that came back NaN or ±Inf and were replaced with silence.
-    /// Not theoretical: the graph is fp16 and a passage far louder than the
-    /// track average pushes activations at the ~65504 ceiling (spec-audio §8/1).
+    /// The fp32 artifact removes the old fp16 ceiling, but this guard still
+    /// protects the encoder if a provider returns a non-finite activation.
     private(set) var nonFinite = 0
 
     private(set) var stftMs = 0.0
     private(set) var inferMs = 0.0
     private(set) var olaMs = 0.0
+    private(set) var gateMs = 0.0
 
     /// - Parameters:
     ///   - estimatedFrames: progress denominator only. It never bounds the chunk
     ///     grid and never caps the output.
     init(mean: Float, std: Float, estimatedFrames: Int,
          infer: @escaping Infer,
+         musicScore: MusicScore? = nil,
          onChunk: @escaping (Int, Int) -> Void = { _, _ in },
          emit: @escaping (UnsafePointer<Float>, Int) throws -> Void) {
         precondition(Self.stride < Self.seg && Self.seg <= 2 * Self.stride,
@@ -116,6 +128,7 @@ final class Demucs {
         self.mean = mean
         self.std = max(std, 1e-8)  // one scalar for both directions; a silent track would divide by zero
         self.infer = infer
+        self.musicScore = musicScore
         self.onChunk = onChunk
         self.emit = emit
         totalChunks = (estimatedFrames + Self.maxShift + Self.stride - 1) / Self.stride
@@ -135,6 +148,7 @@ final class Demucs {
         waveL = .zeroed(Self.seg)
         waveR = .zeroed(Self.seg)
         emitBuf = .zeroed(2 * Self.stride)
+        gateMono = .zeroed(Self.seg)
 
         // Triangle rising 1/57330 … 1.0 and back, replicating demucs.cpp's
         // transition window at TRANSITION_POWER = 1. Σg·x / Σg == x, so the
@@ -147,7 +161,7 @@ final class Demucs {
 
     deinit {
         for p in [inL, inR, outL, outR, wsum, weight, segL, segR, wav,
-                  specIn, specSum, timeSum, waveL, waveR, emitBuf] { p.deallocate() }
+                  specIn, specSum, timeSum, waveL, waveR, emitBuf, gateMono] { p.deallocate() }
     }
 
     /// Feed the next `frames` interleaved stereo samples. May synchronously run
@@ -185,7 +199,12 @@ final class Demucs {
     }
 
     private func processChunk() throws {
-        try inferChunk(nextChunkOff)
+        if try shouldSeparate(chunksDone) {
+            try inferChunk(nextChunkOff)
+        } else {
+            skippedChunks += 1
+            passthroughChunk(nextChunkOff)
+        }
         nextChunkOff += Self.stride
         chunksDone += 1
         // Per chunk, not per stage: `JobRunner` samples the footprint only when
@@ -198,6 +217,61 @@ final class Demucs {
         // max(): totalChunks is a container-duration estimate, so a track that
         // outruns it must not hand the caller done > total.
         onChunk(chunksDone, max(totalChunks, chunksDone))
+    }
+
+    /// Two-tier ±2 dilation from Android C1. Music within ±1 always wins;
+    /// music at ±2 wins only when this chunk itself scores at least 0.02.
+    private func shouldSeparate(_ chunk: Int) throws -> Bool {
+        guard let musicScore else { return true }
+        var i = max(gateTo + 1, chunk)
+        while i <= chunk + Self.dilation {
+            if gateFrom == Int.max { gateFrom = i }
+            let started = ContinuousClock.now
+            gateScores[i % gateScores.count] = try scoreChunk(i, using: musicScore)
+            gateMs += msSince(started)
+            gateTo = i
+            i += 1
+        }
+        for k in (chunk - Self.dilation)...(chunk + Self.dilation) {
+            if k < 0 { continue }
+            if k < gateFrom { return true }
+            if gateScores[k % gateScores.count] < MusicGate.threshold { continue }
+            if (chunk - 1)...(chunk + 1) ~= k
+                || gateScores[chunk % gateScores.count] >= Self.dilation2MinScore { return true }
+        }
+        return false
+    }
+
+    /// Denormalize the input-ring window, fold it to mono, and score only the
+    /// real samples. A window wholly past the stream is silence.
+    private func scoreChunk(_ chunk: Int, using score: MusicScore) throws -> Float {
+        let off = chunk * Self.stride
+        let n = max(0, min(Self.seg, writePos - off))
+        guard n > 0 else { return 0 }
+        for j in 0..<n {
+            let cell = (off + j) % Self.inCap
+            gateMono[j] = 0.5 * (inL[cell] + inR[cell]) * std + mean
+        }
+        return try score(gateMono, n)
+    }
+
+    /// A skipped chunk takes the normal overlap-add path, which reconstructs a
+    /// skipped run exactly and crossfades at skipped/separated boundaries.
+    private func passthroughChunk(_ off: Int) {
+        let clen = min(Self.seg, endPos - off)
+        let started = ContinuousClock.now
+        for j in 0..<clen {
+            let p = off + j
+            let g = weight[j]
+            let cell = p % Self.outCap
+            if p < writePos {
+                let src = p % Self.inCap
+                outL[cell] += g * inL[src]
+                outR[cell] += g * inR[src]
+            }
+            wsum[cell] += g
+        }
+        olaMs += msSince(started)
     }
 
     private func inferChunk(_ off: Int) throws {
@@ -314,13 +388,14 @@ final class DemucsSession {
     /// - Parameter keepStems: drums and bass are never kept. Ascending order is
     ///   load-bearing — the buffer reads only ever seek forward.
     init(keepStems: [Models.Demucs.Stem]) throws {
-        // CPU EP, never CoreML: XNNPACK's fp16 kernels corrupted this graph's
-        // spectral branch on Android (broadband noise stems, time branch
-        // intact), and CoreML is another unvalidated fp16 path (spec-audio §8/10).
+        // The fp32 graph runs through CoreML's CPU+GPU MLProgram path on device.
+        // Simulator policy normalizes that request to the CPU reference. Never
+        // use XNNPACK here; its fp16 kernels corrupted the spectral branch.
         // `Ort.computeThreads` and not a local constant: the registry keys its
         // cache on the thread count, so a second value would mean a second
         // 1.3 GB session resident alongside the first.
-        model = try ModelRegistry.model(Models.Demucs.file, compute: .cpu, threads: Ort.computeThreads)
+        model = try ModelRegistry.model(Models.Demucs.file,
+                                        compute: .coreMLGPU, threads: Ort.computeThreads)
         keep = keepStems.map(\.rawValue).sorted()
         precondition(!keep.isEmpty, "at least one stem must be kept")
 

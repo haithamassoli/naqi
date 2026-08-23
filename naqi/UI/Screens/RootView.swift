@@ -1,6 +1,6 @@
 import SwiftUI
 
-/// Pick → Options → Progress → Done, plus three leaf screens off the overflow
+/// Pick → Options → Progress → Done, plus leaf screens off the overflow
 /// menu. A straight line does not need a route graph; `path` is an array so a
 /// step can replace the stack rather than push onto it — starting a job must
 /// not leave Options behind a back button that would re-enqueue it.
@@ -20,6 +20,7 @@ struct RootView: View {
                     case .jobs: JobsScreen(flow: flow)
                     case .settings: SettingsScreen(flow: flow)
                     case .about: AboutScreen()
+                    case .licenses: ThirdPartyLicensesScreen()
                     case .diagnostics: DeviceRuntimeView()
                     }
                 }

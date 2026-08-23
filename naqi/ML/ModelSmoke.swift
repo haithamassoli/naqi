@@ -19,8 +19,14 @@ enum ModelSmoke {
         var ok: Bool { error == nil }
     }
 
-    static func runAll(compute: ComputeUnit = .cpu) -> [Result] {
-        [nsfw(compute), genderAge(compute), demucs(compute)]
+    /// Nil runs every graph under its production configuration. Diagnostics can
+    /// still force one provider across all graphs for a manual A/B.
+    static func runAll(compute: ComputeUnit? = nil) -> [Result] {
+        if let compute {
+            return [nsfw(compute), genderAge(compute), yamNet(compute), demucs(compute)]
+        }
+        return [nsfw(.coreMLNeuralNetwork), genderAge(.xnnpack),
+                yamNet(.xnnpack), demucs(.coreMLGPU)]
     }
 
     private static func timed(_ model: String, _ compute: ComputeUnit,
@@ -77,9 +83,26 @@ enum ModelSmoke {
         }
     }
 
-    /// htdemucs is the expensive one: this is also the M0 fp16-NaN check. The
-    /// graph carries fp16 initializers (Android's fp16 *execution* path produced
-    /// NaN); a zero input must produce all-finite output.
+    static func yamNet(_ compute: ComputeUnit) -> Result {
+        timed(Models.YamNet.file, compute) {
+            let Y = Models.YamNet.self
+            var t = ContinuousClock.now
+            let model = try ModelRegistry.model(Y.file, compute: compute)
+            let load = ms(t)
+            let input = try ORTValue.zeros(shape: [Y.frameSamples])
+            t = ContinuousClock.now
+            let out = try model.run([Y.input: input])
+            let infer = ms(t)
+            guard let scores = out[Y.output] else { throw OrtError.outputMissing(Y.output) }
+            guard scores.shape == [1, Y.classes] else {
+                throw OrtError.shapeMismatch(expected: [1, Y.classes], got: scores.shape)
+            }
+            return (load, infer, "\(scores.shape) finite=\(try scores.floats().allSatisfy { $0.isFinite })")
+        }
+    }
+
+    /// htdemucs is the expensive one. The shipped fp32 graph is the parity path
+    /// selected by D3; a zero input must still produce all-finite output.
     static func demucs(_ compute: ComputeUnit) -> Result {
         timed(Models.Demucs.file, compute) {
             let D = Models.Demucs.self

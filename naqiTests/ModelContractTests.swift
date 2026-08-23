@@ -3,8 +3,8 @@ import Foundation
 @testable import naqi
 
 /// The M0 gate. If any of these fail, no downstream stage can be trusted:
-/// the graphs are the same artifacts Android ships, so shape/finiteness
-/// disagreement means the Apple runtime is doing something different.
+/// the graphs derive reproducibly from Android's source artifacts, so a
+/// shape/finiteness disagreement means the Apple runtime is doing something different.
 @Suite("Model contracts", .serialized)
 struct ModelContractTests {
 
@@ -23,6 +23,24 @@ struct ModelContractTests {
         }
     }
 
+    @Test("simulator normalizes CoreML requests to the CPU reference")
+    func simulatorProviderPolicy() {
+        #if targetEnvironment(simulator)
+        #expect(Ort.effectiveCompute(.coreMLGPU) == .cpu)
+        #expect(Ort.effectiveCompute(.coreMLNeuralNetwork) == .cpu)
+        #expect(Ort.effectiveCompute(.xnnpack) == .xnnpack)
+        #else
+        #expect(Ort.effectiveCompute(.coreMLGPU) == .coreMLGPU)
+        #endif
+    }
+
+    @Test("production provider configuration smoke-loads every graph")
+    func smokeProductionProviders() {
+        for result in ModelSmoke.runAll() {
+            #expect(result.ok == true, "\(result.model): \(result.error ?? "")")
+        }
+    }
+
     @Test("NSFW gate: 5 classes, softmax sums to 1")
     func nsfwContract() throws {
         let m = try ModelRegistry.model( Models.Nsfw.file)
@@ -37,34 +55,6 @@ struct ModelContractTests {
         #expect(p.allSatisfy { $0.isFinite })
     }
 
-    /// The dynamic batch dim is the analyze-wall lever — prove it actually works
-    /// and that batched results equal single-frame results.
-    @Test("NSFW gate: dynamic batch matches single-frame")
-    func nsfwBatch() throws {
-        let m = try ModelRegistry.model( Models.Nsfw.file)
-        let side = Models.Nsfw.side, n = 4
-        let per = 3 * side * side
-
-        // Four distinguishable constant-value frames.
-        var batch = [Float]()
-        for i in 0..<n { batch += [Float](repeating: Float(i) * 0.25, count: per) }
-
-        let bOut = try m.run([Models.Nsfw.input: .float(batch, shape: [n, 3, side, side])])
-        let by = try #require(bOut[Models.Nsfw.output])
-        #expect(by.shape == [n, 5])
-        let bp = try by.floats()
-
-        for i in 0..<n {
-            let single = [Float](repeating: Float(i) * 0.25, count: per)
-            let sOut = try m.run([Models.Nsfw.input: .float(single, shape: [1, 3, side, side])])
-            let sp = try #require(sOut[Models.Nsfw.output]).floats().get()
-            for c in 0..<5 {
-                #expect(abs(bp[i * 5 + c] - sp[c]) < 1e-4,
-                        "batch row \(i) class \(c): \(bp[i * 5 + c]) vs \(sp[c])")
-            }
-        }
-    }
-
     @Test("genderage: [1,3] output")
     func genderAgeContract() throws {
         let m = try ModelRegistry.model( Models.GenderAge.file)
@@ -76,9 +66,20 @@ struct ModelContractTests {
         #expect(try y.floats().allSatisfy { $0.isFinite })
     }
 
-    /// The PRD's headline risk: fp16 execution produced NaN on Android. The
-    /// graph has fp16 initializers but fp32 IO, so the runtime must up-cast.
-    @Test("htdemucs: fp16 weights produce finite fp32 output")
+    @Test("YAMNet: fixed waveform produces 521 finite scores")
+    func yamNetContract() throws {
+        let Y = Models.YamNet.self
+        let model = try ModelRegistry.model(Y.file, compute: .xnnpack)
+        #expect(model.executionCompute == .xnnpack)
+        #expect(model.inputNames == [Y.input])
+        #expect(model.outputNames == [Y.output])
+        let out = try model.run([Y.input: .zeros(shape: [Y.frameSamples])])
+        let scores = try #require(out[Y.output])
+        #expect(scores.shape == [1, Y.classes])
+        #expect(try scores.floats().allSatisfy { $0.isFinite })
+    }
+
+    @Test("htdemucs: fp32 graph produces finite output")
     func demucsFinite() throws {
         let D = Models.Demucs.self
         let m = try ModelRegistry.model( D.file)
@@ -111,8 +112,4 @@ struct ModelContractTests {
         // A real separation must not be silent.
         #expect(wf.contains { abs($0) > 1e-6 }, "htdemucs produced digital silence")
     }
-}
-
-private extension Array where Element == Float {
-    func get() -> [Float] { self }
 }

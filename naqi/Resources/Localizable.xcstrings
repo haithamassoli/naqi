@@ -95,13 +95,13 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "مرخّص بموجب GPL-3.0-or-later."
+            "value" : "حقوق النشر © ٢٠٢٦ هيثم عسولي. جميع الحقوق محفوظة. للاستخدام الشخصي غير التجاري فقط؛ لا يُسمح بإعادة التوزيع."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Licensed under GPL-3.0-or-later."
+            "value" : "Copyright © 2026 Haitham Assoli. All rights reserved. Personal, non-commercial use only; redistribution is not permitted."
           }
         }
       }
@@ -129,13 +129,13 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "لا يجمع نقي أي بيانات، ولا يستخدم تحليلات أو مكتبات طرف ثالث، ولا يتطلب حساباً. ولا يحتوي على أي كود شبكة إطلاقاً — ضع الجهاز في وضع الطيران وسيعمل كما هو تماماً. تعمل كل النماذج على هذا الجهاز. والفيديو الذي تختاره يُفتح للقراءة فقط ولا يُعدَّل أبداً."
+            "value" : "لا يجمع نقي أي بيانات، ولا يستخدم أدوات تحليل أو إعلان، ولا يتطلب حساباً. لا تستخدم الفلترة الشبكة؛ تعمل كل النماذج على هذا الجهاز وتعمل المعالجة في وضع الطيران. وحدها روابط التراخيص الاختيارية تفتح متصفحك. والفيديو الذي تختاره يُفتح للقراءة فقط ولا يُعدَّل أبداً."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Naqi collects no data, has no analytics, uses no third-party SDKs and needs no account. It contains no networking code at all — put the device in Airplane Mode and it works exactly the same. Every model runs on this device. The video you pick is opened read-only and is never modified."
+            "value" : "Naqi collects no data, uses no analytics or advertising SDKs and needs no account. Filtering never uses the network; every model runs on this device and processing works in Airplane Mode. Only the optional licence links open your browser. The video you pick is opened read-only and is never modified."
           }
         }
       }
@@ -221,6 +221,295 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Version %1$@ (%2$d)"
+          }
+        }
+      }
+    },
+    "about_eyebrow_licenses" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تراخيص الطرف الثالث"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Third-party licences"
+          }
+        }
+      }
+    },
+    "about_notices_title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "البرمجيات والنماذج المضمّنة"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bundled software and models"
+          }
+        }
+      }
+    },
+    "about_notices_desc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اطّلع على الشروط وروابط المصادر لكل مكوّن مضمن في نقي."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Read the terms and source links for every component bundled with Naqi."
+          }
+        }
+      }
+    },
+    "licenses_title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تراخيص الطرف الثالث"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Third-party licences"
+          }
+        }
+      }
+    },
+    "licenses_intro" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يظل كل مكوّن خاضعاً لشروط مصدره. ولا يحل ترخيص نقي محل تلك الشروط."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Each component remains governed by its upstream terms. Naqi’s licence does not replace them."
+          }
+        }
+      }
+    },
+    "licenses_source" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "عرض الشروط لدى المصدر"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "View upstream terms"
+          }
+        }
+      }
+    },
+    "licenses_personal_only" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "هذه النسخة للاستخدام الشخصي والبحثي غير التجاري فقط، ولا يجوز إعادة توزيعها."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This build is for personal, non-commercial research use only and must not be redistributed."
+          }
+        }
+      }
+    },
+    "licenses_onnx_title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ONNX Runtime 1.24.2"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ONNX Runtime 1.24.2"
+          }
+        }
+      }
+    },
+    "licenses_onnx_terms" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ترخيص MIT. ويشمل إشعارات الطرف الثالث التي تنشرها Microsoft."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MIT. Includes the third-party notices published by Microsoft."
+          }
+        }
+      }
+    },
+    "licenses_demucs_title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HTDemucs"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HTDemucs"
+          }
+        }
+      }
+    },
+    "licenses_demucs_terms" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يصف المصدر Demucs بأنه مرخّص بموجب MIT. النموذج المضمّن تصدير ONNX/fp32 من نقطة تحقق htdemucs المنشورة، ولا يذكر المصدر شروطاً منفصلة لنقطة التحقق."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Upstream labels Demucs as MIT. The bundled model is an ONNX/fp32 export of its released htdemucs checkpoint; upstream states no separate checkpoint terms."
+          }
+        }
+      }
+    },
+    "licenses_nsfw_title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "nsfw_model، MobileNetV2 1.4"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "nsfw_model, MobileNetV2 1.4"
+          }
+        }
+      }
+    },
+    "licenses_nsfw_terms" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ترخيص MIT، باستثناء المواد التي يحدد المصدر لها شروطاً أخرى. نموذج ONNX المضمّن مشتق من الإصدار 1.2.0."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MIT, except material upstream separately identifies under other terms. The bundled ONNX model is derived from release 1.2.0."
+          }
+        }
+      }
+    },
+    "licenses_yamnet_title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TensorFlow YAMNet"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TensorFlow YAMNet"
+          }
+        }
+      }
+    },
+    "licenses_yamnet_terms" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "الكود بترخيص Apache 2.0. نموذج ONNX المضمّن مشتق من أوزان YAMNet المنشورة، ولا يذكر المصدر شروطاً منفصلة للأوزان."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Code: Apache 2.0. The bundled ONNX model is derived from the published YAMNet weights; upstream states no separate weight terms."
+          }
+        }
+      }
+    },
+    "licenses_insight_face_title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "InsightFace genderage، buffalo_l"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "InsightFace genderage, buffalo_l"
+          }
+        }
+      }
+    },
+    "licenses_insight_face_terms" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "الكود بترخيص MIT؛ أما أوزان النموذج فللبحث غير التجاري فقط. يتطلب الاستخدام التجاري ترخيصاً منفصلاً."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Code: MIT. Model weights: non-commercial research use only. Commercial use requires a separate licence."
           }
         }
       }

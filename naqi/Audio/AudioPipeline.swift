@@ -146,6 +146,8 @@ enum AudioPipeline {
                                  isCancelled: @escaping @Sendable () -> Bool) async throws -> Sep {
         nonisolated(unsafe) let decoder = try AudioDecoder(track: track)
         try decoder.start()
+        let gate = MusicGate.open()
+        defer { if gate != nil { ModelRegistry.evict(Models.YamNet.file) } }
         let session = try DemucsSession(keepStems: keepStems)
         let format = try lpcmFormat()
         nonisolated(unsafe) let sink = input
@@ -153,9 +155,13 @@ enum AudioPipeline {
         let pending = Confined<[CMSampleBuffer]>([])
         let samplesOut = Confined(0)
         let lastPercent = Confined(-1)
+        let score: Demucs.MusicScore? = gate.map { gate in
+            { try gate.score($0, frames: $1) }
+        }
         nonisolated(unsafe) let separator = Demucs(
             mean: stats.mean, std: stats.std, estimatedFrames: estimatedFrames,
             infer: session.run,
+            musicScore: score,
             onChunk: { done, total in
                 // ~4800 chunks map onto 100 values; posting every one measured
                 // −12.2 % on Android.
@@ -196,7 +202,8 @@ enum AudioPipeline {
         let ms = msSince(started)
         stage.stop("""
             wall=\(Int(ms))ms chunks=\(separator.chunksDone) stft=\(Int(separator.stftMs))ms \
-            ort=\(Int(separator.inferMs))ms ola=\(Int(separator.olaMs))ms
+            ort=\(Int(separator.inferMs))ms gate=\(Int(separator.gateMs))ms \
+            skipped=\(separator.skippedChunks)/\(separator.chunksDone) ola=\(Int(separator.olaMs))ms
             """)
         precondition(separator.emitted == separator.framesFed,
                      "emitted \(separator.emitted) != fed \(separator.framesFed)")

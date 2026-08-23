@@ -508,6 +508,16 @@ struct UITests {
         }
     }
 
+    @Test("About states the current personal licence, never the inherited GPL claim",
+          arguments: ["en", "ar"])
+    func aboutUsesCurrentLicense(_ language: String) {
+        var resource = LocalizedStringResource.aboutLicense
+        resource.locale = Locale(identifier: language)
+        let value = String(localized: resource)
+        #expect(value.contains("GPL") == false)
+        #expect(value.contains(language == "ar" ? "جميع الحقوق محفوظة" : "All rights reserved"))
+    }
+
     @Test("Every pipeline stage has a user-visible name", arguments: ["en", "ar"])
     func stageLabels(_ language: String) {
         for stage in Job.Stage.allCases {
@@ -592,6 +602,13 @@ struct UITests {
         // About + diagnostics
         .aboutOpen, .aboutTitle, .aboutVersion("1.0", 1), .aboutLicense,
         .aboutEyebrowUpdates, .aboutReleasesTitle, .aboutReleasesDesc,
+        .aboutEyebrowLicenses, .aboutNoticesTitle, .aboutNoticesDesc,
+        .licensesTitle, .licensesIntro, .licensesSource, .licensesPersonalOnly,
+        .licensesOnnxTitle, .licensesOnnxTerms,
+        .licensesDemucsTitle, .licensesDemucsTerms,
+        .licensesNsfwTitle, .licensesNsfwTerms,
+        .licensesYamnetTitle, .licensesYamnetTerms,
+        .licensesInsightFaceTitle, .licensesInsightFaceTerms,
         .pickDiagTitle, .pickDiagRunning, .diagRun, .diagNotRun,
         .diagCores, .diagMemory, .diagCompute,
         // Failure sentences

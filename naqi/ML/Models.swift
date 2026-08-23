@@ -9,26 +9,22 @@ enum Models {
     // MARK: NSFW 5-class gate (MobileNetV2 1.4-224)
 
     enum Nsfw {
-        static let file = "nsfw_mnv2_140_f32"
-        static let input = "input"          // [N,3,224,224] f32 NCHW RGB, /255, no mean/std
-        static let output = "prediction"    // [N,5] softmax
+        static let file = "nsfw_mnv2_140_f32_static"
+        static let input = "input"          // [1,3,224,224] f32 NCHW RGB, /255, no mean/std
+        static let output = "prediction"    // [1,5] softmax
         static let side = 224
 
         /// Alphabetical — locked by the tf2onnx export, do not reorder.
         enum Class: Int, CaseIterable, Sendable {
             case drawings = 0, hentai = 1, neutral = 2, porn = 3, sexy = 4
         }
-        /// The graph's batch dim is dynamic, so the gate can submit N crops in
-        /// one Run. Measured on Android as ~1.6 ms/frame single; batching is the
-        /// cheapest analyze-wall win Apple has that Android did not take.
-        static let maxBatch = 8
     }
 
     // MARK: genderage (InsightFace)
 
     enum GenderAge {
-        static let file = "genderage"
-        static let input = "data"           // [N,3,96,96] f32 NCHW
+        static let file = "genderage_static"
+        static let input = "data"           // [1,3,96,96] f32 NCHW
         static let output = "fc1"           // [1,3] = [femaleLogit, maleLogit, age/100]
         static let side = 96
     }
@@ -36,7 +32,7 @@ enum Models {
     // MARK: htdemucs 4-stem, 2.6 s segment
 
     enum Demucs {
-        static let file = "htdemucs_s26_f16"
+        static let file = "htdemucs_s26_f32"
 
         /// Waveform branch input: [1, 2, 114660] f32.
         static let waveInput = "input"
@@ -65,8 +61,19 @@ enum Models {
         }
     }
 
+    // MARK: YAMNet music classifier
+
+    enum YamNet {
+        static let file = "yamnet"
+        static let input = "waveform"       // [15600] f32 mono at 16 kHz
+        static let output = "output_0"       // [1,521] AudioSet scores
+        static let sampleRate = 16_000
+        static let frameSamples = 15_600
+        static let classes = 521
+    }
+
     /// Every model the app ships, for the smoke test and the preflight check.
-    static let bundled = [Nsfw.file, GenderAge.file, Demucs.file]
+    static let bundled = [Nsfw.file, GenderAge.file, Demucs.file, YamNet.file]
 
     static func url(_ file: String) -> URL? {
         Bundle.main.url(forResource: file, withExtension: "onnx", subdirectory: "Models")

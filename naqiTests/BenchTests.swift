@@ -40,7 +40,6 @@ struct BenchTests {
     /// lands on a frame boundary. See `longSoak2997`.
     static let soak2997 = URL.documentsDirectory.appending(path: "soak-2997.mp4")
 
-
     /// Swift's String(format:) has no %s; pad explicitly.
     private func row(_ cols: String...) -> String {
         cols.map { $0.padding(toLength: max(13, $0.count + 1), withPad: " ", startingAt: 0) }.joined()
@@ -67,7 +66,7 @@ struct BenchTests {
         print("\n=== htdemucs, one 2.6 s segment · Android baseline \(Self.baselineS23) ===")
         print(row("provider", "session ms", "best infer", "x-realtime", "finite"))
 
-        for unit in [ComputeUnit.cpu, .coreML] {
+        for unit in [ComputeUnit.cpu, .coreMLGPU] {
             // Session creation is reported separately: the CoreML EP compiles
             // the graph to an MLModel here, which is a one-off cost on device
             // (it caches) but dominates a cold measurement.
@@ -91,27 +90,6 @@ struct BenchTests {
         }
         // Leave nothing resident: the next suite should not inherit 1.3 GB.
         ModelRegistry.evict(D.file)
-    }
-
-    @Test("NSFW gate: does batching help?")
-    func nsfwBatching() throws {
-        // Thread count matters more than batch size, and measuring batching at
-        // 1 thread flatters it: a lone frame cannot saturate the cores, so
-        // batching looks like a win that vanishes once the session is threaded
-        // correctly. Measure at the real setting.
-        let m = try ModelRegistry.model(Models.Nsfw.file, threads: Ort.computeThreads)
-        let side = Models.Nsfw.side, per = 3 * side * side
-        print("\n=== NSFW gate batching, threads=\(Ort.computeThreads) (analyze wall) ===")
-        print(row("batch", "best ms", "ms/frame"))
-
-        for n in [1, 2, 4, 8] {
-            let input = try ORTValue.float([Float](repeating: 0.5, count: per * n),
-                                           shape: [n, 3, side, side])
-            var out: [String: ORTValue] = [:]
-            let ms = try best(5) { out = try m.run([Models.Nsfw.input: input]) }
-            #expect(out[Models.Nsfw.output]?.shape == [n, 5])
-            print(row("\(n)", String(format: "%.1f", ms), String(format: "%.2f", ms / Double(n))))
-        }
     }
 
     /// The 1.5 GB jetsam budget. `phys_footprint` is the number iOS actually

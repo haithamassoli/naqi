@@ -11,6 +11,7 @@ struct OptionsScreen: View {
     #endif
 
     @State private var showLongJobConfirm = false
+    @State private var startFeedback = 0
 
     private var wide: Bool {
         #if canImport(UIKit)
@@ -77,19 +78,25 @@ struct OptionsScreen: View {
         .confirmationDialog(Text(.dlgLongJobTitle),
                             isPresented: $showLongJobConfirm,
                             titleVisibility: .visible) {
-            Button { Task { await flow.start() } } label: { Text(.actionStart) }
+            Button { start() } label: { Text(.actionStart) }
             Button(role: .cancel) {} label: { Text(.actionCancel) }
         } message: {
             Text(.dlgLongJobBody(String(localized: durationText(ms: flow.estimateMs))))
         }
+        .sensoryFeedback(.impact, trigger: startFeedback)
     }
 
     private func startTapped() {
         if flow.estimateMs > Eta.confirmThresholdMs {
             showLongJobConfirm = true
         } else {
-            Task { await flow.start() }
+            start()
         }
+    }
+
+    private func start() {
+        startFeedback += 1
+        Task { await flow.start() }
     }
 }
 
@@ -124,28 +131,38 @@ struct CensorSection: View {
                            isOn: Binding(get: { flow.ops.censorMode == .wholeFrame },
                                          set: { flow.ops.censorMode = $0 ? .wholeFrame : .regions }))
                 NaqiRowDivider()
-                // The hint is what VoiceOver reads *after* the value, and it is
-                // the only thing that says which way to drag: "Strictness, 50"
-                // on its own gives a direction to nothing.
-                SliderRow(title: .optStrictnessTitle,
-                          desc: .optStrictnessDesc,
-                          hint: .optStrictnessHint,
-                          value: $flow.ops.strictness)
-                NaqiRowDivider()
-                SliderRow(title: .optBlurAmountTitle,
-                          desc: .optBlurAmountDesc,
-                          hint: .optBlurHint,
-                          value: $flow.ops.blurAmount)
-                NaqiRowDivider()
                 ToggleTile(icon: nil,
-                           title: .optGrayscaleTitle,
-                           desc: .optGrayscaleDesc,
-                           isOn: $flow.ops.grayscale)
+                           title: .optNsfwTitle,
+                           desc: .optNsfwDesc,
+                           isOn: $flow.ops.censorNsfw)
+                if flow.ops.censorNsfw {
+                    NaqiRowDivider()
+                    // The hint is what VoiceOver reads *after* the value, and
+                    // says which way to drag: "Strictness, 50" alone does not.
+                    SliderRow(title: .optStrictnessTitle,
+                              desc: .optStrictnessDesc,
+                              hint: .optStrictnessHint,
+                              value: $flow.ops.strictness)
+                }
+                NaqiRowDivider()
+                CensorStyleRow(flow: flow)
+                if !flow.ops.solidColor.isSolid {
+                    NaqiRowDivider()
+                    SliderRow(title: .optBlurAmountTitle,
+                              desc: .optBlurAmountDesc,
+                              hint: .optBlurHint,
+                              value: $flow.ops.blurAmount)
+                    NaqiRowDivider()
+                    ToggleTile(icon: nil,
+                               title: .optGrayscaleTitle,
+                               desc: .optGrayscaleDesc,
+                               isOn: $flow.ops.grayscale)
+                }
             }
         }
     }
 
-    /// Two segments, not three. `NONE` is the step-1 toggle, and an "Off"
+    /// Three segments, not four. `none` is the step-1 toggle, and an "Off"
     /// segment here would be a control that turns off the card containing it.
     private var whoRow: some View {
         VStack(alignment: .leading, spacing: Naqi.S.s2) {
@@ -184,6 +201,79 @@ struct CensorSection: View {
         }
         .padding(.horizontal, Naqi.S.s4)
         .padding(.vertical, Naqi.S.s3)
+    }
+}
+
+/// Blur or one of five fixed opaque fills. Picking a swatch also picks Solid,
+/// so the common path takes one tap and the stored colour carries both choices.
+private struct CensorStyleRow: View {
+    @Bindable var flow: Flow
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Naqi.S.s2) {
+            Text(.optCensorStyleTitle)
+                .font(Naqi.F.titleSmall)
+                .foregroundStyle(Naqi.C.onSurface)
+            Text(.optCensorStyleDesc)
+                .font(Naqi.F.bodySmall)
+                .foregroundStyle(Naqi.C.onSurfaceVariant)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 0) {
+                styleButton(.optStyleBlur, selected: !flow.ops.solidColor.isSolid) {
+                    flow.ops.solidColor = .blur
+                }
+                styleButton(.optStyleSolid, selected: flow.ops.solidColor.isSolid) {
+                    if !flow.ops.solidColor.isSolid { flow.ops.solidColor = .black }
+                }
+            }
+            .padding(3)
+            .background(Naqi.C.surfaceContainerHighest, in: .capsule)
+
+            if flow.ops.solidColor.isSolid {
+                HStack(spacing: Naqi.S.s3) {
+                    ForEach(FilterOps.SolidColor.swatches, id: \.self) { color in
+                        swatch(color)
+                    }
+                }
+            }
+        }
+        .padding(.horizontal, Naqi.S.s4)
+        .padding(.vertical, Naqi.S.s3)
+    }
+
+    private func styleButton(_ title: LocalizedStringResource,
+                             selected: Bool,
+                             action: @escaping () -> Void) -> some View {
+        Button {
+            withAnimation(Naqi.spring) { action() }
+        } label: {
+            Text(title)
+                .font(Naqi.F.titleSmall)
+                .foregroundStyle(selected ? Naqi.C.onPrimary : Naqi.C.onSurfaceVariant)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .background(selected ? Naqi.C.primary : .clear, in: .capsule)
+                .contentShape(.capsule)
+        }
+        .buttonStyle(.plain)
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
+    }
+
+    private func swatch(_ color: FilterOps.SolidColor) -> some View {
+        let rgb = color.rgb
+        let selected = flow.ops.solidColor == color
+        return Button {
+            withAnimation(Naqi.spring) { flow.ops.solidColor = color }
+        } label: {
+            Circle()
+                .fill(Color(red: rgb.red, green: rgb.green, blue: rgb.blue))
+                .overlay(Circle().stroke(Naqi.C.outlineVariant, lineWidth: 1))
+                .padding(4)
+                .overlay(Circle().stroke(selected ? Naqi.C.primary : .clear, lineWidth: 2))
+                .frame(width: 44, height: 44)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(Text(color.label))
+        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
     }
 }
 

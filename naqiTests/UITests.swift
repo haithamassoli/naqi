@@ -38,17 +38,27 @@ struct UITests {
         #expect(d.censor == true)
         #expect(d.who == .women)
         #expect(d.censorMode == .regions)
+        #expect(d.censorNsfw == true)
         #expect(d.blurAmount == 60)
         #expect(d.grayscale == false)
+        #expect(d.solidColor == .blur)
         #expect(d.keepStems == .vocals)
         // Spec §1.1 row 4 / analyze §0.20 — Android's `DEFAULT_STRICTNESS`.
         // The gate interpolates its thresholds from this, so a drift here
         // censors differently than Android at default settings.
         #expect(d.strictness == 40)
 
-        // The picker offers two segments, not Android's three: `none` is the
-        // step-1 toggle and `everyone` has no UI.
-        #expect(FilterOps.Who.userSelectable == [.women, .men])
+        // `none` remains the step-1 toggle, so the picker offers the other
+        // three states and leads with the strictest one.
+        #expect(FilterOps.Who.userSelectable == [.everyone, .women, .men])
+    }
+
+    @Test("Old persisted options default new fields to the old behavior")
+    func oldOptionsDecode() throws {
+        let data = Data(#"{"removeMusic":false,"censor":true,"who":"women","censorMode":"regions","strictness":40,"blurAmount":60,"grayscale":false,"keepStems":"vocals"}"#.utf8)
+        let ops = try JSONDecoder().decode(FilterOps.self, from: data)
+        #expect(ops.censorNsfw == true)
+        #expect(ops.solidColor == .blur)
     }
 
     @Test("Last-used options round-trip through UserDefaults")
@@ -61,9 +71,11 @@ struct UITests {
         ops.censor = true
         ops.who = .men
         ops.censorMode = .wholeFrame
+        ops.censorNsfw = false
         ops.strictness = 17
         ops.blurAmount = 83
         ops.grayscale = true
+        ops.solidColor = .navy
         ops.keepStems = .vocalsAndOther
         ops.saveAsLastUsed()
 
@@ -549,9 +561,12 @@ struct UITests {
         .pickWordmarkAr, .pickWordmarkLatin, .pickTagline,
         // Options
         .optTitle, .actionBack, .optSectionCensorFaces,
-        .optWhoTitle, .optWhoDesc, .optWhoWomen, .optWhoMen,
+        .optWhoTitle, .optWhoDesc, .optWhoEveryone, .optWhoWomen, .optWhoMen,
         .optWholeFrameTitle, .optWholeFrameDesc,
+        .optNsfwTitle, .optNsfwDesc,
         .optStrictnessTitle, .optStrictnessDesc,
+        .optCensorStyleTitle, .optCensorStyleDesc, .optStyleBlur, .optStyleSolid,
+        .optSolidGray, .optSolidBlack, .optSolidWhite, .optSolidNavy, .optSolidGreen,
         .optBlurAmountTitle, .optBlurAmountDesc,
         .optGrayscaleTitle, .optGrayscaleDesc,
         .optSectionRemoveMusic,

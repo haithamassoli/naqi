@@ -62,6 +62,7 @@ final class FrameSampler: @unchecked Sendable {
 
     private let reader: TrackReader
     private let sourceTransform: CGAffineTransform
+    private let gateEnabled: Bool
     private let gateStride: Int
     private let slotIntervalUs: Int64
     private let endUs: Int64
@@ -94,10 +95,12 @@ final class FrameSampler: @unchecked Sendable {
          transform: VideoTransform,
          fps: Double = AnalyzeConstants.sampleFPS,
          gateEvery: Int = AnalyzeConstants.gateStride,
+         gateEnabled: Bool = true,
          startMs: Int64 = 0,
          endMs: Int64 = .max) throws {
         reader = try TrackReader.decodedVideo(track: track)
         sourceTransform = transform.toUpright
+        self.gateEnabled = gateEnabled
         gateStride = max(1, gateEvery)
         slotIntervalUs = max(1, Int64(1_000_000 / fps))
         endUs = endMs == .max ? .max : endMs * 1000
@@ -176,7 +179,7 @@ final class FrameSampler: @unchecked Sendable {
             guard let src = CMSampleBufferGetImageBuffer(sb) else { continue }
             // Evaluated before the increment, so the gate fires on emitted
             // frames 0, 2, 4, … = exactly 5 fps at 10/2.
-            let wantGate = stats.emitted % gateStride == 0
+            let wantGate = gateEnabled && stats.emitted % gateStride == 0
             let frame = try convert(src, ptsMs: ptsUs / 1000, wantGate: wantGate)
             stats.emitted += 1
             if wantGate { stats.gated += 1 }
@@ -221,9 +224,11 @@ final class FrameSampler: @unchecked Sendable {
         detectTransform = VideoTransform(preferredTransform: upright,
                                          naturalSize: CGSize(width: dw, height: dh))
 
-        let side = Models.Nsfw.side
-        gx = (0..<side).map { $0 * cropW / side }
-        gy = (0..<side).map { $0 * cropH / side }
+        if gateEnabled {
+            let side = Models.Nsfw.side
+            gx = (0..<side).map { $0 * cropW / side }
+            gy = (0..<side).map { $0 * cropH / side }
+        }
 
         var p: CVPixelBufferPool?
         let status = CVPixelBufferPoolCreate(

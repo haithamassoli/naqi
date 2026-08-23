@@ -113,6 +113,7 @@ struct DoneScreen: View {
                 ZStack {
                     Circle().fill(Naqi.C.primary)
                     NaqiIcon(.check).fill(Naqi.C.onPrimary).frame(width: glyph, height: glyph)
+                        .accessibilityHidden(true)
                 }
                 .frame(width: tile, height: tile)
 
@@ -201,7 +202,7 @@ struct DoneScreen: View {
     /// budget on the render and cannot afford a copy to play from. Limited
     /// access is enough — an asset the app itself created is always in the
     /// user's selection.
-    private static func libraryVideo(_ id: String?) async -> AVAsset? {
+    static func libraryVideo(_ id: String?) async -> AVAsset? {
         guard let id else { return nil }
         let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
         guard status == .authorized || status == .limited,

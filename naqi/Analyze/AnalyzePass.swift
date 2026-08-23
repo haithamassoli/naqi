@@ -61,22 +61,30 @@ enum AnalyzePass {
             ? source.duration.convertScale(1000, method: .default).value
             : .max
 
-        // Android's own sweep peaked at 2 intra-op threads (20.1 / 47.8 / 42.3 /
-        // 19.5 inferences per second at 1 / 2 / 4 / 8, §8.3) and the same knee
-        // shows up here: 19.25 / 11.87 / 10.43 ms per gate frame at 1 / 2 / 4 on
-        // the simulator. Four buys 12 % and costs a core the decoder wants.
-        let gate = try ModelRegistry.model(Models.Nsfw.file, threads: 2)
         // A build without genderage degrades every track to "no vote", which
         // means censor — safe, and the only signal is this log line (§11.6).
-        let voter = (try? ModelRegistry.model(Models.GenderAge.file)).map(GenderVote.init)
-        if voter == nil { Log.analyze.notice("genderage unavailable: every track abstains, i.e. censors") }
+        let voter = ops.who.skipsGenderVote
+            ? nil
+            : (try? ModelRegistry.model(Models.GenderAge.file)).map(GenderVote.init)
+        if voter == nil, !ops.who.skipsGenderVote {
+            Log.analyze.notice("genderage unavailable: every track abstains, i.e. censors")
+        }
 
         let tracker = FaceTracker(who: ops.who)
         let detector = await FaceDetector.resolve()
-        // Batch 1: §10.16 forbids batching the gate, and the Apple measurement
-        // agreed (see `GateBatch`).
-        let batch = GateBatch(model: gate, strictness: ops.strictness, size: 1)
-        let sampler = try FrameSampler(track: track, transform: video.transform)
+        let batch: GateBatch?
+        if ops.censorNsfw {
+            // Android's own sweep peaked at 2 intra-op threads (20.1 / 47.8 /
+            // 42.3 / 19.5 inferences per second at 1 / 2 / 4 / 8, §8.3).
+            let gate = try ModelRegistry.model(Models.Nsfw.file, threads: 2)
+            // Batch 1: §10.16 forbids batching the gate, and the Apple
+            // measurement agreed (see `GateBatch`).
+            batch = GateBatch(model: gate, strictness: ops.strictness, size: 1)
+        } else {
+            batch = nil
+        }
+        let sampler = try FrameSampler(track: track, transform: video.transform,
+                                       gateEnabled: ops.censorNsfw)
 
         // `RenderPass` throttles to every 30th frame, which at a 30 fps source is
         // one report per second of picture. This pass decodes at `sampleFPS`, so
@@ -108,7 +116,7 @@ enum AnalyzePass {
             // Detection and the gate overlap; the await stays inside this call
             // so the frame's pool slot survives both (§1.5, §2.5).
             async let detected = detector.detect(frame)
-            if let g = frame.gate { try batch.add(ptsMs: frame.ptsMs, tensor: g) }
+            if let g = frame.gate { try batch?.add(ptsMs: frame.ptsMs, tensor: g) }
             // A detector failure is per-frame and survivable; see
             // `DetectFailures` for why it is survivable only up to a point.
             let boxes: [CGRect]
@@ -136,7 +144,7 @@ enum AnalyzePass {
         if detectFailures.exceededRate(sampled: stats.emitted) {
             throw AnalyzeError.detectorUnusable(failed: detectFailures.total, of: stats.emitted)
         }
-        try batch.flush()
+        try batch?.flush()
         // The last sampled frame sits up to one sample interval short of the
         // duration, and on a stage that feeds a progress band "97 %" is a stage
         // that never finished. Closing at exactly 1.0 is the caller's signal
@@ -147,7 +155,8 @@ enum AnalyzePass {
 
         // In region mode this is the plain concatenation — only the whole-frame
         // path merges (§6.3 rule 2).
-        var intervals = NsfwGate.intervals(batch.firings, durationMs: durationMs)
+        let firings = batch?.firings ?? []
+        var intervals = NsfwGate.intervals(firings, durationMs: durationMs)
             + overflowSpans(faceTracks)
         if ops.censorMode == .wholeFrame {
             intervals = promoteToWholeFrame(intervals, tracks: faceTracks)
@@ -155,14 +164,14 @@ enum AnalyzePass {
 
         stage.stop("""
             \(stats.decoded) decoded, \(stats.emitted) sampled, \(stats.gated) gated, \
-            \(batch.firings.count) firings, \(faceTracks.count) tracks, \(intervals.count) intervals\
+            \(firings.count) firings, \(faceTracks.count) tracks, \(intervals.count) intervals\
             \(detectFailures.total > 0 ? ", \(detectFailures.total) detect failures" : "")
             """)
         return AnalyzeResult(edl: Edl(censorIntervalsMs: intervals, faceTracks: faceTracks),
                              decodedFrames: stats.decoded,
                              sampledFrames: stats.emitted,
                              gateFrames: stats.gated,
-                             firings: batch.firings.count,
+                             firings: firings.count,
                              wallMs: wallMs)
     }
 

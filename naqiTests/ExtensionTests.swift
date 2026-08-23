@@ -15,6 +15,27 @@ import ActivityKit
 @Suite("Extensions")
 struct ExtensionTests {
 
+    @Test("old share manifests still decode without per-item options")
+    func oldManifestDecodes() throws {
+        let data = Data("""
+            {"id":"1D9F0C8E-4A2B-4E15-9C3D-2F6A1B0E7C41",
+             "fileName":"clip.mp4","receivedAt":770000000}
+            """.utf8)
+        let manifest = try JSONDecoder().decode(ShareManifest.self, from: data)
+        #expect(manifest.fileName == "clip.mp4")
+        #expect(manifest.options == nil)
+    }
+
+    @Test("share options stay attached to their own manifest")
+    func manifestCarriesOptions() throws {
+        let options = ShareOptions(removeMusic: true, censor: false, who: "everyone")
+        let manifest = ShareManifest(id: UUID(), fileName: "clip.mp4",
+                                     receivedAt: .now, options: options)
+        let decoded = try JSONDecoder().decode(ShareManifest.self,
+                                               from: JSONEncoder().encode(manifest))
+        #expect(decoded.options == options)
+    }
+
     /// The `.appex` bundles the app carries. `naqiTests.xctest` lands in the
     /// same folder, hence the filter.
     private var embedded: [URL] {
@@ -26,6 +47,23 @@ struct ExtensionTests {
     }
 
     #if os(iOS)
+    @Test("share sheet remembers its last choices")
+    func shareOptionsPersist() {
+        let before = ShareOptions.loadLastUsed()
+        defer { before.saveAsLastUsed() }
+        let options = ShareOptions(removeMusic: true, censor: false, who: "everyone")
+        options.saveAsLastUsed()
+        #expect(ShareOptions.loadLastUsed() == options)
+    }
+
+    @Test("background processing is declared in the built app plist")
+    func backgroundProcessingDeclared() {
+        let ids = Bundle.main.object(forInfoDictionaryKey: "BGTaskSchedulerPermittedIdentifiers") as? [String]
+        let modes = Bundle.main.object(forInfoDictionaryKey: "UIBackgroundModes") as? [String]
+        #expect(ids?.contains(BackgroundWork.identifier) == true)
+        #expect(modes?.contains("processing") == true)
+    }
+
     @Test("both extensions are embedded with a loadable NSExtension dict")
     func extensionsEmbedded() throws {
         let names = Set(embedded.map { $0.deletingPathExtension().lastPathComponent })

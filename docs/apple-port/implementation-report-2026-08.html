@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>تقرير تنفيذ خطة تحسين Naqi لإصدار Apple</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --ink: #102c27;
+      --muted: #526660;
+      --jade: #18745f;
+      --jade-soft: #e8f3ef;
+      --paper: #fbfcfa;
+      --line: #d7e2de;
+      --warn: #8b5a16;
+      --warn-bg: #fff6e7;
+      --card: #ffffff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--paper);
+      color: var(--ink);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Tahoma, Arial, sans-serif;
+      line-height: 1.85;
+    }
+    main { width: min(920px, calc(100% - 32px)); margin: 0 auto; padding: 48px 0 72px; }
+    header { padding: 32px; border: 1px solid var(--line); border-radius: 24px; background: var(--card); }
+    .eyebrow { margin: 0 0 6px; color: var(--jade); font-weight: 700; }
+    h1 { margin: 0; font-size: clamp(2rem, 5vw, 3.25rem); line-height: 1.25; letter-spacing: -0.02em; }
+    .lead { margin: 18px 0 0; color: var(--muted); font-size: 1.08rem; }
+    .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; margin-top: 24px; }
+    .stat { padding: 18px; border-radius: 18px; background: var(--jade-soft); }
+    .stat strong { display: block; color: var(--jade); font-size: 1.65rem; line-height: 1.2; }
+    .stat span { color: var(--muted); font-size: .92rem; }
+    section { margin-top: 40px; }
+    h2 { margin: 0 0 14px; font-size: 1.55rem; }
+    h3 { margin: 24px 0 8px; font-size: 1.13rem; }
+    p { margin: 8px 0 0; }
+    ul, ol { margin: 10px 0 0; padding-right: 24px; }
+    li + li { margin-top: 8px; }
+    .card { padding: 24px; border: 1px solid var(--line); border-radius: 20px; background: var(--card); }
+    .grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px; }
+    .item { padding: 20px; border: 1px solid var(--line); border-radius: 18px; background: var(--card); }
+    .item h3 { margin-top: 0; }
+    .tag { display: inline-block; margin-left: 6px; padding: 2px 9px; border-radius: 999px; background: var(--jade-soft); color: var(--jade); font-size: .8rem; font-weight: 700; }
+    .blocked { border-color: #ecd6b2; background: var(--warn-bg); }
+    .blocked h3, .blocked strong { color: var(--warn); }
+    code { direction: ltr; unicode-bidi: embed; padding: 2px 6px; border-radius: 6px; background: #eef2f0; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .88em; }
+    a { color: var(--jade); text-underline-offset: 3px; }
+    footer { margin-top: 44px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: .92rem; }
+    @media (max-width: 700px) {
+      main { width: min(100% - 20px, 920px); padding-top: 20px; }
+      header { padding: 24px 20px; }
+      .stats, .grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <p class="eyebrow">Naqi، إصدار Apple</p>
+    <h1>تقرير مراجعة وتنفيذ خطة التحسين لشهر أغسطس 2026</h1>
+    <p class="lead">راجعت الخطة مقابل الكود الحالي، ثم نفذت البنود التي يمكن شحنها واختبارها من دون تجاوز بوابات القياس والترخيص المكتوبة في الخطة نفسها. النتيجة ليست تنفيذًا شكليًا لكل بند، بل تنفيذ للجزء الآمن مع إبقاء البنود المرتبطة بجهاز حقيقي وحقوق النماذج متوقفة.</p>
+    <div class="stats">
+      <div class="stat"><strong>146</strong><span>اختبارًا نجحت على محاكي iOS</span></div>
+      <div class="stat"><strong>13</strong><span>حزمة اختبار ضمن التشغيل الكامل</span></div>
+      <div class="stat"><strong>0</strong><span>أخطاء اختبار غير متوقعة</span></div>
+    </div>
+  </header>
+
+  <section>
+    <h2>نتيجة مراجعة الخطة</h2>
+    <div class="card">
+      <p>الخطة جيدة في ترتيب المخاطر، لكنها لا تصلح للتنفيذ الحرفي كما كُتبت. بعضها أصبح قديمًا، وبعضها يفترض ملفات أو قياسات غير موجودة بعد.</p>
+      <ul>
+        <li>إتاحة الوصول في شريط التقدم كانت منفذة مسبقًا، لذلك لم أكررها.</li>
+        <li>ادعاء غياب ترخيص نموذج NSFW أصبح قديمًا. المشروع الأصلي ينشره حاليًا بترخيص MIT.</li>
+        <li>نموذج <code>genderage</code> المبني على InsightFace ما زال مخصصًا للبحث غير التجاري، وهو مانع حقيقي للنشر التجاري.</li>
+        <li>تشغيل CoreML في الإنتاج يحتاج قياس تكافؤ على iPhone حقيقي. كل أجهزة iPhone المتاحة كانت غير متصلة أثناء العمل.</li>
+        <li>اختبار <code>parity.cc</code> الحالي برنامج macOS، وليس اختبارًا جاهزًا للعمل على iPhone.</li>
+        <li>تجميد NSFW عند batch 1 يحتاج إعادة تصدير النموذج وحذف اختبارات وآليات batching القديمة، وليس تغيير ثابت واحد.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>ما نُفذ</h2>
+    <div class="grid">
+      <article class="item">
+        <span class="tag">P4</span><span class="tag">P5</span><span class="tag">U4</span>
+        <h3>خيارات الحجب ومسار التحليل</h3>
+        <ul>
+          <li>أضفت خيار "الجميع" إلى محدد الوجوه مع تسمية عربية وإنجليزية صحيحة.</li>
+          <li>منعت فتح نموذج <code>genderage</code> عندما يكون الحكم معروفًا مسبقًا.</li>
+          <li>أضفت مفتاحًا لتعطيل حجب المشاهد الحساسة مع إيقاف جلسة NSFW وحساب tensor بالكامل.</li>
+          <li>حافظت على قراءة ملفات الطابور القديمة، ويعود الحقل الجديد إلى السلوك السابق عند غيابه.</li>
+        </ul>
+      </article>
+
+      <article class="item">
+        <span class="tag">P6</span><span class="tag">U5</span>
+        <h3>التعبئة الصلبة بدل التمويه</h3>
+        <ul>
+          <li>أضفت خمسة ألوان معتمة: الرمادي، الأسود، الأبيض، الكحلي، والأخضر.</li>
+          <li>المستخدم يختار بين التمويه واللون الصلب من شاشة الخيارات.</li>
+          <li>المسار الصلب يتجاوز Gaussian blur والتدرج الرمادي، لذلك هو أبسط وأقل كلفة أثناء الرسم.</li>
+          <li>أضفت اختبار بكسلات يثبت أن اللون الصلب يحل محل التمويه والتدرج الرمادي.</li>
+        </ul>
+      </article>
+
+      <article class="item">
+        <span class="tag">U1</span>
+        <h3>شاشة النشاط وسجل النتائج</h3>
+        <ul>
+          <li>أضفت شاشة واحدة تعرض المهمة الجارية، الطابور، المهام المتوقفة، والنتائج المحفوظة.</li>
+          <li>أضفت الإلغاء والاستئناف والتخلص من الصف ومسح المهام المكتملة.</li>
+          <li>لم يعد الضغط على "فلترة فيديو آخر" يحذف سجل المهمة المكتملة.</li>
+          <li>احتفظت بالمهام القابلة للاستئناف عند مسح المكتمل، حتى لا تضيع نقاط الحفظ.</li>
+          <li>يمكن فتح نتيجة محفوظة في مجلد قديم عبر bookmark ونطاق الأمان بعد إعادة تشغيل التطبيق.</li>
+        </ul>
+      </article>
+
+      <article class="item">
+        <span class="tag">U2</span>
+        <h3>الاستئناف عبر BGProcessingTask</h3>
+        <ul>
+          <li>أضفت تسجيل <code>BGProcessingTask</code> عند تشغيل التطبيق، مع معرف مصرح به في Info.plist.</li>
+          <li>الطلب يشترط طاقة خارجية ولا يحتاج اتصالًا بالشبكة.</li>
+          <li>كل نافذة خلفية تملك مهمة واحدة فقط، ولا تبدأ بقية الطابور بعد انتهاء المنحة.</li>
+          <li>عند انتهاء وقت الخلفية، يرسل النظام إشارة توقف ويحافظ التطبيق على المهلة حتى يغلق الكاتب ملفاته ويسجل checkpoint.</li>
+          <li>إذا عاد التطبيق إلى الواجهة، تنتقل ملكية الطابور إلى الواجهة ويستمر التصريف المعتاد.</li>
+          <li>عدلت النص للمستخدم حتى لا يعد بأن iOS سيشغل المهمة فورًا. النص الآن يقول إن Naqi سيستأنف عندما يكون الهاتف موصولًا بالشحن وخاملًا.</li>
+        </ul>
+      </article>
+
+      <article class="item">
+        <span class="tag">U3</span>
+        <h3>خيارات داخل امتداد المشاركة</h3>
+        <ul>
+          <li>أضفت واجهة صغيرة لاختيار إزالة الموسيقى، حجب الوجوه، ومن تُحجب وجوههم.</li>
+          <li>يحمل كل ملف مشارك خياراته في manifest الخاص به، فلا تتداخل خيارات مشاركتين متتاليتين.</li>
+          <li>يحفظ الامتداد آخر اختياراته في مفتاح منفصل، من دون الكتابة فوق إعدادات التطبيق الكاملة.</li>
+          <li>يتعطل زر الإضافة عندما يكون الخياران الرئيسيان متوقفين.</li>
+          <li>أضفت تسميات VoiceOver للمفاتيح وأبقيت ملفات manifest القديمة قابلة للقراءة.</li>
+        </ul>
+      </article>
+
+      <article class="item">
+        <span class="tag">U6</span>
+        <h3>إتاحة الوصول والاهتزازات</h3>
+        <ul>
+          <li>أخفيت الأيقونات الزخرفية من شجرة VoiceOver حتى لا تتكرر التسميات.</li>
+          <li>أضفت اهتزاز impact عند بدء المهمة وsuccess عند اكتمالها.</li>
+          <li>أبقيت إتاحة شريط التقدم الموجودة مسبقًا، بما فيها النسبة وصفة <code>updatesFrequently</code>.</li>
+        </ul>
+      </article>
+    </div>
+  </section>
+
+  <section>
+    <h2>سلامة البيانات والترحيل</h2>
+    <div class="card">
+      <ul>
+        <li>فك ترميز <code>FilterOps</code> القديم يعطي <code>censorNsfw = true</code> و<code>solidColor = blur</code>، وهو السلوك السابق نفسه.</li>
+        <li>أضفت الخيارين الجديدين إلى مفتاح checkpoint. القيم الافتراضية لا تغير المفتاح القديم، لذلك تستطيع المهام الجارية استئناف عملها.</li>
+        <li>المهام التي تختلف في NSFW أو اللون الصلب لا تشترك في مجلد عمل واحد.</li>
+        <li>وحدت نسخة التطبيق وامتدادي Share وWidgets على الإصدار 1.0.2 حتى يمر تحقق الحزمة.</li>
+        <li>أضفت النصوص الجديدة بالإنجليزية والعربية، وتحقق البناء من String Catalogs للهدفين.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>الاختبارات التي شُغلت</h2>
+    <div class="card">
+      <ul>
+        <li>التشغيل الكامل على iPhone 17 Pro Simulator بنظام iOS 26.5 نجح: 146 اختبارًا في 13 حزمة.</li>
+        <li>بقيت ملاحظتان معروفتان في دمج فيديو 29.97 fps. الاختبار يسجلهما كحالة معروفة: أربع نقاط زمنية مكررة و904 إطارات بدل 900.</li>
+        <li>شغلت 16 اختبار تكامل مركزًا للخلفية والطابور وامتداد المشاركة. كلها نجحت.</li>
+        <li>ثبتت التطبيق على المحاكي وشغلته، ولم يظهر رفض تسجيل مهمة الخلفية.</li>
+        <li>فحصت الشاشة الأولى بصريًا بعد التشغيل.</li>
+        <li>بناء macOS نجح أيضًا.</li>
+      </ul>
+    </div>
+  </section>
+
+  <section>
+    <h2>ما لم يُنفذ بعد</h2>
+    <div class="grid">
+      <article class="item blocked">
+        <h3>CoreML وتجميد NSFW</h3>
+        <p>لم أغير مزود التنفيذ في الإنتاج. الخطة تشترط قياسًا على iPhone حقيقي أولًا، كما أن المشروع يحتاج نموذج htdemucs بصيغة fp32 ونموذج NSFW ثابت الأبعاد وآلية fallback تغطي إنشاء الجلسة نفسها.</p>
+      </article>
+      <article class="item blocked">
+        <h3>بوابة YAMNet</h3>
+        <p>لم أضفها قبل بوابة القياس. تنفيذها الصحيح مرتبط بدعم XNNPACK بأربع خيوط، عقد نموذج جديد، اختبارات التوسيع بمستويين، وقياس على الجهاز.</p>
+      </article>
+      <article class="item blocked">
+        <h3>ترخيص التطبيق وgenderage</h3>
+        <p>لم أختر ترخيصًا نيابة عن مالك المشروع. أوزان InsightFace ما زالت للبحث غير التجاري. المطلوب استبدالها، حذف مسار تصنيف الجنس، أو الحصول على ترخيص مكتوب.</p>
+      </article>
+      <article class="item blocked">
+        <h3>تجربة تداخل التحليل والرسم</h3>
+        <p>لم أغير الإنتاج. الخطة نفسها تطلب spike قابلًا للرمي وقرارًا مبنيًا على أرقام جهاز حقيقي قبل أي تعديل معماري.</p>
+      </article>
+    </div>
+    <div class="card" style="margin-top:14px">
+      <strong>قيد معروف في سجل النتائج.</strong>
+      <p>زر المشاركة يظهر للنتائج التي ما زال لها ملف مقروء. نتائج Photos الافتراضية لا تحتفظ بملف بعد النشر لأن التطبيق يستخدم صلاحية الإضافة فقط وينقل الملف إلى المكتبة. إنشاء نسخة كاملة جديدة خلف زر Share يناقض قرار الخصوصية والمساحة الحالي، لذلك لم أضف هذه النسخة الخفية.</p>
+    </div>
+  </section>
+
+  <section>
+    <h2>الخطوات التالية</h2>
+    <ol class="card">
+      <li>توصيل iPhone حقيقي ونقل فحص SNR إليه، ثم تسجيل النتائج في <code>m0-results.md</code>.</li>
+      <li>اختيار ترخيص هذا المستودع وحسم مصير نموذج InsightFace قبل إعداد App Store.</li>
+      <li>تجهيز نماذج fp32 وstatic بصورة قابلة لإعادة البناء، ثم تنفيذ CoreML V2 وXNNPACK مع fallback إلى CPU.</li>
+      <li>بعد نجاح التكافؤ على الجهاز، إضافة YAMNet وتشغيل اختبارات SIGKILL والاستئناف.</li>
+      <li>تنفيذ spike التداخل واتباع حدود القبول والرفض المكتوبة في الخطة.</li>
+    </ol>
+  </section>
+
+  <section>
+    <h2>مراجع الترخيص</h2>
+    <div class="card">
+      <ul>
+        <li><a href="https://github.com/GantMan/nsfw_model/blob/master/LICENSE.md">ترخيص MIT لمشروع nsfw_model</a></li>
+        <li><a href="https://github.com/deepinsight/insightface/blob/master/model_zoo/README.md?plain=1">سياسة نماذج InsightFace للاستخدام البحثي غير التجاري</a></li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>
+    أُعد هذا التقرير بعد مراجعة <code>docs/apple-port/improvement-plan-2026-08.md</code> وتنفيذ التغييرات والتحقق منها في 23 أغسطس 2026.
+  </footer>
+</main>
+</body>
+</html>

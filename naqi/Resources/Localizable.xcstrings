@@ -728,13 +728,13 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "تُقدَّر مدة هذا الفيديو بنحو ‏%1$@ على الأقل. أوصِل الهاتف بالشاحن — يواصل نقي العمل في الخلفية، لكن الهاتف سيبقى مشغولًا طوال هذه المدة، ولا يمكن إيقاف المهمة مؤقتًا، بل إلغاؤها فقط."
+            "value" : "تُقدَّر مدة هذا الفيديو بنحو ‏%1$@ على الأقل. أبقِ التطبيق مفتوحًا لأسرع نتيجة. وإذا أوقف iOS المهمة، فسيستأنفها نقي عندما يكون الهاتف قيد الشحن وفي وضع الخمول."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "This video is estimated at ~%1$@ at least. Keep the phone plugged in — Naqi keeps working in the background, but the phone will be busy the whole time and the job can't be paused, only cancelled."
+            "value" : "This video is estimated at ~%1$@ at least. Keep Naqi open for the fastest result. If iOS pauses the job, Naqi will resume it when your phone is charging and idle."
           }
         }
       }
@@ -1062,6 +1062,57 @@
         }
       }
     },
+    "jobs_clear_finished" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "مسح المكتملة"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Clear finished"
+          }
+        }
+      }
+    },
+    "jobs_status_cancelled" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "أُلغيت"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancelled"
+          }
+        }
+      }
+    },
+    "jobs_status_queued" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "في قائمة الانتظار"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Queued"
+          }
+        }
+      }
+    },
     "jobs_eta_remaining" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1347,6 +1398,210 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Filtering stopped"
+          }
+        }
+      }
+    },
+    "opt_censor_style_desc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تمويه المنطقة أو تغطيتها بلون كامل."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Blur the area, or cover it with a solid color."
+          }
+        }
+      }
+    },
+    "opt_censor_style_title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "أسلوب الحجب"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Censor style"
+          }
+        }
+      }
+    },
+    "opt_nsfw_desc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يستخدم نموذج NSFW لحجب الصورة كاملة عندما يُصنَّف المشهد على أنه مخالف."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uses the NSFW model to cover the whole frame when a scene is flagged."
+          }
+        }
+      }
+    },
+    "opt_nsfw_title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "حجب المشاهد المخالفة"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Censor flagged scenes"
+          }
+        }
+      }
+    },
+    "opt_solid_black" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "أسود"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Black"
+          }
+        }
+      }
+    },
+    "opt_solid_gray" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "رمادي"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gray"
+          }
+        }
+      }
+    },
+    "opt_solid_green" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "أخضر"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Green"
+          }
+        }
+      }
+    },
+    "opt_solid_navy" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "كحلي"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Navy"
+          }
+        }
+      }
+    },
+    "opt_solid_white" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "أبيض"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "White"
+          }
+        }
+      }
+    },
+    "opt_style_blur" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تمويه"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Blur"
+          }
+        }
+      }
+    },
+    "opt_style_solid" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لون"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Solid"
+          }
+        }
+      }
+    },
+    "opt_who_everyone" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "الجميع"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Everyone"
           }
         }
       }
@@ -1782,13 +2037,13 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "أيّ الوجوه تُحجب. المشاهد المُخالفة تُحجب في كل الأحوال."
+            "value" : "أيّ الوجوه تُحجب. حجب المشاهد خيار مستقل."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Which faces get covered. Flagged scenes are censored either way."
+            "value" : "Which faces get covered. Scene censoring is controlled separately."
           }
         }
       }
@@ -2333,6 +2588,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Couldn't build the preview."
+          }
+        }
+      }
+    },
+    "progress_background_resume" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "إذا أوقف iOS المهمة، فسيستأنفها نقي عندما يكون الهاتف قيد الشحن وفي وضع الخمول."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "If iOS pauses the job, Naqi will resume it when your phone is charging and idle."
           }
         }
       }

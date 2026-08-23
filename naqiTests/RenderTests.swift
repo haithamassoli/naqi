@@ -167,6 +167,26 @@ struct RenderTests {
         #expect(Self.pixel(dst, w - 5, h / 2).r > 243)
     }
 
+    @Test("solid fill replaces blur and grayscale")
+    func solidFill() throws {
+        let w = 320, h = 240
+        let src = try Self.bgra(w, h) { x, _ in x < w / 2 ? (0, 0, 0) : (255, 255, 255) }
+        let dst = try Self.bgra(w, h) { _, _ in (0, 0, 0) }
+        var ops = FilterOps()
+        ops.blurAmount = 100
+        ops.grayscale = true
+        ops.solidColor = .navy
+        CensorEffect(ops: ops, transform: .identity(size: CGSize(width: w, height: h)),
+                     tonemapHDR: false)
+            .render(src, to: dst, wholeFrame: true, regions: [])
+
+        for (x, y) in [(0, 0), (w / 2, h / 2), (w - 1, h - 1)] {
+            let p = Self.pixel(dst, x, y)
+            #expect(abs(p.r - 44) <= 2 && abs(p.g - 62) <= 2 && abs(p.b - 80) <= 2,
+                    "solid pixel \(x),\(y) is \(p), not navy")
+        }
+    }
+
     // MARK: - Region mapping, both rotations
 
     /// A 640x360 stored buffer with the SAME upright rect under two transforms.

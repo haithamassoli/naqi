@@ -51,24 +51,30 @@ struct BlurPlan: Equatable, Sendable {
 /// so this rides into the writer's serial pump queue unchecked.
 final class CensorEffect: @unchecked Sendable {
     let plan: BlurPlan
-    /// False when the options add up to a visual no-op (`blurAmount == 0` and no
-    /// grayscale), which lets the render pass hand every frame to the encoder
-    /// untouched instead of paying a Core Image round trip that changes nothing.
+    /// False when the options add up to a visual no-op (no solid fill,
+    /// `blurAmount == 0`, and no grayscale), which lets the render pass hand
+    /// every frame to the encoder untouched instead of paying a Core Image
+    /// round trip that changes nothing.
     let isActive: Bool
 
     private let ctx: CIContext
     private let transform: VideoTransform
     private let blurEnabled: Bool
     private let grayscale: Bool
+    private let solidColor: CIColor?
     private let tonemap: Bool
     private let outputColorSpace: CGColorSpace?
 
     init(ops: FilterOps, transform: VideoTransform, tonemapHDR: Bool) {
         self.transform = transform
         self.plan = BlurPlan(amount: ops.blurAmount, size: transform.storedSize)
-        self.blurEnabled = ops.blurAmount > 0
-        self.grayscale = ops.grayscale
-        self.isActive = ops.blurAmount > 0 || ops.grayscale
+        self.blurEnabled = !ops.solidColor.isSolid && ops.blurAmount > 0
+        self.grayscale = !ops.solidColor.isSolid && ops.grayscale
+        self.solidColor = ops.solidColor.isSolid ? {
+            let rgb = ops.solidColor.rgb
+            return CIColor(red: rgb.red, green: rgb.green, blue: rgb.blue, alpha: 1)
+        }() : nil
+        self.isActive = ops.solidColor.isSolid || ops.blurAmount > 0 || ops.grayscale
         self.tonemap = tonemapHDR
 
         var opts: [CIContextOption: Any] = [
@@ -154,8 +160,13 @@ final class CensorEffect: @unchecked Sendable {
         }
         guard isActive, wholeFrame || !regions.isEmpty else { return source }
 
-        var base = blurEnabled ? blurred(source) : source
-        if grayscale { base = greyed(base) }
+        var base: CIImage
+        if let solidColor {
+            base = CIImage(color: solidColor).cropped(to: source.extent)
+        } else {
+            base = blurEnabled ? blurred(source) : source
+            if grayscale { base = greyed(base) }
+        }
         if wholeFrame { return base }
         guard let mask = mask(for: regions, extent: source.extent) else { return source }
 

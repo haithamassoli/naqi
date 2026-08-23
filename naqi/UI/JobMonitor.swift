@@ -12,6 +12,10 @@ import os
 
     private(set) var job: Job?
     private(set) var progress: JobProgress?
+    private(set) var activeJobs: [Job] = []
+    private(set) var finishedJobs: [Job] = []
+    private(set) var runningID: Job.ID?
+    private(set) var queueProgress: JobProgress?
 
     /// How many other jobs the queue is still holding.
     ///
@@ -31,7 +35,10 @@ import os
     /// store so a run does not write into the user's `naqi-queue.json`.
     private let queue: JobQueue
 
-    init(queue: JobQueue = .shared) { self.queue = queue }
+    init(queue: JobQueue = .shared) {
+        self.queue = queue
+        observe()
+    }
 
     private var jobID: Job.ID?
     private var observer: Task<Void, Never>?
@@ -121,7 +128,6 @@ import os
         // we made up would bind the screen to a row the queue never created,
         // and the progress card would sit on "Starting…" forever.
         jobID = await queue.enqueue(candidate)
-        observe()
     }
 
     /// Binds to a row the queue already holds, rather than one this flow just
@@ -137,7 +143,6 @@ import os
         job = nil
         progress = nil
         startedAt = .now
-        observe()
     }
 
     func cancel() async {
@@ -145,6 +150,12 @@ import os
         await queue.cancel(jobID)
         detach()
     }
+
+    func cancel(_ id: Job.ID) async { await queue.cancel(id) }
+
+    func clearFinished() async { await queue.clearFinished() }
+
+    func discard(_ id: Job.ID) async { await queue.discard(id) }
 
     /// Not a special code path: the same (source, options) lands on the same job
     /// key and finds whatever the last attempt checkpointed.
@@ -154,12 +165,9 @@ import os
         await queue.retry(jobID)
     }
 
-    /// Drops the finished row. The flow owns exactly the job it created, so
-    /// nothing else can be watching it, and leaving terminal rows in
-    /// `naqi-queue.json` forever would grow a file nothing ever reads.
+    /// Stops presenting the finished row. It remains in the queue as the
+    /// in-app history until the user clears finished jobs from Activity.
     func finish() async {
-        guard let jobID else { return }
-        await queue.remove(jobID)
         detach()
     }
 
@@ -190,8 +198,6 @@ import os
     }
 
     private func detach() {
-        observer?.cancel()
-        observer = nil
         jobID = nil
         job = nil
         progress = nil
@@ -200,10 +206,20 @@ import os
     }
 
     private func observe() {
-        observer?.cancel()
         observer = Task { [weak self, queue] in
             for await snapshot in await queue.observe() {
-                guard let self, let id = self.jobID else { return }
+                guard let self else { return }
+                self.activeJobs = snapshot.jobs.filter {
+                    if case .failed(_, let resumable) = $0.state { return resumable }
+                    return !$0.state.isTerminal
+                }
+                self.finishedJobs = Array(snapshot.jobs.filter {
+                    if case .failed(_, let resumable) = $0.state { return !resumable }
+                    return $0.state.isTerminal
+                }.reversed())
+                self.runningID = snapshot.running
+                self.queueProgress = snapshot.progress
+                guard let id = self.jobID else { continue }
                 self.job = snapshot.jobs.first { $0.id == id }
                 self.progress = snapshot.running == id ? snapshot.progress : self.progress
                 self.othersQueued = Self.othersQueued(in: snapshot, besides: id)

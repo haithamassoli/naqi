@@ -46,7 +46,7 @@ enum ShareInbox {
             // and a second share of the same file must not race this one.
             let owned = adopt(media, named: handoff.fileName)
             let job = Job.capture(source: owned,
-                                  ops: await ops(for: owned),
+                                  ops: await ops(for: owned, shared: handoff.options),
                                   destination: destination,
                                   folder: folder,
                                   title: (handoff.fileName as NSString).deletingPathExtension)
@@ -66,8 +66,13 @@ enum ShareInbox {
     ///
     /// The video-track question is asked of the file, never of its extension:
     /// an audio-only `.mp4` is a movie container and gets this too.
-    private static func ops(for url: URL) async -> FilterOps {
+    private static func ops(for url: URL, shared: ShareOptions?) async -> FilterOps {
         var ops = FilterOps.loadLastUsed()
+        if let shared {
+            ops.removeMusic = shared.removeMusic
+            ops.censor = shared.censor
+            ops.who = FilterOps.Who(rawValue: shared.who) ?? ops.who
+        }
         // Not `MediaSource.probe`: this runs for every shared item at launch,
         // and precise-duration loading would read far more of the file than
         // "does it have a video track" needs.

@@ -6,6 +6,7 @@ import SwiftUI
 /// not leave Options behind a back button that would re-enqueue it.
 struct RootView: View {
     @State private var flow = Flow()
+    @State private var loadedResumable = false
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -16,6 +17,7 @@ struct RootView: View {
                     case .options: OptionsScreen(flow: flow)
                     case .progress: ProgressScreen(flow: flow)
                     case .done: DoneScreen(flow: flow)
+                    case .jobs: JobsScreen(flow: flow)
                     case .settings: SettingsScreen(flow: flow)
                     case .about: AboutScreen()
                     case .diagnostics: DeviceRuntimeView()
@@ -38,13 +40,14 @@ struct RootView: View {
         // `drainSharedIn` enqueues rows that are `.pending` for the moment
         // before the queue starts them, so a drain that won the race would make
         // a share that has just arrived look like a job that died with the app.
-        .task {
-            await flow.loadResumable()
+        .task(id: scenePhase) {
+            guard scenePhase == .active else { return }
+            await JobQueue.shared.continueInForeground()
+            if !loadedResumable {
+                await flow.loadResumable()
+                loadedResumable = true
+            }
             await flow.drainSharedIn()
-        }
-        .onChange(of: scenePhase) { _, phase in
-            guard phase == .active else { return }
-            Task { await flow.drainSharedIn() }
         }
         #if DEBUG
         .task { flow.seedFromLaunchArguments() }

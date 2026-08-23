@@ -34,11 +34,20 @@ extension FilterOps.Who {
         switch self {
         case .women: .optWhoWomen
         case .men: .optWhoMen
-        // Neither is offered by the picker — the analyze pass uses them as
-        // shortcuts — but a value persisted by a debug run must not render as
-        // a blank segment.
-        case .everyone: .optWhoWomen
-        case .none: .optWhoMen
+        case .everyone, .none: .optWhoEveryone
+        }
+    }
+}
+
+extension FilterOps.SolidColor {
+    var label: LocalizedStringResource {
+        switch self {
+        case .blur: .optStyleBlur
+        case .gray: .optSolidGray
+        case .black: .optSolidBlack
+        case .white: .optSolidWhite
+        case .navy: .optSolidNavy
+        case .green: .optSolidGreen
         }
     }
 }

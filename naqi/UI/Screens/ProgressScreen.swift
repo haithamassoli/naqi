@@ -33,6 +33,7 @@ struct ProgressScreen: View {
                         // does. Saying so is the honest version of Android's
                         // foreground-service notification.
                         NoteLine(icon: .shield, text: .progressKeepOpen)
+                        NoteLine(icon: .check, text: .progressBackgroundResume)
                     }
 
                     // Outside the failure branch: a job that failed does not
@@ -67,6 +68,9 @@ struct ProgressScreen: View {
         // the user on a bar reading 100 %.
         .task(id: flow.monitor.isDone) {
             if flow.monitor.isDone { flow.path = [.done] }
+        }
+        .sensoryFeedback(.success, trigger: flow.monitor.isDone) { old, new in
+            !old && new
         }
         // Replacing the pass strip with the failure card is a silent change:
         // VoiceOver keeps its focus on an element that no longer exists and

@@ -55,6 +55,8 @@ struct JobsBackendTests {
         #expect(job.title == "old")
         #expect(job.state == .failed(.lowSpace, resumable: false))
         #expect(job.shortfall == nil)
+        #expect(job.ops.censorNsfw == true)
+        #expect(job.ops.solidColor == .blur)
 
         // And a row that has one survives the round trip the queue actually
         // performs on every state change.
@@ -84,6 +86,44 @@ struct JobsBackendTests {
         #expect(await queue.resumable().map(\.id) == [pending.id])
     }
 
+    @Test("clear finished keeps checkpointed interrupted work")
+    func clearFinishedKeepsResumableRows() async throws {
+        let store = Fixtures.scratch("jobs-clear-finished.json")
+        defer { try? FileManager.default.removeItem(at: store) }
+        let survivor = Self.row(.failed(.interrupted, resumable: true))
+        try JSONEncoder().encode([
+            survivor,
+            Self.row(.done(Published(name: "done.mp4", url: nil, assetID: nil))),
+            Self.row(.failed(.generic, resumable: false)),
+            Self.row(.cancelled),
+        ]).write(to: store)
+
+        let queue = JobQueue(storeURL: store)
+        await queue.clearFinished()
+        #expect(await queue.jobs.map(\.id) == [survivor.id])
+    }
+
+    @Test("one background grant runs one row and foreground takeover drains the next")
+    func backgroundGrantOwnsOneRow() async throws {
+        let store = Fixtures.scratch("jobs-background-owner.json")
+        defer { try? FileManager.default.removeItem(at: store) }
+        let first = Self.row(.pending)
+        let second = Self.row(.pending)
+        try JSONEncoder().encode([first, second]).write(to: store)
+
+        let queue = JobQueue(storeURL: store)
+        #expect(await queue.startResumableHead() == first.id)
+        try await Self.waitUntil {
+            await queue.jobs.first(where: { $0.id == first.id })?.state.isTerminal == true
+        }
+        #expect(await queue.jobs.first(where: { $0.id == second.id })?.state == .pending)
+
+        await queue.continueInForeground()
+        try await Self.waitUntil {
+            await queue.jobs.first(where: { $0.id == second.id })?.state.isTerminal == true
+        }
+    }
+
     /// Discarding is not `remove`: the scratch has to go with the row, or a
     /// user who just said they did not want a half-rendered film keeps paying
     /// gigabytes for it until the 7-day sweep runs.
@@ -111,5 +151,14 @@ struct JobsBackendTests {
                       title: "queued", ops: FilterOps(), destination: .photos)
         job.state = state
         return job
+    }
+
+    private static func waitUntil(_ condition: @Sendable () async -> Bool) async throws {
+        let deadline = ContinuousClock.now + .seconds(10)
+        while ContinuousClock.now < deadline {
+            if await condition() { return }
+            try await Task.sleep(for: .milliseconds(20))
+        }
+        Issue.record("Timed out waiting for the queue state")
     }
 }

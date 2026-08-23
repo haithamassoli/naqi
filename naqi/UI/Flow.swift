@@ -74,7 +74,7 @@ func isDroppableSource(_ url: URL) -> Bool {
     /// menu, not in the line: it edits the same `ops` Options does, but it is
     /// reachable without a picked video — which is the only way to see what a
     /// shared-in file will inherit.
-    enum Step: Hashable, Sendable { case options, progress, done, settings, about, diagnostics }
+    enum Step: Hashable, Sendable { case options, progress, done, jobs, settings, about, diagnostics }
 
     var path: [Step] = []
     var ops: FilterOps = .loadLastUsed()

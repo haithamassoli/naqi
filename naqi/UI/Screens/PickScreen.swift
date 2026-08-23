@@ -75,9 +75,16 @@ struct PickScreen: View {
             ToolbarItem(placement: .principal) {
                 HStack(spacing: Naqi.S.s1) {
                     NaqiMark().fill(Naqi.C.primary).frame(width: 22, height: 22)
+                        .accessibilityHidden(true)
                     Text(.appName)
                         .font(Naqi.F.titleLarge)
                         .foregroundStyle(Naqi.C.onSurface)
+                }
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button { flow.path = [.jobs] } label: {
+                    Image(systemName: "clock.arrow.circlepath")
+                        .accessibilityLabel(Text(.jobsTitle))
                 }
             }
             ToolbarItem(placement: .primaryAction) {
@@ -248,6 +255,7 @@ struct PickScreen: View {
                     NaqiIcon(picked ? .check : .video)
                         .fill(picked ? Naqi.C.onPrimary : Naqi.C.onSurfaceVariant)
                         .frame(width: glyph, height: glyph)
+                        .accessibilityHidden(true)
                 }
                 .frame(width: tile, height: tile)
                 .padding(.trailing, Naqi.S.s4)

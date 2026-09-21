@@ -56,9 +56,8 @@ extension Flow {
                          othersQueued: screen == "queued" ? 3 : 0)
         case "done":
             path = [.done]
-            // `url:` non-nil poses the folder destination, which is the only
-            // one that can show Open and Share — the Photos publish the app
-            // actually uses leaves nothing openable behind.
+            // A real publish now keeps a file on both destinations, so Play,
+            // Share and Save are all live on this screen.
             monitor.seed(state: .done(Published(name: "holiday-in-tabuk-naqi-1754320000000.mp4",
                                                 url: url, assetID: nil)),
                          progress: nil)

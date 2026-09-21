@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import UniformTypeIdentifiers
 @testable import naqi
 
 /// M6 exit criteria, at the logic level. Three things can quietly break the UI
@@ -550,6 +551,34 @@ struct UITests {
         #expect(durationText(ms: 155 * 60_000).key == "dur_h_min")
     }
 
+    @Test("the native player loads a real video and an audio clip")
+    @MainActor
+    func playbackSessionLoadsMedia() async throws {
+        let video = try requireQAVideo()
+        let videoSession = PlaybackSession(item: .file(video, title: "clip.mp4"))
+        let videoItem = try #require(videoSession.player.currentItem)
+        #expect(try await videoItem.asset.load(.isPlayable))
+        videoSession.stop()
+
+        let audio = try Fixtures.audioClip("player-\(UUID().uuidString).m4a")
+        defer { try? FileManager.default.removeItem(at: audio) }
+        #expect(MediaKind.of(audio) == .audio)
+        let audioSession = PlaybackSession(item: .file(audio, title: "clip.m4a"))
+        let audioItem = try #require(audioSession.player.currentItem)
+        #expect(try await audioItem.asset.load(.isPlayable))
+        audioSession.stop()
+    }
+
+    @Test("Audio files play as audio, video files as video")
+    func mediaKind() {
+        #expect(MediaKind.of(URL(fileURLWithPath: "/tmp/clip.m4a")) == .audio)
+        #expect(MediaKind.of(URL(fileURLWithPath: "/tmp/clip.mp3")) == .audio)
+        #expect(MediaKind.of(URL(fileURLWithPath: "/tmp/clip.mp4")) == .video)
+        #expect(MediaKind.of(URL(fileURLWithPath: "/tmp/clip.mov")) == .video)
+        #expect(MediaKind.utType(of: URL(fileURLWithPath: "/tmp/clip.m4a")).conforms(to: .audio))
+        #expect(MediaKind.utType(of: URL(fileURLWithPath: "/tmp/clip.mp4")).conforms(to: .movie))
+    }
+
     @Test("File sizes are decimal, not binary")
     func sizes() {
         #expect(fileSizeText(bytes: 999_000_000).key == "jobs_size_mb")
@@ -595,7 +624,8 @@ struct UITests {
         .durUnderMin, .durMin(43), .durHMin(2, 35),
         // Done
         .doneTitle, .jobsSavedLabel, .jobsSavedPhotos, .jobsSavedFolder("Movies"),
-        .actionOpen, .actionShare, .actionDeleteOriginal,
+        .actionPlay, .actionShare, .actionSave, .actionDone, .actionDeleteOriginal,
+        .jobsRowA11Y("clip.mp4", "Saved"),
         .dlgDeleteOriginalTitle, .dlgDeleteOriginalBody("clip.mp4"),
         .dlgDeleteOriginalFallbackName, .actionDelete, .actionKeep,
         .dlgOriginalDeleted, .dlgOriginalKept, .dlgDeleteOriginalFailed,

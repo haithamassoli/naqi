@@ -354,7 +354,7 @@ struct NaqiPrimaryButtonStyle: ButtonStyle {
     }
 }
 
-/// The outlined twin — Share next to Open on the done screen.
+/// The outlined twin — Share and Save next to Play on the done screen.
 struct NaqiOutlineButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label

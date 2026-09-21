@@ -71,8 +71,8 @@ struct Job: Identifiable, Codable, Sendable, Equatable {
     enum State: Codable, Sendable, Equatable {
         case pending
         case running
-        /// Carries the whole publish record, not a URL: a Photos publish leaves
-        /// no readable path behind, and the screen still has to name the file.
+        /// Carries the whole publish record, not a URL: the Done screen names
+        /// the file and Play/Share/Save read the local copy off it.
         case done(Published)
         /// `resumable` is what the Resume button reads: the work directory
         /// still holds finished work the next attempt will pick up.

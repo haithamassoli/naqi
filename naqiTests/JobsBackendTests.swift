@@ -124,6 +124,70 @@ struct JobsBackendTests {
         }
     }
 
+    @Test("folder publish leaves a file Play, Share and Save can use")
+    func folderPublishKeepsTheFile() async throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("naqi-pub-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let temp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("naqi-temp-\(UUID().uuidString).mp4")
+        FileManager.default.createFile(atPath: temp.path, contents: Data([1, 2, 3]))
+        let published = try await Publish.save(temp, named: "out.mp4", to: .userFolder, folder: dir)
+        #expect(published.url?.lastPathComponent == "out.mp4")
+        #expect(FileManager.default.fileExists(atPath: try #require(published.url).path))
+        #expect(published.assetID == nil)
+    }
+
+    @Test("the output library adopts a temp and refuses to delete a file it does not own")
+    func outputLibraryOwnsOnlyItsOwnFiles() throws {
+        let temp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("naqi-lib-\(UUID().uuidString).mp4")
+        FileManager.default.createFile(atPath: temp.path, contents: Data([9]))
+        let adopted = try OutputLibrary.adopt(temp, named: "kept-\(UUID().uuidString).mp4")
+        defer { OutputLibrary.remove(adopted) }
+        #expect(OutputLibrary.owns(adopted))
+        #expect(!FileManager.default.fileExists(atPath: temp.path))
+        #expect(FileManager.default.fileExists(atPath: adopted.path))
+
+        let foreign = FileManager.default.temporaryDirectory
+            .appendingPathComponent("naqi-foreign-\(UUID().uuidString).mp4")
+        FileManager.default.createFile(atPath: foreign.path, contents: Data([8]))
+        defer { try? FileManager.default.removeItem(at: foreign) }
+        #expect(!OutputLibrary.owns(foreign))
+        OutputLibrary.remove(foreign)
+        #expect(FileManager.default.fileExists(atPath: foreign.path))
+    }
+
+    @Test("clear finished deletes Naqi's local copy and leaves a user-folder file alone")
+    func clearFinishedDropsOwnedOutputs() async throws {
+        let store = Fixtures.scratch("jobs-clear-outputs.json")
+        defer { try? FileManager.default.removeItem(at: store) }
+
+        let temp = FileManager.default.temporaryDirectory
+            .appendingPathComponent("naqi-owned-\(UUID().uuidString).mp4")
+        FileManager.default.createFile(atPath: temp.path, contents: Data([1, 2, 3]))
+        let owned = try OutputLibrary.adopt(temp, named: "owned-\(UUID().uuidString).mp4")
+
+        let foreignDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("naqi-foreign-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: foreignDir, withIntermediateDirectories: true)
+        let foreign = foreignDir.appendingPathComponent("user.mp4")
+        FileManager.default.createFile(atPath: foreign.path, contents: Data([4, 5, 6]))
+        defer { try? FileManager.default.removeItem(at: foreignDir) }
+
+        try JSONEncoder().encode([
+            Self.row(.done(Published(name: owned.lastPathComponent, url: owned, assetID: "x"))),
+            Self.row(.done(Published(name: "user.mp4", url: foreign, assetID: nil))),
+        ]).write(to: store)
+
+        let queue = JobQueue(storeURL: store)
+        await queue.clearFinished()
+        #expect(await queue.jobs.isEmpty)
+        #expect(!FileManager.default.fileExists(atPath: owned.path))
+        #expect(FileManager.default.fileExists(atPath: foreign.path))
+    }
+
     /// Discarding is not `remove`: the scratch has to go with the row, or a
     /// user who just said they did not want a half-rendered film keeps paying
     /// gigabytes for it until the 7-day sweep runs.

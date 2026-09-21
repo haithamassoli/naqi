@@ -295,6 +295,13 @@ struct JobTests {
         #expect(required(both, seconds: 3600, segmented: true)
                 == 3 * gib + 3600 * (176_400 + 24_000) + slack)
 
+        // Photos keeps a local copy for Play/Share/Save, so the budget carries
+        // one more full-size file than a folder publish of the same shape.
+        #expect(Preflight.requiredBytes(
+            sourceBytes: gib,
+            tempCopies: Preflight.tempCopies(for: censor, segmented: false) + 1,
+            extraScratch: 0) == 3 * gib + slack)
+
         // ~1.6 GB of PCM on a 155-minute film is the number that made the
         // scratch a separate term instead of another "temp copy"; the AAC track
         // beside it is ~223 MB.

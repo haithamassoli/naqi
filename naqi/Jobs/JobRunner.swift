@@ -66,8 +66,9 @@ enum JobRunner {
         let shape = Job.shape(ops: job.ops, hasVideoTrack: src.video != nil,
                               segmented: !plan.isEmpty)
 
-        if let failure = await Preflight.check(source: src, ops: job.ops,
-                                               segmented: shape == .segmented) {
+        if let failure = await Preflight.check(
+            source: src, ops: job.ops, segmented: shape == .segmented,
+            extraCopies: job.destination == .photos ? 1 : 0) {
             throw JobFailure.of(failure)
         }
 

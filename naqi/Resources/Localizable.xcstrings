@@ -4,53 +4,19 @@
     "" : {
 
     },
-    "opt_blur_hint" : {
+    "about_eyebrow_licenses" : {
       "extractionState" : "manual",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "القيم الأعلى تُموّه الوجوه بقوّة أكبر."
+            "value" : "تراخيص الطرف الثالث"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Higher values blur faces more heavily."
-          }
-        }
-      }
-    },
-    "progress_bar_label" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "تقدّم الفلترة"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Filtering progress"
-          }
-        }
-      }
-    },
-    "opt_strictness_hint" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "القيم الأعلى تحجب مشاهد أكثر."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Higher values censor more scenes."
+            "value" : "Third-party licences"
           }
         }
       }
@@ -102,6 +68,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Copyright © 2026 Haitham Assoli. All rights reserved. Personal, non-commercial use only; redistribution is not permitted."
+          }
+        }
+      }
+    },
+    "about_notices_desc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "اطّلع على الشروط وروابط المصادر لكل مكوّن مضمن في نقي."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Read the terms and source links for every component bundled with Naqi."
+          }
+        }
+      }
+    },
+    "about_notices_title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "البرمجيات والنماذج المضمّنة"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bundled software and models"
           }
         }
       }
@@ -225,295 +225,6 @@
         }
       }
     },
-    "about_eyebrow_licenses" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "تراخيص الطرف الثالث"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Third-party licences"
-          }
-        }
-      }
-    },
-    "about_notices_title" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "البرمجيات والنماذج المضمّنة"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bundled software and models"
-          }
-        }
-      }
-    },
-    "about_notices_desc" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "اطّلع على الشروط وروابط المصادر لكل مكوّن مضمن في نقي."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Read the terms and source links for every component bundled with Naqi."
-          }
-        }
-      }
-    },
-    "licenses_title" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "تراخيص الطرف الثالث"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Third-party licences"
-          }
-        }
-      }
-    },
-    "licenses_intro" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "يظل كل مكوّن خاضعاً لشروط مصدره. ولا يحل ترخيص نقي محل تلك الشروط."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Each component remains governed by its upstream terms. Naqi’s licence does not replace them."
-          }
-        }
-      }
-    },
-    "licenses_source" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "عرض الشروط لدى المصدر"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "View upstream terms"
-          }
-        }
-      }
-    },
-    "licenses_personal_only" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "هذه النسخة للاستخدام الشخصي والبحثي غير التجاري فقط، ولا يجوز إعادة توزيعها."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "This build is for personal, non-commercial research use only and must not be redistributed."
-          }
-        }
-      }
-    },
-    "licenses_onnx_title" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ONNX Runtime 1.24.2"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ONNX Runtime 1.24.2"
-          }
-        }
-      }
-    },
-    "licenses_onnx_terms" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ترخيص MIT. ويشمل إشعارات الطرف الثالث التي تنشرها Microsoft."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MIT. Includes the third-party notices published by Microsoft."
-          }
-        }
-      }
-    },
-    "licenses_demucs_title" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "HTDemucs"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "HTDemucs"
-          }
-        }
-      }
-    },
-    "licenses_demucs_terms" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "يصف المصدر Demucs بأنه مرخّص بموجب MIT. النموذج المضمّن تصدير ONNX/fp32 من نقطة تحقق htdemucs المنشورة، ولا يذكر المصدر شروطاً منفصلة لنقطة التحقق."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Upstream labels Demucs as MIT. The bundled model is an ONNX/fp32 export of its released htdemucs checkpoint; upstream states no separate checkpoint terms."
-          }
-        }
-      }
-    },
-    "licenses_nsfw_title" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "nsfw_model، MobileNetV2 1.4"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "nsfw_model, MobileNetV2 1.4"
-          }
-        }
-      }
-    },
-    "licenses_nsfw_terms" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ترخيص MIT، باستثناء المواد التي يحدد المصدر لها شروطاً أخرى. نموذج ONNX المضمّن مشتق من الإصدار 1.2.0."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "MIT, except material upstream separately identifies under other terms. The bundled ONNX model is derived from release 1.2.0."
-          }
-        }
-      }
-    },
-    "licenses_yamnet_title" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "TensorFlow YAMNet"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "TensorFlow YAMNet"
-          }
-        }
-      }
-    },
-    "licenses_yamnet_terms" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "الكود بترخيص Apache 2.0. نموذج ONNX المضمّن مشتق من أوزان YAMNet المنشورة، ولا يذكر المصدر شروطاً منفصلة للأوزان."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Code: Apache 2.0. The bundled ONNX model is derived from the published YAMNet weights; upstream states no separate weight terms."
-          }
-        }
-      }
-    },
-    "licenses_insight_face_title" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "InsightFace genderage، buffalo_l"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "InsightFace genderage, buffalo_l"
-          }
-        }
-      }
-    },
-    "licenses_insight_face_terms" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "الكود بترخيص MIT؛ أما أوزان النموذج فللبحث غير التجاري فقط. يتطلب الاستخدام التجاري ترخيصاً منفصلاً."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Code: MIT. Model weights: non-commercial research use only. Commercial use requires a separate licence."
-          }
-        }
-      }
-    },
     "action_back" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -616,6 +327,23 @@
         }
       }
     },
+    "action_done" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تم"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Done"
+          }
+        }
+      }
+    },
     "action_keep" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -701,6 +429,23 @@
         }
       }
     },
+    "action_play" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تشغيل"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Play"
+          }
+        }
+      }
+    },
     "action_preview" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -731,6 +476,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Resume"
+          }
+        }
+      }
+    },
+    "action_save" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "حفظ"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Save"
           }
         }
       }
@@ -1368,40 +1130,6 @@
         }
       }
     },
-    "jobs_status_cancelled" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "أُلغيت"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Cancelled"
-          }
-        }
-      }
-    },
-    "jobs_status_queued" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "في قائمة الانتظار"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Queued"
-          }
-        }
-      }
-    },
     "jobs_eta_remaining" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1521,6 +1249,24 @@
         }
       }
     },
+    "jobs_row_a11y" : {
+      "comment" : "VoiceOver label for a queue row. First argument is the file name, second is the status.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@، %2$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@, %2$@"
+          }
+        }
+      }
+    },
     "jobs_saved_folder" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1623,6 +1369,40 @@
         }
       }
     },
+    "jobs_status_cancelled" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "أُلغيت"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cancelled"
+          }
+        }
+      }
+    },
+    "jobs_status_queued" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "في قائمة الانتظار"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Queued"
+          }
+        }
+      }
+    },
     "jobs_title" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1636,6 +1416,244 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Activity"
+          }
+        }
+      }
+    },
+    "licenses_demucs_terms" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يصف المصدر Demucs بأنه مرخّص بموجب MIT. النموذج المضمّن تصدير ONNX/fp32 من نقطة تحقق htdemucs المنشورة، ولا يذكر المصدر شروطاً منفصلة لنقطة التحقق."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Upstream labels Demucs as MIT. The bundled model is an ONNX/fp32 export of its released htdemucs checkpoint; upstream states no separate checkpoint terms."
+          }
+        }
+      }
+    },
+    "licenses_demucs_title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HTDemucs"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "HTDemucs"
+          }
+        }
+      }
+    },
+    "licenses_insight_face_terms" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "الكود بترخيص MIT؛ أما أوزان النموذج فللبحث غير التجاري فقط. يتطلب الاستخدام التجاري ترخيصاً منفصلاً."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Code: MIT. Model weights: non-commercial research use only. Commercial use requires a separate licence."
+          }
+        }
+      }
+    },
+    "licenses_insight_face_title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "InsightFace genderage، buffalo_l"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "InsightFace genderage, buffalo_l"
+          }
+        }
+      }
+    },
+    "licenses_intro" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يظل كل مكوّن خاضعاً لشروط مصدره. ولا يحل ترخيص نقي محل تلك الشروط."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Each component remains governed by its upstream terms. Naqi’s licence does not replace them."
+          }
+        }
+      }
+    },
+    "licenses_nsfw_terms" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ترخيص MIT، باستثناء المواد التي يحدد المصدر لها شروطاً أخرى. نموذج ONNX المضمّن مشتق من الإصدار 1.2.0."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MIT, except material upstream separately identifies under other terms. The bundled ONNX model is derived from release 1.2.0."
+          }
+        }
+      }
+    },
+    "licenses_nsfw_title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "nsfw_model، MobileNetV2 1.4"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "nsfw_model, MobileNetV2 1.4"
+          }
+        }
+      }
+    },
+    "licenses_onnx_terms" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ترخيص MIT. ويشمل إشعارات الطرف الثالث التي تنشرها Microsoft."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MIT. Includes the third-party notices published by Microsoft."
+          }
+        }
+      }
+    },
+    "licenses_onnx_title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ONNX Runtime 1.24.2"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ONNX Runtime 1.24.2"
+          }
+        }
+      }
+    },
+    "licenses_personal_only" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "هذه النسخة للاستخدام الشخصي والبحثي غير التجاري فقط، ولا يجوز إعادة توزيعها."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This build is for personal, non-commercial research use only and must not be redistributed."
+          }
+        }
+      }
+    },
+    "licenses_source" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "عرض الشروط لدى المصدر"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "View upstream terms"
+          }
+        }
+      }
+    },
+    "licenses_title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تراخيص الطرف الثالث"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Third-party licences"
+          }
+        }
+      }
+    },
+    "licenses_yamnet_terms" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "الكود بترخيص Apache 2.0. نموذج ONNX المضمّن مشتق من أوزان YAMNet المنشورة، ولا يذكر المصدر شروطاً منفصلة للأوزان."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Code: Apache 2.0. The bundled ONNX model is derived from the published YAMNet weights; upstream states no separate weight terms."
+          }
+        }
+      }
+    },
+    "licenses_yamnet_title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TensorFlow YAMNet"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "TensorFlow YAMNet"
           }
         }
       }
@@ -1691,210 +1709,6 @@
         }
       }
     },
-    "opt_censor_style_desc" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "تمويه المنطقة أو تغطيتها بلون كامل."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Blur the area, or cover it with a solid color."
-          }
-        }
-      }
-    },
-    "opt_censor_style_title" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "أسلوب الحجب"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Censor style"
-          }
-        }
-      }
-    },
-    "opt_nsfw_desc" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "يستخدم نموذج NSFW لحجب الصورة كاملة عندما يُصنَّف المشهد على أنه مخالف."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Uses the NSFW model to cover the whole frame when a scene is flagged."
-          }
-        }
-      }
-    },
-    "opt_nsfw_title" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "حجب المشاهد المخالفة"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Censor flagged scenes"
-          }
-        }
-      }
-    },
-    "opt_solid_black" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "أسود"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Black"
-          }
-        }
-      }
-    },
-    "opt_solid_gray" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "رمادي"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Gray"
-          }
-        }
-      }
-    },
-    "opt_solid_green" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "أخضر"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Green"
-          }
-        }
-      }
-    },
-    "opt_solid_navy" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "كحلي"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Navy"
-          }
-        }
-      }
-    },
-    "opt_solid_white" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "أبيض"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "White"
-          }
-        }
-      }
-    },
-    "opt_style_blur" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "تمويه"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Blur"
-          }
-        }
-      }
-    },
-    "opt_style_solid" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "لون"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Solid"
-          }
-        }
-      }
-    },
-    "opt_who_everyone" : {
-      "extractionState" : "manual",
-      "localizations" : {
-        "ar" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "الجميع"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Everyone"
-          }
-        }
-      }
-    },
     "opt_blur_amount_desc" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -1925,6 +1739,57 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Blur amount"
+          }
+        }
+      }
+    },
+    "opt_blur_hint" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "القيم الأعلى تُموّه الوجوه بقوّة أكبر."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Higher values blur faces more heavily."
+          }
+        }
+      }
+    },
+    "opt_censor_style_desc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تمويه المنطقة أو تغطيتها بلون كامل."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Blur the area, or cover it with a solid color."
+          }
+        }
+      }
+    },
+    "opt_censor_style_title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "أسلوب الحجب"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Censor style"
           }
         }
       }
@@ -2167,6 +2032,40 @@
         }
       }
     },
+    "opt_nsfw_desc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يستخدم نموذج NSFW لحجب الصورة كاملة عندما يُصنَّف المشهد على أنه مخالف."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uses the NSFW model to cover the whole frame when a scene is flagged."
+          }
+        }
+      }
+    },
+    "opt_nsfw_title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "حجب المشاهد المخالفة"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Censor flagged scenes"
+          }
+        }
+      }
+    },
     "opt_preview_desc" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2269,6 +2168,91 @@
         }
       }
     },
+    "opt_solid_black" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "أسود"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Black"
+          }
+        }
+      }
+    },
+    "opt_solid_gray" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "رمادي"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gray"
+          }
+        }
+      }
+    },
+    "opt_solid_green" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "أخضر"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Green"
+          }
+        }
+      }
+    },
+    "opt_solid_navy" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "كحلي"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Navy"
+          }
+        }
+      }
+    },
+    "opt_solid_white" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "أبيض"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "White"
+          }
+        }
+      }
+    },
     "opt_strictness_desc" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2286,6 +2270,23 @@
         }
       }
     },
+    "opt_strictness_hint" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "القيم الأعلى تحجب مشاهد أكثر."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Higher values censor more scenes."
+          }
+        }
+      }
+    },
     "opt_strictness_title" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2299,6 +2300,40 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Strictness"
+          }
+        }
+      }
+    },
+    "opt_style_blur" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تمويه"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Blur"
+          }
+        }
+      }
+    },
+    "opt_style_solid" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لون"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Solid"
           }
         }
       }
@@ -2333,6 +2368,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Which faces get covered. Scene censoring is controlled separately."
+          }
+        }
+      }
+    },
+    "opt_who_everyone" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "الجميع"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Everyone"
           }
         }
       }
@@ -2894,6 +2946,23 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "If iOS pauses the job, Naqi will resume it when your phone is charging and idle."
+          }
+        }
+      }
+    },
+    "progress_bar_label" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تقدّم الفلترة"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Filtering progress"
           }
         }
       }

@@ -5,9 +5,7 @@ import SwiftUI
 struct JobsScreen: View {
     @Bindable var flow: Flow
 
-    @State private var selectedJob: Job?
-    @State private var libraryVideo: AVAsset?
-    @State private var selectedURL: URL?
+    @State private var playback: PlaybackItem?
     @State private var scopedFolder: URL?
 
     var body: some View {
@@ -59,14 +57,7 @@ struct JobsScreen: View {
             if case .done = job.state { return true }
             return false
         }
-        .sheet(item: $selectedJob, onDismiss: closePlayer) { _ in
-            if let selectedURL {
-                VideoPlayer(player: AVPlayer(url: selectedURL)).ignoresSafeArea()
-            } else if let libraryVideo {
-                VideoPlayer(player: AVPlayer(playerItem: AVPlayerItem(asset: libraryVideo)))
-                    .ignoresSafeArea()
-            }
-        }
+        .sheet(item: $playback, onDismiss: closePlayer) { MediaPlayerSheet(item: $0) }
     }
 
     private func jobSection(_ title: LocalizedStringResource, jobs: [Job]) -> some View {
@@ -87,10 +78,9 @@ struct JobsScreen: View {
 
     private func open(_ job: Job) {
         guard case .done(let published) = job.state else { return }
+        let title = published.name
         if let url = published.url, FileManager.default.fileExists(atPath: url.path) {
-            libraryVideo = nil
-            selectedURL = url
-            selectedJob = job
+            playback = .file(url, title: title)
             return
         }
         if job.destination == .userFolder, let folder = job.resolvedFolder {
@@ -98,18 +88,14 @@ struct JobsScreen: View {
             let url = folder.appendingPathComponent(published.name)
             if FileManager.default.fileExists(atPath: url.path) {
                 scopedFolder = scoped ? folder : nil
-                selectedURL = url
-                libraryVideo = nil
-                selectedJob = job
+                playback = .file(url, title: title)
                 return
             }
             if scoped { folder.stopAccessingSecurityScopedResource() }
         }
         Task {
-            libraryVideo = await DoneScreen.libraryVideo(published.assetID)
-            if libraryVideo != nil {
-                selectedURL = nil
-                selectedJob = job
+            if let asset = await DoneScreen.libraryVideo(published.assetID) {
+                playback = .library(asset, title: title)
             }
         }
     }
@@ -117,8 +103,6 @@ struct JobsScreen: View {
     private func closePlayer() {
         scopedFolder?.stopAccessingSecurityScopedResource()
         scopedFolder = nil
-        selectedURL = nil
-        libraryVideo = nil
     }
 }
 
@@ -176,7 +160,7 @@ private struct JobRow: View {
             .buttonStyle(.plain)
             .disabled({ if case .done = job.state { false } else { true } }())
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(Text("\(title), \(String(localized: status))"))
+            .accessibilityLabel(Text(.jobsRowA11Y(title, String(localized: status))))
 
             switch job.state {
             case .pending, .running:

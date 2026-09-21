@@ -106,6 +106,11 @@ actor JobQueue {
     }
 
     func clearFinished() {
+        for job in jobs {
+            if case .done(let published) = job.state, let url = published.url {
+                OutputLibrary.remove(url)
+            }
+        }
         jobs.removeAll {
             switch $0.state {
             case .done, .cancelled: true
@@ -190,6 +195,9 @@ actor JobQueue {
     func discard(_ id: Job.ID) {
         if let job = jobs.first(where: { $0.id == id }) {
             WorkDir.clear(Checkpoint.key(source: job.source, ops: job.ops))
+            if case .done(let published) = job.state, let url = published.url {
+                OutputLibrary.remove(url)
+            }
         }
         remove(id)
     }

@@ -71,22 +71,19 @@ import os
     }
 
     /// The name the filtered copy was saved under. Known on **both**
-    /// destinations, including the Photos publish that leaves no openable file,
-    /// so the Done screen can always name what it made.
+    /// destinations, so the Done screen can always name what it made.
     var outputName: String? { published?.name }
 
     /// The published file, but only if it is still there to open. A Photos
-    /// publish *moves* the temp into the library and we hold add-only
-    /// authorization, so there is no readable path — Open and Share must not
-    /// offer to act on one.
+    /// publish keeps a copy in `OutputLibrary`; a folder publish writes into
+    /// the chosen folder. Either way this is what Play, Share and Save use.
     var output: URL? {
         guard let url = published?.url else { return nil }
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
     }
 
-    /// The library asset a Photos publish created. The counterpart to `output`
-    /// for the destination that leaves no readable path: it is the only handle
-    /// the Done screen has to show the user what was just made.
+    /// The library asset a Photos publish created. Kept as a fallback for
+    /// queue rows written before the local copy existed.
     var assetID: String? { published?.assetID }
 
     var isDone: Bool { if case .done = job?.state { true } else { false } }

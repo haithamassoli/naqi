@@ -3,7 +3,7 @@ import Foundation
 import Testing
 @testable import naqi
 
-@Suite("Download")
+@Suite("Download", .serialized)
 struct DownloadTests {
 
     @Test("the paste field stays hidden until 12 Oct 2026")
@@ -195,6 +195,36 @@ struct DownloadTests {
         #expect(DownloadQuality.of(a.quality) == .p720)
         #expect(Checkpoint.key(source: a.source, ops: a.ops)
                 == Checkpoint.key(source: b.source, ops: b.ops))
+    }
+
+    @Test("a failed yt-dlp step updates once and retries once, never loops")
+    func retryAfterUpdate() async throws {
+        var calls = 0
+        var updates = 0
+        let ok = try await YtDlp.retryingAfterUpdate {
+            calls += 1
+            if calls == 1 { throw DownloadError.unsupported }
+            return "ok"
+        } update: { updates += 1 }
+        #expect(ok == "ok" && calls == 2 && updates == 1)
+
+        calls = 0; updates = 0
+        await #expect(throws: DownloadError.self) {
+            try await YtDlp.retryingAfterUpdate {
+                calls += 1
+                throw DownloadError.network("still broken")
+            } update: { updates += 1 }
+        }
+        #expect(calls == 2 && updates == 1)
+
+        calls = 0; updates = 0
+        await #expect(throws: DownloadError.self) {
+            try await YtDlp.retryingAfterUpdate {
+                calls += 1
+                throw DownloadError.cancelled
+            } update: { updates += 1 }
+        }
+        #expect(calls == 1 && updates == 0)
     }
 
     @Test("audio quality forces music-only ops")

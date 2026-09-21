@@ -34,9 +34,13 @@ struct AboutScreen: View {
                                 .padding(.top, 2)
                         }
                     }
-                    VStack(alignment: .leading, spacing: 0) {
-                        SectionHeader(.aboutEyebrowDownloader)
-                        YtDlpCard()
+                    // Same gate as the paste field; the weekly auto-update in
+                    // RootView keeps running while the card is hidden.
+                    if LinkPaste.isOffered {
+                        VStack(alignment: .leading, spacing: 0) {
+                            SectionHeader(.aboutEyebrowDownloader)
+                            YtDlpCard()
+                        }
                     }
                     VStack(alignment: .leading, spacing: 0) {
                         SectionHeader(.aboutEyebrowUpdates)

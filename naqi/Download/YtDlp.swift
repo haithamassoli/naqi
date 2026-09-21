@@ -19,6 +19,10 @@ actor YtDlp {
     private static let week: TimeInterval = 7 * 24 * 60 * 60
 
     private var ready = false
+    /// The App Sandbox quarantines every file the app writes and refuses to
+    /// exec it (EPERM), so a downloaded yt-dlp may never launch. That is not
+    /// staleness — updating again cannot fix it — so retries skip the update.
+    private(set) var launchBlocked = false
 
     var installDir: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
@@ -91,12 +95,32 @@ actor YtDlp {
     /// spawn a process, so `NativeExtract` is the extractor there.
     func extract(_ url: String) async throws -> ExtractedMedia {
         try await ensure()
+        return try await Self.retryingAfterUpdate {
+            try await extractOnce(url)
+        } update: {
+            if launchBlocked { throw DownloadError.unsupported }
+            _ = try await update()
+        }
+    }
+
+    /// Runs `op`; if it fails, runs `update` and then `op` exactly once more.
+    /// Cancellation is not retried, and a failed update surfaces the original
+    /// error — there is no second update and no loop.
+    nonisolated static func retryingAfterUpdate<T>(
+        _ op: () async throws -> T,
+        update: () async throws -> Void,
+    ) async throws -> T {
         do {
-            return try await extractOnce(url)
+            return try await op()
+        } catch DownloadError.cancelled {
+            throw DownloadError.cancelled
+        } catch let error as CancellationError {
+            throw error
         } catch {
-            Log.download.warning("yt-dlp extract failed; updating and retrying once: \(error.localizedDescription, privacy: .public)")
-            _ = try? await update()
-            return try await extractOnce(url)
+            Log.download.warning("yt-dlp path failed; retrying once after an update: \(error.localizedDescription, privacy: .public)")
+            let original = error
+            do { try await update() } catch { throw original }
+            return try await op()
         }
     }
 
@@ -144,7 +168,11 @@ actor YtDlp {
                 }
             }
             do { try proc.run() }
-            catch { cont.resume(throwing: DownloadError.generic(error.localizedDescription)) }
+            catch {
+                launchBlocked = true
+                Log.download.error("yt-dlp cannot launch: \(error.localizedDescription, privacy: .public)")
+                cont.resume(throwing: DownloadError.generic(error.localizedDescription))
+            }
         }
     }
     #endif

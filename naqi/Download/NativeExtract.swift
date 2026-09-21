@@ -88,8 +88,11 @@ enum NativeExtract {
 
     private static func youtube(id: String, webpage: String) async throws -> ExtractedMedia {
         let clients: [(name: String, version: String, ua: String)] = [
-            ("ANDROID", "19.28.35", "com.google.android.youtube/19.28.35 (Linux; U; Android 14) gzip"),
-            ("IOS", "19.29.1", "com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 18_0 like Mac OS X;)"),
+            // Versions track yt-dlp 2026.08.19; InnerTube answers HTTP 400 to
+            // client versions it has retired. ANDROID still hands out itag 18
+            // (muxed 360p) without a PO token.
+            ("ANDROID", "21.26.364", "com.google.android.youtube/21.26.364 (Linux; U; Android 11) gzip"),
+            ("IOS", "21.26.4", "com.google.ios.youtube/21.26.4 (iPhone16,2; U; CPU iOS 18_3_2 like Mac OS X;)"),
         ]
         var last: Error = DownloadError.unsupported
         for c in clients {
@@ -147,7 +150,8 @@ enum NativeExtract {
                 ext: ext,
                 height: f["height"] as? Int,
                 vcodec: mime.contains("audio/") ? "none" : (f["quality"] as? String ?? "avc1"),
-                acodec: mime.contains("video/") && !mime.contains("audio") ? "none" : "mp4a.40.2",
+                acodec: mime.contains("video/") && !mime.contains("mp4a") && !mime.contains("opus")
+                    ? "none" : "mp4a.40.2",
                 filesize: (f["contentLength"] as? String).flatMap { Int64($0) },
                 tbr: f["bitrate"] as? Double,
                 httpHeaders: ["User-Agent": client.ua, "Referer": "https://www.youtube.com"]))

@@ -106,8 +106,11 @@ actor JobQueue {
     }
 
     func clearFinished() {
+        // Only a copy that also went into Photos. A Photos refusal or an audio
+        // output leaves the in-app file as the user's *only* copy, and clearing
+        // the list must not take it with it.
         for job in jobs {
-            if case .done(let published) = job.state, let url = published.url {
+            if case .done(let published) = job.state, published.assetID != nil, let url = published.url {
                 OutputLibrary.remove(url)
             }
         }
@@ -195,7 +198,7 @@ actor JobQueue {
     func discard(_ id: Job.ID) {
         if let job = jobs.first(where: { $0.id == id }) {
             WorkDir.clear(Checkpoint.key(source: job.source, ops: job.ops))
-            if case .done(let published) = job.state, let url = published.url {
+            if case .done(let published) = job.state, published.assetID != nil, let url = published.url {
                 OutputLibrary.remove(url)
             }
         }

@@ -118,21 +118,21 @@ enum JobRunner {
 
         // An `.m4a` in the photo library is invisible to every music player,
         // which is the only app that would want it (§5.1); Photos will not take
-        // it at all. Audio-only output needs a Files destination.
-        if shape == .audioOnly, job.destination == .photos {
-            throw JobFailure.publishFailed
-        }
+        // it at all. An audio-only job bound for Photos keeps its file in the
+        // app's Documents instead of failing after the whole render.
+        let publishTo: Destination = shape == .audioOnly && job.destination == .photos
+            ? .userFolder : job.destination
 
-        // Photos add-only is asked here rather than in the publish stage where
-        // it used to live: the same refusal costs the user one second here and
-        // an entire render there.
+        // Photos add-only is asked here rather than in the publish stage so the
+        // permission sheet comes up while the user is still looking, not an
+        // hour later. A refusal no longer stops the job: `Publish` keeps the
+        // file in the app instead (the iPad build on a Mac is always refused).
         //
         // *After* the checks above, not before them. A permission sheet is the
-        // wrong first answer to an unreadable file or an audio-only source
-        // bound for Photos — both of those fail no matter what the user taps,
-        // so asking first would collect a decision that changes nothing.
-        if let denied = await Preflight.photosAccess(for: job.destination) {
-            throw JobFailure.of(denied)
+        // wrong first answer to an unreadable file, which fails no matter what
+        // the user taps.
+        if await Preflight.photosAccess(for: publishTo) != nil {
+            Log.job.notice("photo library refused; output will stay in the app")
         }
 
         // Link jobs hash the page URL, not the quarantine file: a relaunch of
@@ -250,10 +250,10 @@ enum JobRunner {
             // stops being writable once the app relaunches or the user picks a
             // different folder, and this is the last step of a job that may
             // have been rendering for an hour.
-            let folder = job.destination == .userFolder
+            let folder = publishTo == .userFolder
                 ? (job.resolvedFolder ?? OutputLibrary.root) : job.resolvedFolder
             let published = try await Publish.save(out, named: outputName(for: url, ext: ext),
-                                                   to: job.destination, folder: folder)
+                                                   to: publishTo, folder: folder)
             post(.publish, 1)
             // Success takes the whole directory: the checkpoints only exist to
             // survive an interruption, and this run had none.

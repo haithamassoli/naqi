@@ -771,12 +771,12 @@ struct JobTests {
     }
 
     /// Photos cannot take a bare audio resource — `PHAssetCreationRequest`
-    /// refuses it — so the runner rejects the pairing before spending htdemucs
-    /// on a job whose last step is certain to fail. `Flow` already forces the
-    /// folder in the UI; this is the guard behind it, for the queued and
-    /// shared-in routes that never touch `Flow`.
-    @Test("an audio-only job refuses Photos before it separates anything")
-    func audioOnlyRefusesPhotos() async throws {
+    /// refuses it — so an audio-only job bound for Photos keeps its `.m4a` in
+    /// the app's Documents instead of failing after the separation. `Flow`
+    /// already forces the folder in the UI; this is the route for the queued
+    /// and shared-in jobs that never touch `Flow`.
+    @Test("an audio-only job bound for Photos keeps its file in the app")
+    func audioOnlyBoundForPhotosStaysInApp() async throws {
         var ops = FilterOps()
         ops.removeMusic = true
         ops.censor = false
@@ -784,16 +784,14 @@ struct JobTests {
         let song = try Fixtures.audioClip("jobs-audio-photos.m4a", seconds: 1)
         let job = Job.capture(source: song, ops: ops, destination: .photos)
 
-        var thrown: (any Error)?
-        let started = ContinuousClock.now
-        do { _ = try await JobRunner.run(job) } catch { thrown = error }
-
-        #expect(thrown as? JobFailure == .publishFailed)
-        // Before, not after: separating even one second of audio costs far more
-        // than this, so the timing is what distinguishes an up-front refusal
-        // from a wasted run that failed at the last step.
-        #expect(msSince(started) < 2_000,
-                "the job separated audio before refusing: \(Int(msSince(started)))ms")
+        let done = try await JobRunner.run(job)
+        let url = try #require(done.output.url)
+        defer { try? FileManager.default.removeItem(at: url) }
+        #expect(done.shape == .audioOnly)
+        #expect(url.pathExtension == "m4a")
+        #expect(OutputLibrary.owns(url))
+        #expect(done.output.assetID == nil)
+        #expect(FileManager.default.fileExists(atPath: url.path))
     }
 
     /// The route question the debug hook cannot answer: `forcedSegmentMs` drives

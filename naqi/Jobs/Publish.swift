@@ -62,8 +62,16 @@ enum Publish {
         // job so a refusal costs seconds instead of an hour. It is an early
         // exit, not a promise: the user can revoke access from Settings during
         // the hour in between, and this is the call that would actually fail.
+        //
+        // A refusal is not a failure: the file is kept in `OutputLibrary`
+        // instead, which is what Play/Share/Save act on anyway. The iPad build
+        // running on a Mac is refused outright, and losing an hour's render to
+        // a permission the user may not even be able to grant was the bug.
         let status = await PHPhotoLibrary.requestAuthorization(for: .addOnly)
-        guard status == .authorized || status == .limited else { throw PublishError.photosDenied }
+        guard status == .authorized || status == .limited else {
+            Log.job.notice("photo library refused; keeping the output in the app")
+            return try keepInApp(temp, named: name)
+        }
         // Captured inside the change block and read after it commits — the
         // placeholder's identifier is the asset's real one once it lands.
         var assetID: String?
@@ -80,11 +88,25 @@ enum Publish {
                 assetID = req.placeholderForCreatedAsset?.localIdentifier
             }
         } catch {
-            throw PublishError.photosFailed(error.localizedDescription)
+            // Same rule as a refusal: the render is not thrown away because
+            // Photos would not take it.
+            Log.job.error("photo library save failed: \(error.localizedDescription, privacy: .public)")
+            return try keepInApp(temp, named: name)
         }
         let local = try OutputLibrary.adopt(temp, named: name)
         Log.job.info("published to Photos and \(local.lastPathComponent, privacy: .public)")
         return Published(name: name, url: local, assetID: assetID)
+    }
+
+    /// The Photos publish that Photos did not take: the file in the app's
+    /// Documents and no library asset.
+    private static func keepInApp(_ temp: URL, named name: String) throws -> Published {
+        do {
+            let local = try OutputLibrary.adopt(temp, named: name)
+            return Published(name: name, url: local, assetID: nil)
+        } catch {
+            throw PublishError.destinationUnwritable(error.localizedDescription)
+        }
     }
 
     private static func saveToFolder(_ temp: URL, named name: String, folder: URL) throws -> Published {

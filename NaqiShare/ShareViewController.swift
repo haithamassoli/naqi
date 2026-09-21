@@ -320,6 +320,10 @@ final class ShareViewController: UIViewController {
     private func loadText(_ provider: NSItemProvider) async -> String? {
         await withCheckedContinuation { cont in
             provider.loadItem(forTypeIdentifier: UTType.plainText.identifier, options: nil) { item, _ in
+                // Some apps hand plain text over as UTF-8 data, not a String.
+                if let data = item as? Data {
+                    cont.resume(returning: String(data: data, encoding: .utf8)); return
+                }
                 cont.resume(returning: item as? String)
             }
         }

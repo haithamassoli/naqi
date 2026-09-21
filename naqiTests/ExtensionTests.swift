@@ -124,6 +124,12 @@ struct ExtensionTests {
         #expect(shares(["public.mp3"], count: 10))
         #expect(!shares(["public.mp3"], count: 11))
         #expect(!predicate.evaluate(with: MockContext([MockItem([])])))
+        // An app sharing [title, URL] can send one extension item per activity
+        // item; both qualify, and that must not hide Naqi from the sheet.
+        #expect(predicate.evaluate(with: MockContext([
+            MockItem([MockAttachment(["public.plain-text"])]),
+            MockItem([MockAttachment(["public.url"])]),
+        ])))
     }
 
     /// The share sheet is the one surface the app's own catalog cannot reach:

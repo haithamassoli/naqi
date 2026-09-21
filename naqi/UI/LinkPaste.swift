@@ -1,8 +1,8 @@
 import Foundation
 
-/// In-app paste field. Hidden on iOS until this date so share-to-download is
-/// the link path; the field stays in the binary and comes back on its own.
-/// macOS has no share extension, so the field stays offered there.
+/// In-app paste field and the About yt-dlp card. Hidden on every platform
+/// until this date; share-to-download stays the link path on iOS meanwhile.
+/// Both stay in the binary and come back on their own.
 enum LinkPaste {
     /// 2026-10-12 00:00:00 UTC — three weeks after 2026-09-21.
     static let visibleFrom = Date(timeIntervalSince1970: 1_791_763_200)
@@ -11,11 +11,5 @@ enum LinkPaste {
         now >= visibleFrom
     }
 
-    static var isOffered: Bool {
-        #if os(macOS)
-        true
-        #else
-        isVisible()
-        #endif
-    }
+    static var isOffered: Bool { isVisible() }
 }

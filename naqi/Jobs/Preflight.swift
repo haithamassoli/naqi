@@ -176,16 +176,21 @@ enum WorkDir {
 }
 
 /// Finished copies the app still owns, so Play, Share and Save have a file
-/// after a Photos publish. A folder publish writes into the user's folder
-/// instead and never lands here.
+/// after a Photos publish — and the only copy when Photos refused it, or when
+/// the output is audio. A folder publish writes into the user's folder instead
+/// and never lands here.
+///
+/// The app's Documents directory, so the files are real and reachable outside
+/// the app: "On My iPhone › Naqi" in Files (`UIFileSharingEnabled` +
+/// `LSSupportsOpeningDocumentsInPlace` in `naqi/Info.plist`), and the sandbox
+/// container's Documents folder on Mac (Show in Finder on the Done screen).
 ///
 /// Excluded from backup the same way `WorkDir` is: a 90-minute film is hundreds
 /// of megabytes the user already has in Photos or Files, and iCloud would
 /// otherwise charge them for a third copy.
 enum OutputLibrary {
     static let root: URL = {
-        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("naqi-outputs", isDirectory: true)
+        let base = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         var b = base
         var rv = URLResourceValues()
@@ -197,7 +202,8 @@ enum OutputLibrary {
     static func owns(_ url: URL) -> Bool {
         let path = url.standardizedFileURL.path
         let rootPath = root.standardizedFileURL.path
-        return path == rootPath || path.hasPrefix(rootPath + "/")
+        // Strictly inside: the root is Documents itself and is never ours to delete.
+        return path.hasPrefix(rootPath + "/")
     }
 
     /// Moves `temp` into the library under `name`. Cross-volume falls back to

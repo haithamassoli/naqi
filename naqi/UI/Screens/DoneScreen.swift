@@ -1,6 +1,9 @@
 import AVKit
 import Photos
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 /// Step 4. Where the filtered copy went, and the three things that can be done
 /// with it. Deleting the original is opt-in, two-step, and never automatic.
@@ -52,6 +55,12 @@ struct DoneScreen: View {
     /// have moved on, and claiming the photo library for a copy that went into
     /// a folder sends the user looking in the wrong app.
     private var savedWhere: LocalizedStringResource {
+        // In the app's own Documents and nowhere else: Photos refused it, or it
+        // is audio. Claiming the photo library (or naming "Documents") would
+        // send the user looking in the wrong place.
+        if assetID == nil, let url = flow.monitor.output, OutputLibrary.owns(url) {
+            return .jobsSavedApp
+        }
         if flow.monitor.destination == .userFolder, let folder = flow.monitor.folderName {
             return .jobsSavedFolder(folder)
         }
@@ -161,6 +170,19 @@ struct DoneScreen: View {
                             .buttonStyle(NaqiOutlineButtonStyle())
                             .accessibilityIdentifier("action.save")
                         }
+                        #if os(macOS)
+                        // The sandbox container's Documents is not somewhere a
+                        // Mac user would look on their own.
+                        Button {
+                            NSWorkspace.shared.activateFileViewerSelecting([url])
+                        } label: {
+                            Text(.actionShowInFinder)
+                                .font(Naqi.F.labelLarge)
+                                .frame(maxWidth: .infinity, minHeight: 48)
+                        }
+                        .buttonStyle(NaqiOutlineButtonStyle())
+                        .accessibilityIdentifier("action.showInFinder")
+                        #endif
                     }
                 }
                 .padding(.top, Naqi.S.s4)

@@ -6,6 +6,12 @@
 	<array>
 		<string>com.haithamassoli.naqi.processing</string>
 	</array>
+	<!-- Finished videos and audio live in Documents (OutputLibrary); these two
+	     make that folder show up as "On My iPhone > Naqi" in the Files app. -->
+	<key>LSSupportsOpeningDocumentsInPlace</key>
+	<true/>
+	<key>UIFileSharingEnabled</key>
+	<true/>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>processing</string>

@@ -68,7 +68,30 @@ enum Downloader {
         isCancelled: @escaping @Sendable () -> Bool = { false },
     ) async throws -> URL {
         sweep()
-        let info = try await extract(url)
+        #if os(macOS)
+        var info = try await extract(url)
+        // Extraction already refreshes yt-dlp when it fails. This covers the
+        // other stale-yt-dlp symptom: format URLs that then refuse to download.
+        // One update, one re-extract, one more fetch.
+        return try await YtDlp.retryingAfterUpdate {
+            try await fetchAll(info, url: url, quality: quality, onProgress: onProgress, isCancelled: isCancelled)
+        } update: {
+            if await YtDlp.shared.launchBlocked { throw DownloadError.unsupported }
+            _ = try await update()
+            info = try await extract(url)
+        }
+        #else
+        return try await fetchAll(extract(url), url: url, quality: quality, onProgress: onProgress, isCancelled: isCancelled)
+        #endif
+    }
+
+    private static func fetchAll(
+        _ info: ExtractedMedia,
+        url: String,
+        quality: DownloadQuality,
+        onProgress: @escaping @Sendable (Int) -> Void,
+        isCancelled: @escaping @Sendable () -> Bool,
+    ) async throws -> URL {
         let chosen = quality.select(info.formats)
         guard !chosen.isEmpty else { throw DownloadError.unsupported }
         let dir = quarantineDir(for: url)

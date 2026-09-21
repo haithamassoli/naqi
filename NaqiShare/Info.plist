@@ -20,7 +20,11 @@
 			     does not log — the extension simply never appears in the share
 			     sheet. `ExtensionTests.shareActivationRule` reads this exact
 			     string back out of the built .appex and evaluates it against a
-			     mock attachment graph, which is the only guard there is. -->
+			     mock attachment graph, which is the only guard there is.
+
+			     Outer count is ">= 1", not "== 1": an app sharing [title, URL]
+			     can hand over one NSExtensionItem per activity item, both
+			     qualify, and "== 1" hid Naqi from that app's sheet. -->
 			<key>NSExtensionActivationRule</key>
 			<string>SUBQUERY (
 				extensionItems,
@@ -38,7 +42,7 @@
 					ANY $att.registeredTypeIdentifiers UTI-CONFORMS-TO "public.url"
 					|| ANY $att.registeredTypeIdentifiers UTI-CONFORMS-TO "public.plain-text"
 				).@count &gt;= 1
-			).@count == 1</string>
+			).@count &gt;= 1</string>
 		</dict>
 		<!-- No NSExtensionMainStoryboard: an EMPTY one here is not the same as
 		     an absent one, and installd rejects the whole app for it with

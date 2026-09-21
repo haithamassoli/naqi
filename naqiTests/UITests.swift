@@ -114,10 +114,10 @@ struct UITests {
             #expect(ExportTarget.loadLastUsed().destination == .photos)
         }
 
-        /// The runner rejects an audio-only job bound for Photos with
-        /// `publishFailed` — Photos will not take a bare audio file — so the
-        /// picker has to *force* the folder, not merely prefer it, and Start
-        /// has to stay disabled until there is a folder to force it into.
+        /// Photos will not take a bare audio file (the runner falls back to the
+        /// app's own Documents for one that slips through), so the picker has
+        /// to *force* the folder, not merely prefer it, and Start has to stay
+        /// disabled until there is a folder to force it into.
         // `Flow.seed` is the `#if DEBUG` screenshot harness, so the three tests
         // that pose flow state cannot exist in a Release test bundle — which
         // `BenchTests.tv1EndToEnd` needs, since the app's own `-naqiScreen`

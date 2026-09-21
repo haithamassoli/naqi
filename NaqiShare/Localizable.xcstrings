@@ -1,6 +1,62 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "share.add" : {
+      "comment" : "Button that confirms the selected filtering options and queues the shared file.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "إضافة" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Add" } }
+      }
+    },
+    "share.censor_faces" : {
+      "comment" : "Share extension toggle for face censoring.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "حجب الوجوه" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Cover faces" } }
+      }
+    },
+    "share.everyone" : {
+      "comment" : "Who picker option that covers every face.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "الجميع" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Everyone" } }
+      }
+    },
+    "share.men" : {
+      "comment" : "Who picker option for men.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "الرجال" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Men" } }
+      }
+    },
+    "share.options" : {
+      "comment" : "Share extension heading above the compact filtering options.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "إضافة إلى نقي" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Add to Naqi" } }
+      }
+    },
+    "share.remove_music" : {
+      "comment" : "Share extension toggle for music removal.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "إزالة الموسيقى" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Remove music" } }
+      }
+    },
+    "share.women" : {
+      "comment" : "Who picker option for women.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "النساء" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Women" } }
+      }
+    },
     "share.adding" : {
       "comment" : "Shown while the extension copies the shared file into the App Group inbox.",
       "extractionState" : "manual",
@@ -53,6 +109,108 @@
             "value" : "Added to Naqi"
           }
         }
+      }
+    },
+    "share.quality_best" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "الأفضل"
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "Best"
+              }
+            }
+      }
+    },
+    "share.quality_1080" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "1080p"
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "1080p"
+              }
+            }
+      }
+    },
+    "share.quality_720" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "720p"
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "720p"
+              }
+            }
+      }
+    },
+    "share.quality_480" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "480p"
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "480p"
+              }
+            }
+      }
+    },
+    "share.quality_audio" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "الصوت فقط"
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "Audio only"
+              }
+            }
+      }
+    },
+    "share.download" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "تنزيل"
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "Download"
+              }
+            }
       }
     }
   },

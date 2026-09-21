@@ -124,6 +124,10 @@ enum Checkpoint {
             ops.keepStems.rawValue,
             planGeneration,
         ]
+        // Keep the old default key byte-identical so an in-flight job made by
+        // 1.0.2 can resume. Only non-default new choices extend the identity.
+        if !ops.censorNsfw { parts.append("nsfw-off") }
+        if ops.solidColor.isSolid { parts.append("solid-\(ops.solidColor.rawValue)") }
         if forcedSegmentMs > 0 { parts.append("seg\(forcedSegmentMs)") }
         return key(parts)
     }

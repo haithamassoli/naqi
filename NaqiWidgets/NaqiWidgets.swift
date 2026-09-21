@@ -95,6 +95,7 @@ private struct LockScreenView: View {
     /// Grouping matches `Job.Stage.label`: the tail three are one caption.
     private var stageLabel: String {
         switch context.state.stage {
+        case "download": String(localized: "Downloading")
         case "separate": String(localized: "Removing music")
         case "analyze": String(localized: "Analyzing")
         case "render": String(localized: "Rendering")

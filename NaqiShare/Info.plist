@@ -31,6 +31,13 @@
 					ANY $att.registeredTypeIdentifiers UTI-CONFORMS-TO "public.movie"
 					|| ANY $att.registeredTypeIdentifiers UTI-CONFORMS-TO "public.audio"
 				).@count BETWEEN { 1, 10 }
+				OR
+				SUBQUERY (
+					$item.attachments,
+					$att,
+					ANY $att.registeredTypeIdentifiers UTI-CONFORMS-TO "public.url"
+					|| ANY $att.registeredTypeIdentifiers UTI-CONFORMS-TO "public.plain-text"
+				).@count &gt;= 1
 			).@count == 1</string>
 		</dict>
 		<!-- No NSExtensionMainStoryboard: an EMPTY one here is not the same as

@@ -24,16 +24,52 @@ enum AppGroup {
     static var defaults: UserDefaults? { UserDefaults(suiteName: identifier) }
 }
 
-/// What the extension writes beside each copied video.
-///
-/// **Deliberately has no options field.** Share-in always inherits the app's
-/// last-used settings (`AppGroup.defaults`), so the extension never needs to
-/// know what `FilterOps` is — which keeps `FilterOps` and everything it drags
-/// in out of a target with a ~120 MB ceiling.
+/// The three choices the share sheet can override without importing the app's
+/// full pipeline model into the extension target.
+struct ShareOptions: Codable, Sendable, Equatable {
+    private static let key = "naqi.shareOptions"
+    var removeMusic = false
+    var censor = true
+    var who = "women"
+
+    static func loadLastUsed() -> ShareOptions {
+        if let data = AppGroup.defaults?.data(forKey: key),
+           let options = try? JSONDecoder().decode(ShareOptions.self, from: data) {
+            return options
+        }
+        struct Stored: Decodable {
+            var removeMusic: Bool?
+            var censor: Bool?
+            var who: String?
+        }
+        guard let data = AppGroup.defaults?.data(forKey: "naqi.filterOps"),
+              let stored = try? JSONDecoder().decode(Stored.self, from: data)
+        else { return ShareOptions() }
+        return ShareOptions(removeMusic: stored.removeMusic ?? false,
+                            censor: stored.censor ?? true,
+                            who: stored.who ?? "women")
+    }
+
+    func saveAsLastUsed() {
+        guard let data = try? JSONEncoder().encode(self) else { return }
+        AppGroup.defaults?.set(data, forKey: Self.key)
+    }
+}
+
+/// What the extension writes beside each copied video — or, for a shared
+/// link, instead of a copied video. `url` set and no media file is a link
+/// the app will fetch with yt-dlp; a media file and no `url` is the original
+/// share-in. Older manifests have neither `url` nor `quality` and still decode.
 struct ShareManifest: Codable, Sendable {
     var id: UUID
     var fileName: String
     var receivedAt: Date
+    /// Nil keeps manifests written by older extension builds decodable.
+    var options: ShareOptions? = nil
+    /// http(s) URL to fetch. Mutually exclusive with a media file of `id`.
+    var url: String? = nil
+    /// `DownloadQuality.rawValue`. Nil means last-used / BEST.
+    var quality: String? = nil
 
     static func mediaURL(_ dir: URL, id: UUID, ext: String) -> URL {
         dir.appendingPathComponent("\(id.uuidString).\(ext)")

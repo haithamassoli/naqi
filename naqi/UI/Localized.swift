@@ -34,11 +34,20 @@ extension FilterOps.Who {
         switch self {
         case .women: .optWhoWomen
         case .men: .optWhoMen
-        // Neither is offered by the picker — the analyze pass uses them as
-        // shortcuts — but a value persisted by a debug run must not render as
-        // a blank segment.
-        case .everyone: .optWhoWomen
-        case .none: .optWhoMen
+        case .everyone, .none: .optWhoEveryone
+        }
+    }
+}
+
+extension FilterOps.SolidColor {
+    var label: LocalizedStringResource {
+        switch self {
+        case .blur: .optStyleBlur
+        case .gray: .optSolidGray
+        case .black: .optSolidBlack
+        case .white: .optSolidWhite
+        case .navy: .optSolidNavy
+        case .green: .optSolidGreen
         }
     }
 }
@@ -49,6 +58,7 @@ extension Job.Stage {
     /// mean explaining why a file that is already filtered is still moving.
     var label: LocalizedStringResource {
         switch self {
+        case .download: .stageDownloading
         case .analyze: .stageAnalyzing
         case .render: .stageRendering
         case .separate: .stageSeparating
@@ -82,6 +92,9 @@ extension JobFailure {
         //
         // `nothingSelected` is unreachable from the UI's own guards: Start is
         // disabled without an operation.
+        case .downloadUnsupported: .errDownloadUnsupported
+        case .downloadNetwork: .errDownloadNetwork
+        case .downloadGeneric: .errDownloadGeneric
         case .nothingSelected, .publishFailed, .generic: .errGeneric
         }
     }

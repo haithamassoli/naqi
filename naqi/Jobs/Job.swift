@@ -36,6 +36,13 @@ struct Job: Identifiable, Codable, Sendable, Equatable {
     /// as nil.
     var shortfall: Shortfall?
     var enqueuedAt = Date()
+    /// http(s) page to fetch before filtering. Nil for a picked or shared file.
+    /// The downloaded bytes land in quarantine and become the source the rest
+    /// of the runner probes; this string is what `Checkpoint.key` hashes so a
+    /// relaunch of the same link resumes rather than fetching twice.
+    var remoteURL: String? = nil
+    /// `DownloadQuality.rawValue`. Nil means BEST, matching Android `Quality.of`.
+    var quality: String? = nil
 
     static func capture(source: URL, ops: FilterOps, destination: Destination,
                         folder: URL? = nil, title: String? = nil) -> Job {
@@ -43,6 +50,17 @@ struct Job: Identifiable, Codable, Sendable, Equatable {
                    title: title ?? source.deletingPathExtension().lastPathComponent,
                    ops: ops, destination: destination, folder: folder,
                    folderBookmark: folder?.scopedBookmark())
+    }
+
+    static func captureLink(_ url: String, quality: DownloadQuality, ops: FilterOps,
+                            destination: Destination, folder: URL? = nil,
+                            title: String? = nil) -> Job {
+        let page = URL(string: url) ?? URL(fileURLWithPath: "/download")
+        return Job(source: page,
+                   title: title ?? page.host ?? "download",
+                   ops: ops, destination: destination, folder: folder,
+                   folderBookmark: folder?.scopedBookmark(),
+                   remoteURL: url, quality: quality.rawValue)
     }
 
     /// Re-resolves the destination folder the same way `openSource` re-resolves
@@ -71,8 +89,8 @@ struct Job: Identifiable, Codable, Sendable, Equatable {
     enum State: Codable, Sendable, Equatable {
         case pending
         case running
-        /// Carries the whole publish record, not a URL: a Photos publish leaves
-        /// no readable path behind, and the screen still has to name the file.
+        /// Carries the whole publish record, not a URL: the Done screen names
+        /// the file and Play/Share/Save read the local copy off it.
         case done(Published)
         /// `resumable` is what the Resume button reads: the work directory
         /// still holds finished work the next attempt will pick up.
@@ -124,7 +142,7 @@ extension Job {
     /// `Remux.mux` untouched, and a source AVFoundation cannot passthrough is
     /// one it already refused at `Preflight`'s `isPlayable` check.
     enum Stage: String, Codable, Sendable, CaseIterable {
-        case analyze, render, separate, mux, concat, publish
+        case download, analyze, render, separate, mux, concat, publish
     }
 
     /// Stage order per shape (§2.5). `separate` sits between `analyze` and
@@ -193,10 +211,22 @@ struct JobProgress: Sendable, Equatable, Codable {
         }
     }
 
+    /// Exclusive download bar. Filter progress starts after this returns to 0
+    /// via a fresh `JobProgress` — mixing them on one scale would make
+    /// "Downloading 80 %" jump to "Pass 1 5 %".
+    mutating func postDownload(_ sub: Double) {
+        stage = .download
+        pct = min(max(sub, 0), 1) * 100
+    }
+
     /// - Parameter sub: 0…1 within `stage`.
     mutating func post(_ stage: Job.Stage, _ sub: Double) {
         let s = min(max(sub, 0), 1)
         self.stage = stage
+        if stage == .download {
+            pct = max(pct, s * 100)
+            return
+        }
 
         if stage == .separate, audioShare > 0 {
             audioPct = max(audioPct, audioShare * s)
@@ -219,6 +249,7 @@ struct JobProgress: Sendable, Equatable, Codable {
     static func band(_ stage: Job.Stage, shape: Job.Shape,
                      removeMusic: Bool) -> ClosedRange<Double>? {
         switch (shape, stage) {
+        case (_, .download): 0...100
         case (.censorOnly, .analyze): 0...50
         case (.censorOnly, .render): 50...100
         case (.censorOnly, .publish): 100...100
@@ -318,12 +349,24 @@ enum JobFailure: String, Error, Codable, Sendable, Equatable {
     /// from `.generic` so the screen can stop putting "Filtering failed." above
     /// a Resume button.
     case interrupted
+    case downloadUnsupported
+    case downloadNetwork
+    case downloadGeneric
     case generic
 
     /// Concatenates the whole cause chain, lowercases, then matches in this
     /// order — specific cases shadow `generic`.
     static func of(_ error: any Error) -> JobFailure {
         if let f = error as? JobFailure { return f }
+        if let d = error as? DownloadError {
+            switch d {
+            case .unsupported: return .downloadUnsupported
+            case .network: return .downloadNetwork
+            case .noSpace: return .lowSpace
+            case .cancelled: return .generic
+            case .noFile, .generic: return .downloadGeneric
+            }
+        }
         if let p = error as? PreflightFailure {
             switch p {
             case .drmProtected: return .drmProtected

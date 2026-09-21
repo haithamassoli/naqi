@@ -74,7 +74,9 @@ func isDroppableSource(_ url: URL) -> Bool {
     /// menu, not in the line: it edits the same `ops` Options does, but it is
     /// reachable without a picked video — which is the only way to see what a
     /// shared-in file will inherit.
-    enum Step: Hashable, Sendable { case options, progress, done, settings, about, diagnostics }
+    enum Step: Hashable, Sendable {
+        case options, progress, done, jobs, settings, about, licenses, diagnostics
+    }
 
     var path: [Step] = []
     var ops: FilterOps = .loadLastUsed()
@@ -179,6 +181,20 @@ func isDroppableSource(_ url: URL) -> Bool {
                             destination: destination, folder: export.folder)
     }
 
+    /// Queue a pasted or shared link: fetch with yt-dlp, then filter (or just
+    /// publish, when both toggles are off — a download is still work).
+    func startLink(_ url: String, quality: DownloadQuality, ops: FilterOps) async {
+        var ops = ops
+        if quality == .audio { ops.fit(hasVideo: false) }
+        ops.saveAsLastUsed()
+        quality.saveAsLastUsed()
+        path = [.progress]
+        let dest: Destination = quality == .audio ? .userFolder : export.destination
+        let folder = dest == .userFolder ? (export.folder ?? OutputLibrary.root) : export.folder
+        await monitor.startLink(url, quality: quality, ops: ops,
+                                destination: dest, folder: folder)
+    }
+
     /// Enqueues whatever the share extension left in the App Group container,
     /// with the destination this launch resolved. Returns how many it took, so
     /// a test can assert the choice travelled rather than that the call exists.
@@ -192,6 +208,16 @@ func isDroppableSource(_ url: URL) -> Bool {
         // source, and a shared-in file is a different one.
         await ShareInbox.drain(into: queue,
                                destination: export.destination, folder: export.folder)
+    }
+
+    /// A share-in starts the job on the queue but does not bind Progress unless
+    /// something adopts it. Pick is the only screen this steals: Options or
+    /// Jobs already have the user's attention.
+    func revealSharedIn() {
+        guard path.isEmpty else { return }
+        guard let id = monitor.runningID ?? monitor.activeJobs.first?.id else { return }
+        monitor.adopt(id)
+        path = [.progress]
     }
 
     func cancelJob() async {

@@ -43,10 +43,54 @@ enum JobRunner {
         // after a relaunch that went straight into a resumed job, so the
         // age-based sweep hangs off it.
         Checkpoint.sweepStale()
+        Downloader.sweep()
+
+        var job = job
+        var downloaded: URL?
+        if let remote = job.remoteURL {
+            let quality = DownloadQuality.of(job.quality)
+            if quality == .audio { job.ops.fit(hasVideo: false) }
+            let file: URL
+            do {
+                file = try await Downloader.download(
+                    url: remote, quality: quality,
+                    onProgress: { pct in
+                        var b = JobProgress(shape: .censorOnly, removeMusic: false)
+                        b.postDownload(Double(pct) / 100)
+                        progress(b)
+                    },
+                    isCancelled: { stop() != nil })
+            } catch DownloadError.cancelled {
+                throw JobStopped(reason: stop() ?? .userCancelled, resumable: true)
+            }
+            downloaded = file
+            job.title = file.deletingPathExtension().lastPathComponent
+            if !job.ops.isValid {
+                let ext = file.pathExtension.isEmpty ? (quality == .audio ? "m4a" : "mp4") : file.pathExtension
+                let name = "\(job.title)-naqi-\(Int(Date.now.timeIntervalSince1970)).\(ext)"
+                let dest: Destination = quality == .audio ? .userFolder : job.destination
+                let folder = dest == .userFolder
+                    ? (job.resolvedFolder ?? OutputLibrary.root) : job.resolvedFolder
+                let published = try await Publish.save(file, named: name, to: dest, folder: folder)
+                Downloader.discard(file)
+                return Completion(output: published, shape: quality == .audio ? .audioOnly : .censorOnly,
+                                  resumed: [], wallMs: 0)
+            }
+        }
 
         guard job.ops.isValid else { throw JobFailure.nothingSelected }
-        let (url, close) = try job.openSource()
-        defer { close() }
+        let opened: (url: URL, close: @Sendable () -> Void)
+        if let downloaded {
+            opened = (downloaded, {})
+        } else {
+            opened = try job.openSource()
+        }
+        let url = opened.url
+        let close = opened.close
+        defer {
+            close()
+            if let downloaded { Downloader.discard(downloaded) }
+        }
 
         let src = try await MediaSource.probe(url)
         let durationMs = src.duration.isNumeric ? Int64(src.duration.seconds * 1000) : 0
@@ -66,8 +110,9 @@ enum JobRunner {
         let shape = Job.shape(ops: job.ops, hasVideoTrack: src.video != nil,
                               segmented: !plan.isEmpty)
 
-        if let failure = await Preflight.check(source: src, ops: job.ops,
-                                               segmented: shape == .segmented) {
+        if let failure = await Preflight.check(
+            source: src, ops: job.ops, segmented: shape == .segmented,
+            extraCopies: job.destination == .photos ? 1 : 0) {
             throw JobFailure.of(failure)
         }
 
@@ -90,7 +135,11 @@ enum JobRunner {
             throw JobFailure.of(denied)
         }
 
-        let key = Checkpoint.key(source: url, ops: job.ops, forcedSegmentMs: forcedSegmentMs)
+        // Link jobs hash the page URL, not the quarantine file: a relaunch of
+        // the same link must find the same work directory. File jobs keep the
+        // opened URL, which is what a bookmark may have re-resolved to.
+        let keyURL = job.remoteURL != nil ? job.source : url
+        let key = Checkpoint.key(source: keyURL, ops: job.ops, forcedSegmentMs: forcedSegmentMs)
         let dir = WorkDir.job(key)
         let ext = shape == .audioOnly ? "m4a" : "mp4"
         let out = dir.appendingPathComponent("out.\(ext)")
@@ -201,8 +250,10 @@ enum JobRunner {
             // stops being writable once the app relaunches or the user picks a
             // different folder, and this is the last step of a job that may
             // have been rendering for an hour.
+            let folder = job.destination == .userFolder
+                ? (job.resolvedFolder ?? OutputLibrary.root) : job.resolvedFolder
             let published = try await Publish.save(out, named: outputName(for: url, ext: ext),
-                                                   to: job.destination, folder: job.resolvedFolder)
+                                                   to: job.destination, folder: folder)
             post(.publish, 1)
             // Success takes the whole directory: the checkpoints only exist to
             // survive an interruption, and this run had none.

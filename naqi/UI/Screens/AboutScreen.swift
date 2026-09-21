@@ -1,8 +1,7 @@
 import SwiftUI
 
-/// Attribution has to be reachable from the app itself, not only from the
-/// repository — GPL-3.0 and an AGPL-3.0 model are not obligations a README
-/// discharges.
+/// Project terms and third-party model restrictions have to be reachable from
+/// the app itself, not only from the repository.
 struct AboutScreen: View {
     var body: some View {
         ScrollView {
@@ -29,11 +28,15 @@ struct AboutScreen: View {
                             Text(.aboutPrivacyTitle)
                                 .font(Naqi.F.titleSmall)
                                 .foregroundStyle(Naqi.C.onSurface)
-                            Text(.aboutPrivacyBody)
+                            Text(LinkPaste.isOffered ? .aboutPrivacyBody : .aboutPrivacyBodyShare)
                                 .font(Naqi.F.bodySmall)
                                 .foregroundStyle(Naqi.C.onSurfaceVariant)
                                 .padding(.top, 2)
                         }
+                    }
+                    VStack(alignment: .leading, spacing: 0) {
+                        SectionHeader(.aboutEyebrowDownloader)
+                        YtDlpCard()
                     }
                     VStack(alignment: .leading, spacing: 0) {
                         SectionHeader(.aboutEyebrowUpdates)
@@ -46,6 +49,21 @@ struct AboutScreen: View {
                                 .foregroundStyle(Naqi.C.onSurfaceVariant)
                                 .padding(.top, 2)
                         }
+                    }
+                    VStack(alignment: .leading, spacing: 0) {
+                        SectionHeader(.aboutEyebrowLicenses)
+                        NavigationLink(value: Flow.Step.licenses) {
+                            NaqiCard {
+                                Text(.aboutNoticesTitle)
+                                    .font(Naqi.F.titleSmall)
+                                    .foregroundStyle(Naqi.C.primary)
+                                Text(.aboutNoticesDesc)
+                                    .font(Naqi.F.bodySmall)
+                                    .foregroundStyle(Naqi.C.onSurfaceVariant)
+                                    .padding(.top, 2)
+                            }
+                        }
+                        .buttonStyle(.plain)
                     }
                     VStack(alignment: .leading, spacing: 0) {
                         SectionHeader(.pickDiagTitle)
@@ -96,12 +114,132 @@ struct AboutScreen: View {
     }
 }
 
+/// Weekly auto-check is fire-and-forget in RootView; this is the manual button
+/// for when a link stops working before the week is up.
+private struct YtDlpCard: View {
+    @State private var version: String?
+    @State private var status: LocalizedStringResource?
+    @State private var busy = false
+
+    var body: some View {
+        NaqiCard {
+            Text(.aboutYtdlpVersion(version ?? String(localized: .aboutYtdlpUnknown)))
+                .font(Naqi.F.titleSmall)
+                .foregroundStyle(Naqi.C.onSurface)
+            Text(.aboutYtdlpDesc)
+                .font(Naqi.F.bodySmall)
+                .foregroundStyle(Naqi.C.onSurfaceVariant)
+                .padding(.top, 2)
+            Button {
+                Task { await update() }
+            } label: {
+                Text(busy ? .aboutUpdating : .aboutUpdate)
+                    .font(Naqi.F.labelLarge)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(NaqiOutlineButtonStyle())
+            .disabled(busy)
+            .padding(.top, Naqi.S.s3)
+            if let status {
+                Text(status)
+                    .font(Naqi.F.bodySmall)
+                    .foregroundStyle(Naqi.C.onSurfaceVariant)
+                    .padding(.top, Naqi.S.s2)
+            }
+        }
+        .task { version = await Downloader.version() }
+    }
+
+    private func update() async {
+        busy = true
+        defer { busy = false }
+        do {
+            version = try await Downloader.update()
+            status = .aboutUpdateOk
+        } catch {
+            status = .aboutUpdateFailed
+        }
+    }
+}
+
+/// Terms for exactly the five non-Apple artifacts in this build. Links point
+/// at upstream terms; Naqi's own licence cannot broaden what their owners
+/// permit.
+struct ThirdPartyLicensesScreen: View {
+    var body: some View {
+        ScrollView {
+            ReadableColumn {
+                VStack(alignment: .leading, spacing: Naqi.S.s4) {
+                    Text(.licensesIntro)
+                        .font(Naqi.F.bodyMedium)
+                        .foregroundStyle(Naqi.C.onSurfaceVariant)
+
+                    notice(title: .licensesYtdlpTitle,
+                           terms: .licensesYtdlpTerms,
+                           source: "https://github.com/yt-dlp/yt-dlp")
+                    notice(title: .licensesOnnxTitle,
+                           terms: .licensesOnnxTerms,
+                           source: "https://github.com/microsoft/onnxruntime-swift-package-manager/tree/1.24.2")
+                    notice(title: .licensesDemucsTitle,
+                           terms: .licensesDemucsTerms,
+                           source: "https://github.com/facebookresearch/demucs")
+                    notice(title: .licensesNsfwTitle,
+                           terms: .licensesNsfwTerms,
+                           source: "https://github.com/GantMan/nsfw_model")
+                    notice(title: .licensesYamnetTitle,
+                           terms: .licensesYamnetTerms,
+                           source: "https://github.com/tensorflow/models/tree/master/research/audioset/yamnet")
+                    notice(title: .licensesInsightFaceTitle,
+                           terms: .licensesInsightFaceTerms,
+                           source: "https://github.com/deepinsight/insightface/tree/master/model_zoo")
+
+                    Text(.licensesPersonalOnly)
+                        .font(Naqi.F.bodySmall)
+                        .foregroundStyle(Naqi.C.onSurfaceVariant)
+                }
+            }
+            .padding(.horizontal, Naqi.S.gutter)
+            .padding(.vertical, Naqi.S.s5)
+        }
+        .background(Naqi.C.background)
+        .navigationTitle(Text(.licensesTitle))
+        #if os(iOS)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
+    }
+
+    private func notice(title: LocalizedStringResource,
+                        terms: LocalizedStringResource,
+                        source: String) -> some View {
+        NaqiCard {
+            Text(title)
+                .font(Naqi.F.titleSmall)
+                .foregroundStyle(Naqi.C.onSurface)
+            Text(terms)
+                .font(Naqi.F.bodySmall)
+                .foregroundStyle(Naqi.C.onSurfaceVariant)
+                .padding(.top, 2)
+            if let url = URL(string: source) {
+                Link(destination: url) {
+                    HStack(spacing: Naqi.S.s2) {
+                        Text(.licensesSource)
+                        Image(systemName: "arrow.up.right.square")
+                            .accessibilityHidden(true)
+                    }
+                    .font(Naqi.F.labelMedium)
+                    .foregroundStyle(Naqi.C.primary)
+                    .padding(.top, Naqi.S.s3)
+                }
+            }
+        }
+    }
+}
+
 /// The M0 device-runtime panel: the only way to run the model smoke test on a
 /// real phone. It stays reachable from the overflow menu and from About.
 struct DeviceRuntimeView: View {
     @State private var results: [ModelSmoke.Result] = []
     @State private var running = false
-    @State private var compute: ComputeUnit = .cpu
 
     var body: some View {
         List {
@@ -113,12 +251,6 @@ struct DeviceRuntimeView: View {
                                value: ByteCountFormatter.string(
                                 fromByteCount: Int64(ProcessInfo.processInfo.physicalMemory),
                                 countStyle: .memory))
-                Picker(String(localized: .diagCompute), selection: $compute) {
-                    Text(verbatim: "CPU").tag(ComputeUnit.cpu)
-                    Text(verbatim: "CoreML").tag(ComputeUnit.coreML)
-                    Text(verbatim: "CoreML−ANE").tag(ComputeUnit.coreMLNoANE)
-                }
-                .pickerStyle(.segmented)
             }
 
             Section {
@@ -159,9 +291,8 @@ struct DeviceRuntimeView: View {
         guard !running else { return }
         running = true
         results = []
-        let unit = compute
         Task.detached(priority: .userInitiated) {
-            let r = ModelSmoke.runAll(compute: unit)
+            let r = ModelSmoke.runAll()
             // The panel is diagnostics, not a job: give the memory straight back.
             ModelRegistry.evict(Models.Demucs.file)
             await MainActor.run { results = r; running = false }

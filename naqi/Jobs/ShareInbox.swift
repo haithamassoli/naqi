@@ -33,8 +33,33 @@ enum ShareInbox {
         // promise, and the queue itself is strictly serial.
         for manifest in entries.filter({ $0.pathExtension == "json" }).sorted(by: olderFirst) {
             guard let data = try? Data(contentsOf: manifest),
-                  let handoff = try? JSONDecoder().decode(ShareManifest.self, from: data),
-                  let media = media(for: handoff, in: dir) else {
+                  let handoff = try? JSONDecoder().decode(ShareManifest.self, from: data) else {
+                try? FileManager.default.removeItem(at: manifest)
+                continue
+            }
+
+            if let page = handoff.url, VideoURL.first(in: page) != nil {
+                var ops = FilterOps.loadLastUsed()
+                if let shared = handoff.options {
+                    ops.removeMusic = shared.removeMusic
+                    ops.censor = shared.censor
+                    ops.who = FilterOps.Who(rawValue: shared.who) ?? ops.who
+                }
+                let quality = DownloadQuality.of(handoff.quality)
+                if quality == .audio { ops.fit(hasVideo: false) }
+                let land = landing(audioOnly: quality == .audio,
+                                   destination: destination, folder: folder)
+                let job = Job.captureLink(page, quality: quality, ops: ops,
+                                          destination: land.destination,
+                                          folder: land.folder,
+                                          title: handoff.fileName.isEmpty ? nil : handoff.fileName)
+                await queue.enqueue(job)
+                try? FileManager.default.removeItem(at: manifest)
+                taken += 1
+                continue
+            }
+
+            guard let media = media(for: handoff, in: dir) else {
                 // A manifest with no media is an extension that died between
                 // the two writes. Nothing to run, so drop it.
                 try? FileManager.default.removeItem(at: manifest)
@@ -45,10 +70,13 @@ enum ShareInbox {
             // container is not the app's to keep a multi-hour job's input in,
             // and a second share of the same file must not race this one.
             let owned = adopt(media, named: handoff.fileName)
+            let prepared = await ops(for: owned, shared: handoff.options)
+            let land = landing(audioOnly: prepared.audioOnly,
+                               destination: destination, folder: folder)
             let job = Job.capture(source: owned,
-                                  ops: await ops(for: owned),
-                                  destination: destination,
-                                  folder: folder,
+                                  ops: prepared.ops,
+                                  destination: land.destination,
+                                  folder: land.folder,
                                   title: (handoff.fileName as NSString).deletingPathExtension)
             await queue.enqueue(job)
             try? FileManager.default.removeItem(at: manifest)
@@ -59,21 +87,34 @@ enum ShareInbox {
     }
 
     /// Last-used options, minus what the shared file cannot do — `FilterOps.fit`
-    /// is the same coercion `Flow` applies to a pick. The extension deliberately
-    /// carries no options UI, so this is the single place share-in settings are
-    /// decided, and a censor job queued on an audio file would die at
-    /// `Preflight` *after* the share sheet said it was added.
+    /// is the same coercion `Flow` applies to a pick. A censor job queued on an
+    /// audio file would die at `Preflight` *after* the share sheet said it was
+    /// added.
     ///
     /// The video-track question is asked of the file, never of its extension:
     /// an audio-only `.mp4` is a movie container and gets this too.
-    private static func ops(for url: URL) async -> FilterOps {
+    private static func ops(for url: URL, shared: ShareOptions?) async -> (ops: FilterOps, audioOnly: Bool) {
         var ops = FilterOps.loadLastUsed()
+        if let shared {
+            ops.removeMusic = shared.removeMusic
+            ops.censor = shared.censor
+            ops.who = FilterOps.Who(rawValue: shared.who) ?? ops.who
+        }
         // Not `MediaSource.probe`: this runs for every shared item at launch,
         // and precise-duration loading would read far more of the file than
         // "does it have a video track" needs.
         let tracks = try? await AVURLAsset(url: url).loadTracks(withMediaType: .video)
-        ops.fit(hasVideo: tracks.map { !$0.isEmpty })
-        return ops
+        let hasVideo = tracks.map { !$0.isEmpty }
+        ops.fit(hasVideo: hasVideo)
+        return (ops, hasVideo == false)
+    }
+
+    /// Photos will not take a bare audio file, and a folder destination with
+    /// nothing chosen would fail at publish. The in-app library is the same
+    /// fallback `Flow.startLink` already uses.
+    private static func landing(audioOnly: Bool, destination: Destination, folder: URL?) -> (destination: Destination, folder: URL?) {
+        let dest: Destination = audioOnly ? .userFolder : destination
+        return (dest, dest == .userFolder ? (folder ?? OutputLibrary.root) : folder)
     }
 
     private static func olderFirst(_ a: URL, _ b: URL) -> Bool {

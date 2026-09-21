@@ -94,7 +94,11 @@ enum Preflight {
     }
 
     /// Runs every guard. Returns nil when the job may proceed.
-    static func check(source: MediaSource, ops: FilterOps, segmented: Bool = false) async -> PreflightFailure? {
+    /// - Parameter extraCopies: full-size files that coexist with the published
+    ///   output beyond `tempCopies`. A Photos publish now keeps a local copy
+    ///   so Play/Share/Save still have a file; that copy is one extra.
+    static func check(source: MediaSource, ops: FilterOps, segmented: Bool = false,
+                      extraCopies: Int64 = 0) async -> PreflightFailure? {
         let asset = AVURLAsset(url: source.url)
 
         if (try? await asset.load(.hasProtectedContent)) == true { return .drmProtected }
@@ -111,7 +115,7 @@ enum Preflight {
 
         let required = requiredBytes(
             sourceBytes: sourceBytes,
-            tempCopies: tempCopies(for: ops, segmented: segmented),
+            tempCopies: tempCopies(for: ops, segmented: segmented) + extraCopies,
             extraScratch: extraScratchBytes(for: ops,
                                             durationSeconds: Int64(source.duration.seconds),
                                             segmented: segmented))
@@ -168,6 +172,52 @@ enum WorkDir {
 
     static func clear(_ key: String) {
         try? FileManager.default.removeItem(at: root.appendingPathComponent(key, isDirectory: true))
+    }
+}
+
+/// Finished copies the app still owns, so Play, Share and Save have a file
+/// after a Photos publish. A folder publish writes into the user's folder
+/// instead and never lands here.
+///
+/// Excluded from backup the same way `WorkDir` is: a 90-minute film is hundreds
+/// of megabytes the user already has in Photos or Files, and iCloud would
+/// otherwise charge them for a third copy.
+enum OutputLibrary {
+    static let root: URL = {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("naqi-outputs", isDirectory: true)
+        try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
+        var b = base
+        var rv = URLResourceValues()
+        rv.isExcludedFromBackup = true
+        try? b.setResourceValues(rv)
+        return base
+    }()
+
+    static func owns(_ url: URL) -> Bool {
+        let path = url.standardizedFileURL.path
+        let rootPath = root.standardizedFileURL.path
+        return path == rootPath || path.hasPrefix(rootPath + "/")
+    }
+
+    /// Moves `temp` into the library under `name`. Cross-volume falls back to
+    /// copy-then-delete, matching `Publish.saveToFolder`.
+    static func adopt(_ temp: URL, named name: String) throws -> URL {
+        try FileManager.default.createDirectory(at: root, withIntermediateDirectories: true)
+        let dest = root.appendingPathComponent(name)
+        try? FileManager.default.removeItem(at: dest)
+        do {
+            try FileManager.default.moveItem(at: temp, to: dest)
+        } catch {
+            try FileManager.default.copyItem(at: temp, to: dest)
+            try? FileManager.default.removeItem(at: temp)
+        }
+        return dest
+    }
+
+    static func remove(_ url: URL) {
+        guard owns(url) else { return }
+        try? FileManager.default.removeItem(at: url)
     }
 }
 

@@ -7,15 +7,15 @@ import SwiftUI
 struct DoneScreen: View {
     @Bindable var flow: Flow
 
-    @State private var showPlayer = false
+    @State private var playback: PlaybackItem?
+    @State private var saving = false
     @State private var showDeleteConfirm = false
     @State private var deleteResult: LocalizedStringResource?
-    /// The published copy fetched back out of the photo library. A Photos
-    /// publish *moves* the temp in and keeps only an identifier, so this is the
-    /// only thing Open has to play on the app's default destination.
+    /// Fallback for a queue row written before Photos publishes kept a local
+    /// copy: the published asset fetched back out of the photo library.
     @State private var libraryVideo: AVAsset?
     /// Set once the library has declined to hand the asset back — access
-    /// refused, or an identifier that no longer resolves. Open is withdrawn
+    /// refused, or an identifier that no longer resolves. Play is withdrawn
     /// rather than left as a button that opens an empty sheet.
     @State private var libraryRefused = false
 
@@ -33,7 +33,7 @@ struct DoneScreen: View {
     /// The library asset the publish created, for the Photos destination.
     private var assetID: String? { flow.monitor.assetID }
 
-    /// Whether Open has anything to show: a file still on disk, or a library
+    /// Whether Play has anything to show: a file still on disk, or a library
     /// asset the library has not already refused.
     private var canOpen: Bool {
         flow.monitor.output != nil || (assetID != nil && !libraryRefused)
@@ -88,14 +88,9 @@ struct DoneScreen: View {
         .toolbarBackground(Naqi.C.background, for: .navigationBar)
         #endif
         .navigationBarBackButtonHidden(true)
-        .sheet(isPresented: $showPlayer) {
-            if let url = flow.monitor.output {
-                VideoPlayer(player: AVPlayer(url: url)).ignoresSafeArea()
-            } else if let libraryVideo {
-                VideoPlayer(player: AVPlayer(playerItem: AVPlayerItem(asset: libraryVideo)))
-                    .ignoresSafeArea()
-            }
-        }
+        .sheet(item: $playback) { MediaPlayerSheet(item: $0) }
+        .mediaFileExporter(isPresented: $saving, url: flow.monitor.output,
+                           name: outputName ?? "naqi")
         .confirmationDialog(Text(.dlgDeleteOriginalTitle),
                             isPresented: $showDeleteConfirm,
                             titleVisibility: .visible) {
@@ -113,6 +108,7 @@ struct DoneScreen: View {
                 ZStack {
                     Circle().fill(Naqi.C.primary)
                     NaqiIcon(.check).fill(Naqi.C.onPrimary).frame(width: glyph, height: glyph)
+                        .accessibilityHidden(true)
                 }
                 .frame(width: tile, height: tile)
 
@@ -137,26 +133,34 @@ struct DoneScreen: View {
                     .padding(.top, Naqi.S.s3)
             }
 
-            // Open works on either destination — the library asset plays in the
-            // same sheet the file does. Share still needs a file: a Photos
-            // publish leaves none, and exporting a second full-size copy out of
-            // the library to make one is not a thing to do behind a button.
             if canOpen {
-                HStack(spacing: Naqi.S.s3) {
+                VStack(spacing: Naqi.S.s3) {
                     Button { openTapped() } label: {
-                        Text(.actionOpen)
+                        Text(.actionPlay)
                             .font(Naqi.F.labelLarge)
                             .frame(maxWidth: .infinity, minHeight: 48)
                     }
                     .buttonStyle(NaqiPrimaryButtonStyle())
+                    .accessibilityIdentifier("action.play")
 
                     if let url = flow.monitor.output {
-                        ShareLink(item: url) {
-                            Text(.actionShare)
-                                .font(Naqi.F.labelLarge)
-                                .frame(maxWidth: .infinity, minHeight: 48)
+                        HStack(spacing: Naqi.S.s3) {
+                            ShareLink(item: url) {
+                                Text(.actionShare)
+                                    .font(Naqi.F.labelLarge)
+                                    .frame(maxWidth: .infinity, minHeight: 48)
+                            }
+                            .buttonStyle(NaqiOutlineButtonStyle())
+                            .accessibilityIdentifier("action.share")
+
+                            Button { saving = true } label: {
+                                Text(.actionSave)
+                                    .font(Naqi.F.labelLarge)
+                                    .frame(maxWidth: .infinity, minHeight: 48)
+                            }
+                            .buttonStyle(NaqiOutlineButtonStyle())
+                            .accessibilityIdentifier("action.save")
                         }
-                        .buttonStyle(NaqiOutlineButtonStyle())
                     }
                 }
                 .padding(.top, Naqi.S.s4)
@@ -176,21 +180,31 @@ struct DoneScreen: View {
             .strokeBorder(Naqi.C.outlineVariant, lineWidth: Naqi.Border.hairline))
     }
 
-    /// A folder publish opens straight away. A Photos publish has to go back to
-    /// the library first, and reading the library needs an access level the job
-    /// never asked for — the publish only ever wanted add-only. So the request
-    /// happens on the tap, where the user has just said they want to see the
-    /// video, and never unbidden as the screen appears.
+    /// A file on disk plays straight away. A Photos publish from before the
+    /// local copy existed has to go back to the library first, and reading the
+    /// library needs an access level the job never asked for — the publish
+    /// only ever wanted add-only. So the request happens on the tap, where
+    /// the user has just said they want to see the video, and never unbidden
+    /// as the screen appears.
     private func openTapped() {
-        guard flow.monitor.output == nil, libraryVideo == nil else {
-            showPlayer = true
+        let title = outputName ?? String(localized: .dlgDeleteOriginalFallbackName)
+        if let url = flow.monitor.output {
+            playback = .file(url, title: title)
+            return
+        }
+        if let libraryVideo {
+            playback = .library(libraryVideo, title: title)
             return
         }
         Task {
             libraryVideo = await Self.libraryVideo(assetID)
-            // Always answers, one way or the other: a refusal takes Open away
+            // Always answers, one way or the other: a refusal takes Play away
             // rather than leaving a button that does nothing when pressed.
-            if libraryVideo == nil { libraryRefused = true } else { showPlayer = true }
+            if let libraryVideo {
+                playback = .library(libraryVideo, title: title)
+            } else {
+                libraryRefused = true
+            }
         }
     }
 
@@ -201,7 +215,7 @@ struct DoneScreen: View {
     /// budget on the render and cannot afford a copy to play from. Limited
     /// access is enough — an asset the app itself created is always in the
     /// user's selection.
-    private static func libraryVideo(_ id: String?) async -> AVAsset? {
+    static func libraryVideo(_ id: String?) async -> AVAsset? {
         guard let id else { return nil }
         let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
         guard status == .authorized || status == .limited,

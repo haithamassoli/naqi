@@ -111,6 +111,7 @@ struct ToggleTile: View {
                         NaqiIcon(icon)
                             .fill(isOn ? Naqi.C.primary : Naqi.C.onSurfaceVariant)
                             .frame(width: glyph, height: glyph)
+                            .accessibilityHidden(true)
                     }
                     .frame(width: tile, height: tile)
                     .padding(.trailing, Naqi.S.s3)
@@ -170,6 +171,7 @@ struct SelectDot: View {
                 NaqiIcon(.check)
                     .fill(Naqi.C.onPrimary)
                     .frame(width: check, height: check)
+                    .accessibilityHidden(true)
             }
         }
         .frame(width: dot, height: dot)
@@ -287,6 +289,7 @@ struct NoteLine: View {
             NaqiIcon(icon)
                 .fill(Naqi.C.primary)
                 .frame(width: glyph, height: glyph)
+                .accessibilityHidden(true)
             Text(text)
                 .font(Naqi.F.bodySmall)
                 .foregroundStyle(Naqi.C.onSurfaceVariant)
@@ -351,7 +354,7 @@ struct NaqiPrimaryButtonStyle: ButtonStyle {
     }
 }
 
-/// The outlined twin — Share next to Open on the done screen.
+/// The outlined twin — Share and Save next to Play on the done screen.
 struct NaqiOutlineButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label

@@ -61,22 +61,26 @@ enum AnalyzePass {
             ? source.duration.convertScale(1000, method: .default).value
             : .max
 
-        // Android's own sweep peaked at 2 intra-op threads (20.1 / 47.8 / 42.3 /
-        // 19.5 inferences per second at 1 / 2 / 4 / 8, §8.3) and the same knee
-        // shows up here: 19.25 / 11.87 / 10.43 ms per gate frame at 1 / 2 / 4 on
-        // the simulator. Four buys 12 % and costs a core the decoder wants.
-        let gate = try ModelRegistry.model(Models.Nsfw.file, threads: 2)
         // A build without genderage degrades every track to "no vote", which
         // means censor — safe, and the only signal is this log line (§11.6).
-        let voter = (try? ModelRegistry.model(Models.GenderAge.file)).map(GenderVote.init)
-        if voter == nil { Log.analyze.notice("genderage unavailable: every track abstains, i.e. censors") }
+        let voter = ops.who.skipsGenderVote
+            ? nil
+            : (try? ModelRegistry.model(Models.GenderAge.file, compute: .xnnpack)).map(GenderVote.init)
+        if voter == nil, !ops.who.skipsGenderVote {
+            Log.analyze.notice("genderage unavailable: every track abstains, i.e. censors")
+        }
 
         let tracker = FaceTracker(who: ops.who)
         let detector = await FaceDetector.resolve()
-        // Batch 1: §10.16 forbids batching the gate, and the Apple measurement
-        // agreed (see `GateBatch`).
-        let batch = GateBatch(model: gate, strictness: ops.strictness, size: 1)
-        let sampler = try FrameSampler(track: track, transform: video.transform)
+        let gateRunner: NsfwRunner?
+        if ops.censorNsfw {
+            let gate = try ModelRegistry.model(Models.Nsfw.file, compute: .coreMLNeuralNetwork)
+            gateRunner = NsfwRunner(model: gate, strictness: ops.strictness)
+        } else {
+            gateRunner = nil
+        }
+        let sampler = try FrameSampler(track: track, transform: video.transform,
+                                       gateEnabled: ops.censorNsfw)
 
         // `RenderPass` throttles to every 30th frame, which at a 30 fps source is
         // one report per second of picture. This pass decodes at `sampleFPS`, so
@@ -108,7 +112,7 @@ enum AnalyzePass {
             // Detection and the gate overlap; the await stays inside this call
             // so the frame's pool slot survives both (§1.5, §2.5).
             async let detected = detector.detect(frame)
-            if let g = frame.gate { try batch.add(ptsMs: frame.ptsMs, tensor: g) }
+            if let g = frame.gate { try gateRunner?.add(ptsMs: frame.ptsMs, tensor: g) }
             // A detector failure is per-frame and survivable; see
             // `DetectFailures` for why it is survivable only up to a point.
             let boxes: [CGRect]
@@ -131,12 +135,11 @@ enum AnalyzePass {
                 voter?.vote(in: frame, rect: rect) ?? 0
             }
         }
-        // Before `batch.flush`, because an unusable detector must not look like
-        // a completed pass that merely found no faces.
+        // Before assembling the EDL, because an unusable detector must not look
+        // like a completed pass that merely found no faces.
         if detectFailures.exceededRate(sampled: stats.emitted) {
             throw AnalyzeError.detectorUnusable(failed: detectFailures.total, of: stats.emitted)
         }
-        try batch.flush()
         // The last sampled frame sits up to one sample interval short of the
         // duration, and on a stage that feeds a progress band "97 %" is a stage
         // that never finished. Closing at exactly 1.0 is the caller's signal
@@ -147,7 +150,8 @@ enum AnalyzePass {
 
         // In region mode this is the plain concatenation — only the whole-frame
         // path merges (§6.3 rule 2).
-        var intervals = NsfwGate.intervals(batch.firings, durationMs: durationMs)
+        let firings = gateRunner?.firings ?? []
+        var intervals = NsfwGate.intervals(firings, durationMs: durationMs)
             + overflowSpans(faceTracks)
         if ops.censorMode == .wholeFrame {
             intervals = promoteToWholeFrame(intervals, tracks: faceTracks)
@@ -155,14 +159,14 @@ enum AnalyzePass {
 
         stage.stop("""
             \(stats.decoded) decoded, \(stats.emitted) sampled, \(stats.gated) gated, \
-            \(batch.firings.count) firings, \(faceTracks.count) tracks, \(intervals.count) intervals\
+            \(firings.count) firings, \(faceTracks.count) tracks, \(intervals.count) intervals\
             \(detectFailures.total > 0 ? ", \(detectFailures.total) detect failures" : "")
             """)
         return AnalyzeResult(edl: Edl(censorIntervalsMs: intervals, faceTracks: faceTracks),
                              decodedFrames: stats.decoded,
                              sampledFrames: stats.emitted,
                              gateFrames: stats.gated,
-                             firings: batch.firings.count,
+                             firings: firings.count,
                              wallMs: wallMs)
     }
 
@@ -245,54 +249,23 @@ enum AnalyzePass {
     }
 }
 
-/// Accumulates gate tensors and submits them in one Run.
-///
-/// The graph's batch dim is dynamic and batched inference is bit-identical to
-/// single-frame (`ModelContractTests.nsfwBatch`). It is **not** the win it looks
-/// like: on the iPhone 17 Pro simulator over the QA clip's 64 gate tensors,
-/// per-frame cost was flat to 6 % worse at every batch size (threads=2:
-/// 11.87 / 12.60 / 12.63 / 12.32 ms per frame at batch 1 / 2 / 4 / 8), which
-/// reproduces Android's own finding (§10.16) rather than escaping it.
-///
-/// So `size` ships at **1**, which is what §10.16 requires and what measured
-/// fastest here. It also keeps §2.5's per-frame order intact — detect starts,
-/// the gate runs on *that* frame, then the faces are awaited — where a batch of
-/// 8 skipped the gate on seven frames out of eight and paid 8x on the ninth,
-/// with 4.8 MB of tensors parked in the meantime. The mechanism stays because
-/// it is three lines and `Models.Nsfw.maxBatch` needs re-measuring on hardware,
-/// where the memory hierarchy is not the host's.
-private final class GateBatch {
+/// One fixed-batch NSFW inference per gate frame. The static graph is required
+/// by CoreML and §10.16 already rejected buffering multiple frames.
+private final class NsfwRunner {
     private let model: OrtModel
     private let strictness: Int
-    private let size: Int
-    private var pts: [Int64] = []
-    private var data: [Float] = []
     private(set) var firings: [Int64] = []
 
-    init(model: OrtModel, strictness: Int, size: Int = 1) {
+    init(model: OrtModel, strictness: Int) {
         self.model = model
         self.strictness = strictness
-        self.size = min(max(size, 1), Models.Nsfw.maxBatch)
-        data.reserveCapacity(self.size * 3 * Models.Nsfw.side * Models.Nsfw.side)
     }
 
     func add(ptsMs: Int64, tensor: [Float]) throws {
-        pts.append(ptsMs)
-        data.append(contentsOf: tensor)
-        if pts.count >= size { try flush() }
-    }
-
-    func flush() throws {
-        guard !pts.isEmpty else { return }
-        let n = pts.count, side = Models.Nsfw.side
-        let out = try model.run([Models.Nsfw.input: .float(data, shape: [n, 3, side, side])])
+        let side = Models.Nsfw.side
+        let out = try model.run([Models.Nsfw.input: .float(tensor, shape: [1, 3, side, side])])
         guard let y = out[Models.Nsfw.output] else { throw OrtError.outputMissing(Models.Nsfw.output) }
         let probs = try y.floats()
-        let classes = Models.Nsfw.Class.allCases.count
-        for i in 0..<n where NsfwGate.fires(Array(probs[i * classes..<(i + 1) * classes]), strictness: strictness) {
-            firings.append(pts[i])
-        }
-        pts.removeAll(keepingCapacity: true)
-        data.removeAll(keepingCapacity: true)
+        if NsfwGate.fires(probs, strictness: strictness) { firings.append(ptsMs) }
     }
 }

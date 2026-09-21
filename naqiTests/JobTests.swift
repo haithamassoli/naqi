@@ -213,9 +213,11 @@ struct JobTests {
         v = base; v.censor = !base.censor; variants.append(v)
         v = base; v.who = .men; variants.append(v)
         v = base; v.censorMode = .wholeFrame; variants.append(v)
+        v = base; v.censorNsfw = false; variants.append(v)
         v = base; v.strictness += 1; variants.append(v)
         v = base; v.blurAmount += 1; variants.append(v)
         v = base; v.grayscale = !base.grayscale; variants.append(v)
+        v = base; v.solidColor = .black; variants.append(v)
         v = base; v.keepStems = .vocalsAndOther; variants.append(v)
 
         var seen: Set<String> = [key]
@@ -292,6 +294,13 @@ struct JobTests {
         // segmented with music: the PCM scratch scales with duration, not size.
         #expect(required(both, seconds: 3600, segmented: true)
                 == 3 * gib + 3600 * (176_400 + 24_000) + slack)
+
+        // Photos keeps a local copy for Play/Share/Save, so the budget carries
+        // one more full-size file than a folder publish of the same shape.
+        #expect(Preflight.requiredBytes(
+            sourceBytes: gib,
+            tempCopies: Preflight.tempCopies(for: censor, segmented: false) + 1,
+            extraScratch: 0) == 3 * gib + slack)
 
         // ~1.6 GB of PCM on a 155-minute film is the number that made the
         // scratch a separate term instead of another "temp copy"; the AAC track
@@ -1097,7 +1106,8 @@ struct JobTests {
         let id = UUID()
         let media = ShareManifest.mediaURL(dir, id: id, ext: "mp4")
         try Data("not really a movie".utf8).write(to: media)
-        let manifest = ShareManifest(id: id, fileName: "clip.mp4", receivedAt: Date())
+        let shared = ShareOptions(removeMusic: true, censor: false, who: "everyone")
+        let manifest = ShareManifest(id: id, fileName: "clip.mp4", receivedAt: Date(), options: shared)
         try JSONEncoder().encode(manifest)
             .write(to: ShareManifest.manifestURL(dir, id: id), options: .atomic)
 
@@ -1106,6 +1116,9 @@ struct JobTests {
         let jobs = await queue.jobs
         #expect(jobs.count == 1)
         #expect(jobs.first?.title == "clip")
+        #expect(jobs.first?.ops.removeMusic == true)
+        #expect(jobs.first?.ops.censor == false)
+        #expect(jobs.first?.ops.who == .everyone)
         // Both container entries are consumed: a manifest left behind would be
         // re-enqueued on the next foreground, and the app foregrounds a lot.
         #expect(!FileManager.default.fileExists(

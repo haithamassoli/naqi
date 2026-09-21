@@ -31,6 +31,8 @@ actor JobQueue {
     private var runningSince: Date?
     private var progress: JobProgress?
     private var running: Task<Void, Never>?
+    /// A BGProcessing grant owns one checkpointed job, never the whole queue.
+    private var stopAfterCurrent = false
     private var observers: [UUID: AsyncStream<Snapshot>.Continuation] = [:]
 
     /// Polled by the running job from AVFoundation's own queues, so it lives in
@@ -104,7 +106,18 @@ actor JobQueue {
     }
 
     func clearFinished() {
-        jobs.removeAll(where: \.state.isTerminal)
+        for job in jobs {
+            if case .done(let published) = job.state, let url = published.url {
+                OutputLibrary.remove(url)
+            }
+        }
+        jobs.removeAll {
+            switch $0.state {
+            case .done, .cancelled: true
+            case .failed(_, let resumable): !resumable
+            case .pending, .running: false
+            }
+        }
         commit()
     }
 
@@ -131,6 +144,47 @@ actor JobQueue {
     /// it.
     func resume(_ id: Job.ID) { retry(id) }
 
+    /// Starts the first checkpointed survivor when iOS grants a processing
+    /// window. A fresh process loads an interrupted `.running` row as pending;
+    /// a process that survived suspension has already recorded `.failed` with
+    /// `resumable = true`, so both routes meet here.
+    func startResumableHead() -> Job.ID? {
+        guard runningID == nil else { return nil }
+        guard let job = jobs.first(where: {
+            switch $0.state {
+            case .pending: true
+            case .failed(_, let resumable): resumable
+            default: false
+            }
+        }) else { return nil }
+        if job.state.isTerminal { update(job.id) { $0.state = .pending } }
+        stopAfterCurrent = true
+        drain()
+        return runningID
+    }
+
+    nonisolated func signalBackgroundExpiration() {
+        stopFlag.withLock { $0 = .interrupted }
+    }
+
+    func hasResumableJob() -> Bool {
+        jobs.contains {
+            switch $0.state {
+            case .pending: true
+            case .failed(_, let resumable): resumable
+            default: false
+            }
+        }
+    }
+
+    /// A foreground launch owns the serial queue again. If the processing
+    /// grant is still running, its current job continues and may drain the next
+    /// row when it finishes. If it already ended, drain now.
+    func continueInForeground() {
+        stopAfterCurrent = false
+        drain()
+    }
+
     /// Drops the row *and* the scratch it was holding. `remove` alone leaves a
     /// work directory behind for the 7-day sweep, which on a half-rendered film
     /// is gigabytes the user just said they did not want.
@@ -141,6 +195,9 @@ actor JobQueue {
     func discard(_ id: Job.ID) {
         if let job = jobs.first(where: { $0.id == id }) {
             WorkDir.clear(Checkpoint.key(source: job.source, ops: job.ops))
+            if case .done(let published) = job.state, let url = published.url {
+                OutputLibrary.remove(url)
+            }
         }
         remove(id)
     }
@@ -238,7 +295,11 @@ actor JobQueue {
         progress = nil
         running = nil
         notify()
-        drain()
+        if stopAfterCurrent {
+            stopAfterCurrent = false
+        } else {
+            drain()
+        }
     }
 
     private func report(_ id: Job.ID, _ p: JobProgress) {

@@ -25,18 +25,16 @@ enum PublishError: Error, CustomStringConvertible {
 
 /// Where a finished job actually left the file.
 ///
-/// A URL alone cannot describe both destinations. A Photos publish *moves* the
-/// temp into the library, so the path we handed over stops existing the moment
-/// the change commits — recording it as the output named a file that was
-/// already gone, and every consumer that checked `fileExists` correctly
-/// concluded there was nothing to show. The name is what the Done screen
-/// prints; the identifier is the only durable handle on a library asset.
+/// A URL alone cannot describe both destinations. A Photos publish also copies
+/// into the photo library, but the playable file is the one `OutputLibrary`
+/// kept — that is what Play, Share and Save act on. The identifier is the
+/// Photos handle for jobs that still need to fall back to the library (a
+/// queue file written before the local copy existed).
 struct Published: Codable, Sendable, Equatable {
     /// The name the file was published under. Always known.
     let name: String
-    /// A file still on disk. `nil` after a Photos publish: the temp was moved
-    /// into the library and add-only authorization cannot read it back, so
-    /// Open and Share genuinely have nothing to act on.
+    /// A file still on disk. Present for a folder publish, and for a Photos
+    /// publish that kept a local copy in `OutputLibrary`.
     let url: URL?
     /// `PHAsset` local identifier, for a Photos publish.
     let assetID: String?
@@ -73,10 +71,10 @@ enum Publish {
             try await PHPhotoLibrary.shared().performChanges {
                 let req = PHAssetCreationRequest.forAsset()
                 let opts = PHAssetResourceCreationOptions()
-                // The temp file is ours and already final; letting Photos move it
-                // avoids a second full-size copy on a device that just spent the
-                // preflight budget.
-                opts.shouldMoveFile = true
+                // Copy, do not move: Play/Share/Save need the file to stay in
+                // our container. The extra full-size copy is charged in
+                // preflight as `extraCopies` on the Photos destination.
+                opts.shouldMoveFile = false
                 opts.originalFilename = name
                 req.addResource(with: .video, fileURL: temp, options: opts)
                 assetID = req.placeholderForCreatedAsset?.localIdentifier
@@ -84,8 +82,9 @@ enum Publish {
         } catch {
             throw PublishError.photosFailed(error.localizedDescription)
         }
-        Log.job.info("published to Photos")
-        return Published(name: name, url: nil, assetID: assetID)
+        let local = try OutputLibrary.adopt(temp, named: name)
+        Log.job.info("published to Photos and \(local.lastPathComponent, privacy: .public)")
+        return Published(name: name, url: local, assetID: assetID)
     }
 
     private static func saveToFolder(_ temp: URL, named name: String, folder: URL) throws -> Published {

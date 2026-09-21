@@ -149,6 +149,151 @@ struct AudioTests {
         #expect(abs(stats.std - 0.25 / Float(2).squareRoot()) < 0.02)
     }
 
+    // MARK: Music gate
+
+    @Test("YAMNet music class ranges are inclusive",
+          arguments: [24, 32, 132, 276])
+    func musicClassIncluded(index: Int) {
+        var scores = [Float](repeating: 0, count: MusicGate.classes)
+        scores[index] = 0.7
+        let got = scores.withUnsafeBufferPointer { MusicGate.musicScore($0.baseAddress!) }
+        #expect(got == 0.7)
+    }
+
+    @Test("classes beside the YAMNet music ranges stay excluded",
+          arguments: [23, 33, 131, 277])
+    func nonMusicClassExcluded(index: Int) {
+        var scores = [Float](repeating: 0, count: MusicGate.classes)
+        scores[index] = 0.7
+        let got = scores.withUnsafeBufferPointer { MusicGate.musicScore($0.baseAddress!) }
+        #expect(got == 0)
+    }
+
+    @Test("-60 dBFS silence bypasses YAMNet")
+    func gateSilenceFloor() throws {
+        let calls = Box(0)
+        let gate = MusicGate { _ in calls.v += 1; return 1 }
+        let mono = [Float](repeating: 0.000_999, count: Demucs.seg)
+        let score = try mono.withUnsafeBufferPointer {
+            try gate.score($0.baseAddress!, frames: $0.count)
+        }
+        #expect(score == 0)
+        #expect(calls.v == 0)
+    }
+
+    @Test("YAMNet takes the max and flushes its last frame against the tail")
+    func gateFrameTiling() throws {
+        let mono = (0..<Demucs.seg).map { 0.01 + 0.49 * Float($0) / Float(Demucs.seg - 1) }
+        let starts = Box<[Float]>([]), ends = Box<[Float]>([])
+        let scores: [Float] = [0.01, 0.02, 0.14]
+        let gate = MusicGate { frame in
+            let i = starts.v.count
+            starts.v.append(frame[0])
+            ends.v.append(frame[MusicGate.frame - 1])
+            return scores[i]
+        }
+        let got = try mono.withUnsafeBufferPointer {
+            try gate.score($0.baseAddress!, frames: $0.count)
+        }
+
+        let n = MusicGate.out16kLength(mono.count)
+        func expected(_ i: Int) -> Float {
+            let x = Double(i) * 44_100 / 16_000
+            let i0 = Int(x), f = Float(x - Double(i0))
+            return mono[i0] + (mono[min(i0 + 1, mono.count - 1)] - mono[i0]) * f
+        }
+        #expect(got == 0.14, "the score must be MAX, not mean")
+        #expect(starts.v.count == 3)
+        #expect(abs(starts.v[2] - expected(n - MusicGate.frame)) < 1e-6)
+        #expect(abs(ends.v[2] - expected(n - 1)) < 1e-6)
+    }
+
+    @Test("a score at 0.15 exits without scoring later frames")
+    func gateThresholdEarlyExit() throws {
+        let calls = Box(0)
+        let scores: [Float] = [0.10, MusicGate.threshold, 0.90]
+        let gate = MusicGate { _ in defer { calls.v += 1 }; return scores[calls.v] }
+        let mono = [Float](repeating: 0.25, count: Demucs.seg)
+        let got = try mono.withUnsafeBufferPointer {
+            try gate.score($0.baseAddress!, frames: $0.count)
+        }
+        #expect(got == MusicGate.threshold)
+        #expect(calls.v == 2)
+    }
+
+    @Test("the bundled YAMNet recognizes a harmonic chord")
+    func bundledGateChord() throws {
+        let gate = try #require(MusicGate.open())
+        defer { ModelRegistry.evict(Models.YamNet.file) }
+        var mono = [Float](repeating: 0, count: Demucs.seg)
+        for i in mono.indices {
+            let t = Double(i) / Double(Models.Demucs.sampleRate)
+            for frequency in [220.0, 277.18, 329.63] {
+                for harmonic in 1...4 {
+                    mono[i] += Float(sin(2 * Double.pi * frequency * Double(harmonic) * t)
+                                     / Double(harmonic))
+                }
+            }
+        }
+        var peak: Float = 0
+        for sample in mono { peak = max(peak, abs(sample)) }
+        for i in mono.indices { mono[i] *= 0.5 / peak }
+        let score = try mono.withUnsafeBufferPointer {
+            try gate.score($0.baseAddress!, frames: $0.count)
+        }
+        #expect(score > 0.8, "harmonic chord scored \(score)")
+    }
+
+    @Test("a gated-off chunk reconstructs the input without running htdemucs")
+    func gatePassthrough() throws {
+        let frames = 50_000
+        let left = probe(frames, freqs: [110, 700, 2400], rate: 44_100, seed: 21)
+        let right = probe(frames, freqs: [180, 1300, 4800], rate: 44_100, seed: 22)
+        var input = [Float](repeating: 0, count: 2 * frames)
+        for i in 0..<frames {
+            input[2 * i] = left[i] * 0.4
+            input[2 * i + 1] = right[i] * 0.4
+        }
+        let inferences = Box(0)
+        var output = [Float]()
+        let sep = Demucs(mean: 0, std: 1, estimatedFrames: frames,
+                         infer: { _, _, _, _ in inferences.v += 1 },
+                         musicScore: { _, _ in 0 },
+                         emit: { p, n in
+                             output.append(contentsOf: UnsafeBufferPointer(start: p, count: 2 * n))
+                         })
+        try input.withUnsafeBufferPointer { try sep.feed($0.baseAddress!, frames: frames) }
+        try sep.finish()
+
+        #expect(inferences.v == 0)
+        #expect(sep.skippedChunks == 1)
+        #expect(output.count == input.count)
+        #expect(snrDB(input[...], output[...]) > 100)
+    }
+
+    @Test("the ±2 tier starts at an own score of 0.02",
+          arguments: [Demucs.dilation2MinScore - 0.001, Demucs.dilation2MinScore])
+    func farDilationBoundary(ownScore: Float) throws {
+        let frames = 2 * Demucs.stride - Demucs.maxShift + 1
+        let input = [Float](repeating: 0, count: 2 * frames)
+        let nextScore = Box(0)
+        let scripted = [ownScore, Float(0), MusicGate.threshold]
+        let sep = Demucs(mean: 0, std: 1, estimatedFrames: frames,
+                         infer: { _, _, _, _ in throw GateStop.stop },
+                         musicScore: { _, _ in
+                             defer { nextScore.v += 1 }
+                             return scripted[nextScore.v]
+                         }, emit: { _, _ in })
+        try input.withUnsafeBufferPointer { try sep.feed($0.baseAddress!, frames: frames) }
+        do {
+            try sep.finish()
+            Issue.record("expected the first separated chunk to stop the test")
+        } catch GateStop.stop {
+            // Expected: at 0.019 chunk 0 skips and chunk 1 stops; at 0.02 chunk 0 stops.
+        }
+        #expect(sep.skippedChunks == (ownScore < Demucs.dilation2MinScore ? 1 : 0))
+    }
+
     // MARK: Overlap-add driver
 
     @Test("soft clip is transparent below 0.95 and bounded at 1.0")
@@ -376,6 +521,8 @@ private final class Box<T>: @unchecked Sendable {
     var v: T
     init(_ v: T) { self.v = v }
 }
+
+private enum GateStop: Error { case stop }
 
 /// Deterministic band-limited probe: a sum of sinusoids with reproducible phases.
 private func probe(_ n: Int, freqs: [Double], rate: Double, seed: UInt64) -> [Float] {

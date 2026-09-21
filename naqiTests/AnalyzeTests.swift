@@ -201,6 +201,41 @@ struct AnalyzeTests {
         #expect(!GenderVote.shouldCensor(female: 3, male: 1, who: .men))
     }
 
+    @Test("everyone never invokes the gender voter")
+    func everyoneSkipsVoter() {
+        let box = CGRect(x: 100, y: 100, width: 200, height: 200)
+        let size = CGSize(width: 640, height: 640)
+        var everyoneCalls = 0
+        let everyone = FaceTracker(who: .everyone)
+        everyone.onFaces([box], uprightSize: size, ptsMs: 1000) { _ in everyoneCalls += 1; return -1 }
+        everyone.onFaces([box], uprightSize: size, ptsMs: 1100) { _ in everyoneCalls += 1; return -1 }
+        #expect(everyoneCalls == 0)
+
+        var womenCalls = 0
+        let women = FaceTracker(who: .women)
+        women.onFaces([box], uprightSize: size, ptsMs: 1000) { _ in womenCalls += 1; return -1 }
+        women.onFaces([box], uprightSize: size, ptsMs: 1100) { _ in womenCalls += 1; return -1 }
+        #expect(womenCalls == 1, "the control path did not reach the voter")
+    }
+
+    @Test("disabling scene censoring emits no gate tensors")
+    func disabledGateSkipsTensorLane() async throws {
+        let asset = AVURLAsset(url: try requireQAVideo())
+        let track = try #require(try await asset.loadTracks(withMediaType: .video).first)
+        let naturalSize = try await track.load(.naturalSize)
+        let sampler = try FrameSampler(track: track,
+                                       transform: .identity(size: naturalSize),
+                                       gateEnabled: false,
+                                       endMs: 1000)
+        var tensors = 0
+        let stats = try await sampler.run { frame in
+            if frame.gate != nil { tensors += 1 }
+        }
+        #expect(stats.emitted > 0)
+        #expect(stats.gated == 0)
+        #expect(tensors == 0)
+    }
+
     // MARK: - End to end
 
     @Test("analyze the QA clip end to end")

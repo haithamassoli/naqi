@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 import os
 import OnnxRuntimeBindings
@@ -7,20 +8,24 @@ import OnnxRuntimeBindings
 enum ComputeUnit: Sendable {
     /// CPU only. The reference path: matches Android numerics exactly.
     case cpu
-    /// CoreML EP, ANE + GPU + CPU. No ANE on the simulator — it silently runs CPU/GPU there.
-    case coreML
-    /// CoreML EP restricted to CPU+GPU. Useful when ANE quantization skews outputs.
-    case coreMLNoANE
+    /// htdemucs: CoreML MLProgram on CPU+GPU. ANE compilation fails this graph.
+    case coreMLGPU
+    /// NSFW: CoreML NeuralNetwork with all compute units; MLProgram cannot parse it.
+    case coreMLNeuralNetwork
+    /// Small models only. XNNPACK is forbidden for htdemucs' spectral branch.
+    case xnnpack
 }
 
 enum OrtError: Error, CustomStringConvertible {
     case modelMissing(String)
+    case providerUnavailable(String)
     case shapeMismatch(expected: [Int], got: [Int])
     case outputMissing(String)
 
     var description: String {
         switch self {
         case .modelMissing(let n): "model not found in bundle: \(n)"
+        case .providerUnavailable(let n): "execution provider unavailable: \(n)"
         case .shapeMismatch(let e, let g): "tensor shape mismatch: expected \(e), got \(g)"
         case .outputMissing(let n): "session produced no output named \(n)"
         }
@@ -35,6 +40,20 @@ enum Ort {
     }()
 
     static var coreMLAvailable: Bool { ORTIsCoreMLExecutionProviderAvailable() }
+    static let xnnpackThreads = 4
+
+    static func effectiveCompute(_ requested: ComputeUnit) -> ComputeUnit {
+        #if targetEnvironment(simulator)
+        // CoreML registers in Simulator but has no ANE, its GPU path throws
+        // Espresso/MPSGraph errors, and every measured case was slower than CPU.
+        switch requested {
+        case .coreMLGPU, .coreMLNeuralNetwork: .cpu
+        case .cpu, .xnnpack: requested
+        }
+        #else
+        requested
+        #endif
+    }
 
     /// Logical CPUs at the highest performance level.
     ///
@@ -79,6 +98,7 @@ final class OrtModel: @unchecked Sendable {
     let inputNames: [String]
     let outputNames: [String]
     let compute: ComputeUnit
+    let executionCompute: ComputeUnit
     let threads: Int
 
     /// - Parameters:
@@ -104,9 +124,51 @@ final class OrtModel: @unchecked Sendable {
     init(name: String, path: String, compute: ComputeUnit, threads: Int = 1,
          disableArena: Bool = false) throws {
         self.name = name
-        self.compute = compute
+        let requested = Ort.effectiveCompute(compute)
+        self.compute = requested
         self.threads = threads
 
+        var resolved = requested
+        let opts: ORTSessionOptions
+        do {
+            opts = try Self.sessionOptions(name: name, path: path, compute: requested,
+                                           threads: threads, disableArena: disableArena)
+        } catch {
+            guard requested != .cpu else { throw error }
+            Log.ml.warning("""
+                \(name, privacy: .public): \(String(describing: requested), privacy: .public) EP rejected \
+                (\(error.localizedDescription, privacy: .public)); CPU
+                """)
+            resolved = .cpu
+            opts = try Self.sessionOptions(name: name, path: path, compute: .cpu,
+                                           threads: threads, disableArena: disableArena)
+        }
+
+        let loaded: ORTSession
+        do {
+            loaded = try ORTSession(env: Ort.env, modelPath: path, sessionOptions: opts)
+        } catch {
+            guard resolved != .cpu else { throw error }
+            // CoreML often accepts its provider options and fails later while
+            // compiling ORTSession. The fallback has to cover that point too.
+            Log.ml.warning("""
+                \(name, privacy: .public): \(String(describing: resolved), privacy: .public) session failed \
+                (\(error.localizedDescription, privacy: .public)); CPU
+                """)
+            resolved = .cpu
+            let cpu = try Self.sessionOptions(name: name, path: path, compute: .cpu,
+                                              threads: threads, disableArena: disableArena)
+            loaded = try ORTSession(env: Ort.env, modelPath: path, sessionOptions: cpu)
+        }
+        self.executionCompute = resolved
+        self.session = loaded
+        self.inputNames = try loaded.inputNames()
+        self.outputNames = try loaded.outputNames()
+        Log.ml.info("loaded \(name, privacy: .public) ep=\(String(describing: resolved), privacy: .public) in=\(self.inputNames, privacy: .public) out=\(self.outputNames, privacy: .public)")
+    }
+
+    private static func sessionOptions(name: String, path: String, compute: ComputeUnit,
+                                       threads: Int, disableArena: Bool) throws -> ORTSessionOptions {
         let opts = try ORTSessionOptions()
         try opts.setLogSeverityLevel(.warning)
         try opts.setGraphOptimizationLevel(.all)
@@ -114,7 +176,7 @@ final class OrtModel: @unchecked Sendable {
         // A spinning worker on Apple silicon *holds* a P-core between chunks,
         // which matters more here than the battery cost did on Android.
         try opts.addConfigEntry(withKey: "session.intra_op.allow_spinning", value: "0")
-        // Keeps htdemucs' 88 MB of initializers out of the arena.
+        // Keeps htdemucs' 173 MB of initializers out of the arena.
         try opts.addConfigEntry(withKey: "session.use_device_allocator_for_initializers", value: "1")
 
         // ...and for htdemucs that is not enough. Android had to disable the
@@ -131,28 +193,52 @@ final class OrtModel: @unchecked Sendable {
                 """)
         }
 
-        var resolved = compute
-        if compute != .cpu {
-            if Ort.coreMLAvailable {
-                let ml = ORTCoreMLExecutionProviderOptions()
-                ml.createMLProgram = true          // MLProgram, not the legacy NeuralNetwork format
-                ml.useCPUAndGPU = (compute == .coreMLNoANE)
-                ml.onlyAllowStaticInputShapes = true // every graph we run has fixed shapes
-                do { try opts.appendCoreMLExecutionProvider(with: ml) }
-                catch {
-                    Log.ml.warning("\(name, privacy: .public): CoreML EP rejected (\(error.localizedDescription, privacy: .public)); CPU")
-                    resolved = .cpu
-                }
-            } else {
-                Log.ml.notice("\(name, privacy: .public): CoreML EP unavailable; CPU")
-                resolved = .cpu
+        switch compute {
+        case .cpu:
+            break
+        case .xnnpack:
+            try opts.appendExecutionProvider(
+                "XNNPACK", providerOptions: ["intra_op_num_threads": "\(Ort.xnnpackThreads)"])
+        case .coreMLGPU, .coreMLNeuralNetwork:
+            guard Ort.coreMLAvailable else {
+                throw OrtError.providerUnavailable("CoreML")
             }
+            let cache = try coreMLCacheDirectory(modelPath: path)
+            let providerOptions = [
+                // htdemucs must never attempt ANE. The small NSFW graph won as
+                // NeuralNetwork/ALL in the measured provider sweep.
+                "MLComputeUnits": compute == .coreMLGPU ? "CPUAndGPU" : "ALL",
+                "ModelFormat": compute == .coreMLNeuralNetwork ? "NeuralNetwork" : "MLProgram",
+                "RequireStaticInputShapes": "1",
+                "ModelCacheDirectory": cache.path,
+                "AllowLowPrecisionAccumulationOnGPU": "0",
+            ]
+            try opts.appendCoreMLExecutionProvider(withOptionsV2: providerOptions)
         }
+        return opts
+    }
 
-        self.session = try ORTSession(env: Ort.env, modelPath: path, sessionOptions: opts)
-        self.inputNames = try session.inputNames()
-        self.outputNames = try session.outputNames()
-        Log.ml.info("loaded \(name, privacy: .public) ep=\(String(describing: resolved), privacy: .public) in=\(self.inputNames, privacy: .public) out=\(self.outputNames, privacy: .public)")
+    private static func coreMLCacheDirectory(modelPath: String) throws -> URL {
+        let sha = try sha256(modelPath)
+        let support = try FileManager.default.url(for: .applicationSupportDirectory,
+                                                  in: .userDomainMask,
+                                                  appropriateFor: nil, create: true)
+        var cache = support.appendingPathComponent("CoreMLCache/\(sha)", isDirectory: true)
+        try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
+        var values = URLResourceValues()
+        values.isExcludedFromBackup = true
+        try? cache.setResourceValues(values)
+        return cache
+    }
+
+    private static func sha256(_ path: String) throws -> String {
+        let handle = try FileHandle(forReadingFrom: URL(fileURLWithPath: path))
+        defer { try? handle.close() }
+        var hasher = SHA256()
+        while let block = try handle.read(upToCount: 1024 * 1024), !block.isEmpty {
+            hasher.update(data: block)
+        }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
     func run(_ inputs: [String: ORTValue], outputs: Set<String>? = nil) throws -> [String: ORTValue] {
@@ -164,7 +250,7 @@ final class OrtModel: @unchecked Sendable {
 
 /// Process-wide cache of loaded graphs.
 ///
-/// htdemucs alone is 88 MB on disk and roughly 1.3 GB of working set once
+/// htdemucs alone is 173 MB on disk and roughly 1.3 GB of working set once
 /// resident, so loading it twice is not a slow path — it is an out-of-memory
 /// kill on a phone. Every consumer goes through here.
 enum ModelRegistry {
@@ -183,6 +269,7 @@ enum ModelRegistry {
     /// the test host. A request with a different configuration replaces the
     /// resident one rather than joining it.
     static func model(_ file: String, compute: ComputeUnit = .cpu, threads: Int = 1) throws -> OrtModel {
+        let compute = Ort.effectiveCompute(compute)
         lock.lock()
         defer { lock.unlock() }
         if let m = cache[file] {

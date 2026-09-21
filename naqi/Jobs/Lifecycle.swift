@@ -101,6 +101,7 @@ final class Lifecycle {
 
     private func expire() {
         flag.withLock { $0 = true }
+        BackgroundWork.schedule()
         Log.job.notice("background grace expired: winding the job up to a checkpoint")
         endGrace()
     }

@@ -1,5 +1,6 @@
 import Foundation
 import Testing
+import UniformTypeIdentifiers
 @testable import naqi
 
 /// M6 exit criteria, at the logic level. Three things can quietly break the UI
@@ -38,17 +39,27 @@ struct UITests {
         #expect(d.censor == true)
         #expect(d.who == .women)
         #expect(d.censorMode == .regions)
+        #expect(d.censorNsfw == true)
         #expect(d.blurAmount == 60)
         #expect(d.grayscale == false)
+        #expect(d.solidColor == .blur)
         #expect(d.keepStems == .vocals)
         // Spec §1.1 row 4 / analyze §0.20 — Android's `DEFAULT_STRICTNESS`.
         // The gate interpolates its thresholds from this, so a drift here
         // censors differently than Android at default settings.
         #expect(d.strictness == 40)
 
-        // The picker offers two segments, not Android's three: `none` is the
-        // step-1 toggle and `everyone` has no UI.
-        #expect(FilterOps.Who.userSelectable == [.women, .men])
+        // `none` remains the step-1 toggle, so the picker offers the other
+        // three states and leads with the strictest one.
+        #expect(FilterOps.Who.userSelectable == [.everyone, .women, .men])
+    }
+
+    @Test("Old persisted options default new fields to the old behavior")
+    func oldOptionsDecode() throws {
+        let data = Data(#"{"removeMusic":false,"censor":true,"who":"women","censorMode":"regions","strictness":40,"blurAmount":60,"grayscale":false,"keepStems":"vocals"}"#.utf8)
+        let ops = try JSONDecoder().decode(FilterOps.self, from: data)
+        #expect(ops.censorNsfw == true)
+        #expect(ops.solidColor == .blur)
     }
 
     @Test("Last-used options round-trip through UserDefaults")
@@ -61,9 +72,11 @@ struct UITests {
         ops.censor = true
         ops.who = .men
         ops.censorMode = .wholeFrame
+        ops.censorNsfw = false
         ops.strictness = 17
         ops.blurAmount = 83
         ops.grayscale = true
+        ops.solidColor = .navy
         ops.keepStems = .vocalsAndOther
         ops.saveAsLastUsed()
 
@@ -216,9 +229,12 @@ struct UITests {
             }
             let savedOps = FilterOps.loadLastUsed()
             defer { savedOps.saveAsLastUsed() }
+            let savedDest = ExportTarget.loadLastUsed()
+            defer { savedDest.saveAsLastUsed() }
             // The combination that produces the failure: censoring on, music
             // removal off, carried over from the user's last video.
             FilterOps(removeMusic: false, censor: true).saveAsLastUsed()
+            ExportTarget(destination: .photos, folder: nil).saveAsLastUsed()
 
             let id = UUID()
             let song = try Fixtures.audioClip("sharein-song.m4a", seconds: 1)
@@ -234,6 +250,9 @@ struct UITests {
             #expect(!job.ops.censor, "a file with no picture was queued to be censored")
             #expect(job.ops.removeMusic)
             #expect(Job.shape(ops: job.ops, hasVideoTrack: false, segmented: false) == .audioOnly)
+            #expect(job.destination == .userFolder,
+                    "a shared-in audio file was queued for Photos, which cannot take it")
+            #expect(job.folder?.standardizedFileURL == OutputLibrary.root.standardizedFileURL)
 
             await queue.cancel(job.id)
             try? FileManager.default.removeItem(at: job.source)
@@ -496,6 +515,16 @@ struct UITests {
         }
     }
 
+    @Test("About states the current personal licence, never the inherited GPL claim",
+          arguments: ["en", "ar"])
+    func aboutUsesCurrentLicense(_ language: String) {
+        var resource = LocalizedStringResource.aboutLicense
+        resource.locale = Locale(identifier: language)
+        let value = String(localized: resource)
+        #expect(value.contains("GPL") == false)
+        #expect(value.contains(language == "ar" ? "جميع الحقوق محفوظة" : "All rights reserved"))
+    }
+
     @Test("Every pipeline stage has a user-visible name", arguments: ["en", "ar"])
     func stageLabels(_ language: String) {
         for stage in Job.Stage.allCases {
@@ -509,7 +538,8 @@ struct UITests {
     func failureSentences(_ language: String) {
         let all: [JobFailure] = [.nothingSelected, .drmProtected, .noVideoTrack, .noAudioTrack,
                                  .unsupportedContainer, .unsupportedCodec, .lowSpace,
-                                 .outOfSpace, .sourceUnreadable, .publishFailed, .generic]
+                                 .outOfSpace, .sourceUnreadable, .publishFailed, .generic,
+                                 .downloadUnsupported, .downloadNetwork, .downloadGeneric]
         for failure in all {
             var r = failure.sentence
             r.locale = Locale(identifier: language)
@@ -528,6 +558,34 @@ struct UITests {
         #expect(durationText(ms: 155 * 60_000).key == "dur_h_min")
     }
 
+    @Test("the native player loads a real video and an audio clip")
+    @MainActor
+    func playbackSessionLoadsMedia() async throws {
+        let video = try requireQAVideo()
+        let videoSession = PlaybackSession(item: .file(video, title: "clip.mp4"))
+        let videoItem = try #require(videoSession.player.currentItem)
+        #expect(try await videoItem.asset.load(.isPlayable))
+        videoSession.stop()
+
+        let audio = try Fixtures.audioClip("player-\(UUID().uuidString).m4a")
+        defer { try? FileManager.default.removeItem(at: audio) }
+        #expect(MediaKind.of(audio) == .audio)
+        let audioSession = PlaybackSession(item: .file(audio, title: "clip.m4a"))
+        let audioItem = try #require(audioSession.player.currentItem)
+        #expect(try await audioItem.asset.load(.isPlayable))
+        audioSession.stop()
+    }
+
+    @Test("Audio files play as audio, video files as video")
+    func mediaKind() {
+        #expect(MediaKind.of(URL(fileURLWithPath: "/tmp/clip.m4a")) == .audio)
+        #expect(MediaKind.of(URL(fileURLWithPath: "/tmp/clip.mp3")) == .audio)
+        #expect(MediaKind.of(URL(fileURLWithPath: "/tmp/clip.mp4")) == .video)
+        #expect(MediaKind.of(URL(fileURLWithPath: "/tmp/clip.mov")) == .video)
+        #expect(MediaKind.utType(of: URL(fileURLWithPath: "/tmp/clip.m4a")).conforms(to: .audio))
+        #expect(MediaKind.utType(of: URL(fileURLWithPath: "/tmp/clip.mp4")).conforms(to: .movie))
+    }
+
     @Test("File sizes are decimal, not binary")
     func sizes() {
         #expect(fileSizeText(bytes: 999_000_000).key == "jobs_size_mb")
@@ -542,6 +600,7 @@ struct UITests {
         // Pick
         .appName, .actionMore, .pickSealOnDevice, .pickSealPrivate,
         .pickVideoNone, .pickVideoSelected, .pickVideoChange, .pickVideoFormats,
+        .pickLinkHint, .pickLinkAction,
         .pickSourcePhotos, .pickSourceFiles, .pickDropHint,
         .pickEyebrowChoose, .pickOpMusicTitle, .pickOpMusicDesc,
         .pickOpFacesTitle, .pickOpFacesDesc("Women"), .pickOpFacesDescOff,
@@ -549,9 +608,12 @@ struct UITests {
         .pickWordmarkAr, .pickWordmarkLatin, .pickTagline,
         // Options
         .optTitle, .actionBack, .optSectionCensorFaces,
-        .optWhoTitle, .optWhoDesc, .optWhoWomen, .optWhoMen,
+        .optWhoTitle, .optWhoDesc, .optWhoEveryone, .optWhoWomen, .optWhoMen,
         .optWholeFrameTitle, .optWholeFrameDesc,
+        .optNsfwTitle, .optNsfwDesc,
         .optStrictnessTitle, .optStrictnessDesc,
+        .optCensorStyleTitle, .optCensorStyleDesc, .optStyleBlur, .optStyleSolid,
+        .optSolidGray, .optSolidBlack, .optSolidWhite, .optSolidNavy, .optSolidGreen,
         .optBlurAmountTitle, .optBlurAmountDesc,
         .optGrayscaleTitle, .optGrayscaleDesc,
         .optSectionRemoveMusic,
@@ -570,18 +632,36 @@ struct UITests {
         .durUnderMin, .durMin(43), .durHMin(2, 35),
         // Done
         .doneTitle, .jobsSavedLabel, .jobsSavedPhotos, .jobsSavedFolder("Movies"),
-        .actionOpen, .actionShare, .actionDeleteOriginal,
+        .actionPlay, .actionShare, .actionSave, .actionDone, .actionDeleteOriginal,
+        .jobsRowA11Y("clip.mp4", "Saved"),
         .dlgDeleteOriginalTitle, .dlgDeleteOriginalBody("clip.mp4"),
         .dlgDeleteOriginalFallbackName, .actionDelete, .actionKeep,
         .dlgOriginalDeleted, .dlgOriginalKept, .dlgDeleteOriginalFailed,
         // About + diagnostics
         .aboutOpen, .aboutTitle, .aboutVersion("1.0", 1), .aboutLicense,
+        .aboutEyebrowPrivacy, .aboutPrivacyTitle, .aboutPrivacyBody, .aboutPrivacyBodyShare,
         .aboutEyebrowUpdates, .aboutReleasesTitle, .aboutReleasesDesc,
+        .aboutEyebrowLicenses, .aboutNoticesTitle, .aboutNoticesDesc,
+        .licensesTitle, .licensesIntro, .licensesSource, .licensesPersonalOnly,
+        .licensesOnnxTitle, .licensesOnnxTerms,
+        .licensesDemucsTitle, .licensesDemucsTerms,
+        .licensesNsfwTitle, .licensesNsfwTerms,
+        .licensesYamnetTitle, .licensesYamnetTerms,
+        .licensesInsightFaceTitle, .licensesInsightFaceTerms,
         .pickDiagTitle, .pickDiagRunning, .diagRun, .diagNotRun,
         .diagCores, .diagMemory, .diagCompute,
         // Failure sentences
         .errDrm, .errUnreadable, .errNoVideo, .errNoAudio,
         .errLowSpace, .errUnsupportedCodec, .errOutOfSpace, .errGeneric,
+        .errDownloadUnsupported, .errDownloadNetwork, .errDownloadGeneric,
+        .shareUntitled, .shareEyebrowQuality, .shareEyebrowFilters,
+        .shareQualityBest, .shareQuality1080, .shareQuality720, .shareQuality480,
+        .shareQualityAudio, .actionDownload, .actionFilter, .shareNoUrl,
+        .shareAlreadyQueued, .stageDownloading,
+        .aboutEyebrowDownloader, .aboutYtdlpVersion("2026.08.19"),
+        .aboutYtdlpUnknown, .aboutYtdlpDesc, .aboutUpdate, .aboutUpdating,
+        .aboutUpdateOk, .aboutUpdateFailed,
+        .licensesYtdlpTitle, .licensesYtdlpTerms,
         // Stage names
         .stagePreparing, .stageAnalyzing, .stageRendering,
         .stageSeparating, .stageMuxing,

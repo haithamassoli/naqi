@@ -195,8 +195,10 @@ struct PickScreen: View {
             }
 
             pickCard
-            linkField
-                .padding(.top, Naqi.S.s3)
+            if LinkPaste.isOffered {
+                linkField
+                    .padding(.top, Naqi.S.s3)
+            }
             if importFailed {
                 Text(.errImportFailed)
                     .font(Naqi.F.bodySmall)

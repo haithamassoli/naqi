@@ -91,10 +91,13 @@ final class ShareViewController: UIViewController {
         Task { await detectLink() }
     }
 
-    /// Show the quality picker only when the share is a URL, not a file.
+    /// Show the quality picker only when the share is a page URL, not a file.
+    /// A Files share often attaches both the movie and a `file://` URL; treating
+    /// that as a link would skip the copy and the inbox would drop it.
     private func detectLink() async {
         let providers = (extensionContext?.inputItems as? [NSExtensionItem] ?? [])
             .flatMap { $0.attachments ?? [] }
+        if providers.contains(where: isMedia) { return }
         if let url = await firstURL(in: providers) {
             sharedURL = url
             await MainActor.run {
@@ -104,6 +107,10 @@ final class ShareViewController: UIViewController {
                 qualityChanged()
             }
         }
+    }
+
+    private func isMedia(_ provider: NSItemProvider) -> Bool {
+        Self.accepted.contains { provider.hasItemConformingToTypeIdentifier($0.identifier) }
     }
 
     private func row(_ title: String, _ control: UIView) -> UIView {
@@ -181,16 +188,21 @@ final class ShareViewController: UIViewController {
         var taken = 0
         if let dir = AppGroup.inbox {
             try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-            let page: String?
-            if let sharedURL {
-                page = sharedURL
-            } else {
-                page = await firstURL(in: providers)
+            for provider in providers {
+                if await copy(provider, into: dir, options: options) { taken += 1 }
             }
-            if let page {
-                if await writeLink(page, into: dir, options: options, quality: quality) { taken += 1 }
-            } else {
-                for provider in providers where await copy(provider, into: dir, options: options) { taken += 1 }
+            if taken == 0 {
+                let page: String?
+                if let sharedURL {
+                    page = sharedURL
+                } else {
+                    page = await firstURL(in: providers)
+                }
+                if let page, VideoURL.first(in: page) != nil {
+                    if await writeLink(page, into: dir, options: options, quality: quality) {
+                        taken += 1
+                    }
+                }
             }
         }
 
@@ -291,12 +303,14 @@ final class ShareViewController: UIViewController {
     private func loadURL(_ provider: NSItemProvider) async -> String? {
         await withCheckedContinuation { cont in
             provider.loadItem(forTypeIdentifier: UTType.url.identifier, options: nil) { item, _ in
-                if let url = item as? URL { cont.resume(returning: url.absoluteString); return }
-                if let data = item as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) {
-                    cont.resume(returning: url.absoluteString); return
+                if let url = item as? URL {
+                    cont.resume(returning: VideoURL.first(in: url.absoluteString)); return
                 }
-                if let str = item as? String, let url = VideoURL.first(in: str) {
-                    cont.resume(returning: url); return
+                if let data = item as? Data, let url = URL(dataRepresentation: data, relativeTo: nil) {
+                    cont.resume(returning: VideoURL.first(in: url.absoluteString)); return
+                }
+                if let str = item as? String {
+                    cont.resume(returning: VideoURL.first(in: str)); return
                 }
                 cont.resume(returning: nil)
             }

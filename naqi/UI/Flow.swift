@@ -210,6 +210,16 @@ func isDroppableSource(_ url: URL) -> Bool {
                                destination: export.destination, folder: export.folder)
     }
 
+    /// A share-in starts the job on the queue but does not bind Progress unless
+    /// something adopts it. Pick is the only screen this steals: Options or
+    /// Jobs already have the user's attention.
+    func revealSharedIn() {
+        guard path.isEmpty else { return }
+        guard let id = monitor.runningID ?? monitor.activeJobs.first?.id else { return }
+        monitor.adopt(id)
+        path = [.progress]
+    }
+
     func cancelJob() async {
         await monitor.cancel()
         path = []

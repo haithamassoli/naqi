@@ -229,9 +229,12 @@ struct UITests {
             }
             let savedOps = FilterOps.loadLastUsed()
             defer { savedOps.saveAsLastUsed() }
+            let savedDest = ExportTarget.loadLastUsed()
+            defer { savedDest.saveAsLastUsed() }
             // The combination that produces the failure: censoring on, music
             // removal off, carried over from the user's last video.
             FilterOps(removeMusic: false, censor: true).saveAsLastUsed()
+            ExportTarget(destination: .photos, folder: nil).saveAsLastUsed()
 
             let id = UUID()
             let song = try Fixtures.audioClip("sharein-song.m4a", seconds: 1)
@@ -247,6 +250,9 @@ struct UITests {
             #expect(!job.ops.censor, "a file with no picture was queued to be censored")
             #expect(job.ops.removeMusic)
             #expect(Job.shape(ops: job.ops, hasVideoTrack: false, segmented: false) == .audioOnly)
+            #expect(job.destination == .userFolder,
+                    "a shared-in audio file was queued for Photos, which cannot take it")
+            #expect(job.folder?.standardizedFileURL == OutputLibrary.root.standardizedFileURL)
 
             await queue.cancel(job.id)
             try? FileManager.default.removeItem(at: job.source)
@@ -633,6 +639,7 @@ struct UITests {
         .dlgOriginalDeleted, .dlgOriginalKept, .dlgDeleteOriginalFailed,
         // About + diagnostics
         .aboutOpen, .aboutTitle, .aboutVersion("1.0", 1), .aboutLicense,
+        .aboutEyebrowPrivacy, .aboutPrivacyTitle, .aboutPrivacyBody, .aboutPrivacyBodyShare,
         .aboutEyebrowUpdates, .aboutReleasesTitle, .aboutReleasesDesc,
         .aboutEyebrowLicenses, .aboutNoticesTitle, .aboutNoticesDesc,
         .licensesTitle, .licensesIntro, .licensesSource, .licensesPersonalOnly,

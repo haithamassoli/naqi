@@ -140,6 +140,24 @@
         }
       }
     },
+    "about_privacy_body_share" : {
+      "comment" : "Privacy card while the paste-link field is hidden. Same as about_privacy_body minus paste.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لا يجمع نقي أي بيانات، ولا يستخدم أدوات تحليل أو إعلان، ولا يتطلب حساباً. تعمل الفلترة على هذا الجهاز وتعمل في وضع الطيران. تُستخدم الشبكة فقط عندما تشارك رابطاً: يجلب نقي ذلك الفيديو عبر yt-dlp ويتحقق أسبوعياً من GitHub من أداة تنزيل جديدة. والفيديو الذي تختاره يُفتح للقراءة فقط ولا يُعدَّل أبداً."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Naqi collects no data, uses no analytics or advertising SDKs and needs no account. Filtering runs on this device and works in Airplane Mode. Network is used only when you share a link: Naqi fetches that video with yt-dlp and checks GitHub weekly for a new downloader. The video you pick is opened read-only and is never modified."
+          }
+        }
+      }
+    },
     "about_privacy_title" : {
       "extractionState" : "manual",
       "localizations" : {

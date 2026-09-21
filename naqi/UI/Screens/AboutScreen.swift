@@ -28,7 +28,7 @@ struct AboutScreen: View {
                             Text(.aboutPrivacyTitle)
                                 .font(Naqi.F.titleSmall)
                                 .foregroundStyle(Naqi.C.onSurface)
-                            Text(.aboutPrivacyBody)
+                            Text(LinkPaste.isOffered ? .aboutPrivacyBody : .aboutPrivacyBodyShare)
                                 .font(Naqi.F.bodySmall)
                                 .foregroundStyle(Naqi.C.onSurfaceVariant)
                                 .padding(.top, 2)

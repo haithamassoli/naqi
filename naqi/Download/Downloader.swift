@@ -135,47 +135,23 @@ enum Downloader {
         req.setValue("Mozilla/5.0", forHTTPHeaderField: "User-Agent")
         for (k, v) in format.httpHeaders { req.setValue(v, forHTTPHeaderField: k) }
 
-        let (bytes, response) = try await URLSession.shared.bytes(for: req)
+        let temp: URL
+        let response: URLResponse
+        do {
+            (temp, response) = try await URLSession.shared.download(for: req)
+        } catch is CancellationError {
+            throw DownloadError.cancelled
+        } catch let error as URLError where error.code == .cancelled {
+            throw DownloadError.cancelled
+        }
         if isCancelled() { throw DownloadError.cancelled }
         let http = response as? HTTPURLResponse
         if let code = http?.statusCode, !(200..<300).contains(code) {
             throw DownloadError.network("HTTP \(code)")
         }
-        let total = http
-            .flatMap { $0.value(forHTTPHeaderField: "Content-Length") }
-            .flatMap { Int64($0) } ?? format.filesize ?? 0
-
         try? FileManager.default.removeItem(at: dest)
-        FileManager.default.createFile(atPath: dest.path, contents: nil)
-        let handle = try FileHandle(forWritingTo: dest)
-        defer { try? handle.close() }
-
-        var written: Int64 = 0
-        var lastPct = -1
-        var batch = Data()
-        batch.reserveCapacity(65_536)
-        for try await byte in bytes {
-            if isCancelled() { throw DownloadError.cancelled }
-            batch.append(byte)
-            if batch.count >= 65_536 {
-                try handle.write(contentsOf: batch)
-                written += Int64(batch.count)
-                batch.removeAll(keepingCapacity: true)
-                if total > 0 {
-                    let local = Double(written) / Double(total)
-                    let overall = share.lowerBound + (share.upperBound - share.lowerBound) * min(local, 1)
-                    let pct = Int((overall * 100).rounded())
-                    if pct != lastPct {
-                        lastPct = pct
-                        onProgress(pct)
-                    }
-                }
-            }
-        }
-        if !batch.isEmpty {
-            try handle.write(contentsOf: batch)
-            written += Int64(batch.count)
-        }
+        try FileManager.default.moveItem(at: temp, to: dest)
+        let written = (try? FileManager.default.attributesOfItem(atPath: dest.path)[.size] as? NSNumber)?.int64Value ?? 0
         onProgress(Int((share.upperBound * 100).rounded()))
         Log.download.info("fetched \(dest.lastPathComponent, privacy: .public) (\(written) bytes)")
     }

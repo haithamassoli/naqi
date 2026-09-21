@@ -113,6 +113,8 @@ private struct JobRow: View {
     let resume: () -> Void
     let cancel: () -> Void
 
+    @State private var scopedFolder: URL?
+
     private var title: String {
         if case .done(let published) = job.state { return published.name }
         return job.title
@@ -165,8 +167,8 @@ private struct JobRow: View {
             switch job.state {
             case .pending, .running:
                 Button(action: cancel) { Text(.actionCancel) }
-            case .done(let published):
-                if let url = published.url, FileManager.default.fileExists(atPath: url.path) {
+            case .done:
+                if let url = shareURL {
                     ShareLink(item: url) { Text(.actionShare) }
                 }
             case .failed(_, let resumable):
@@ -181,5 +183,31 @@ private struct JobRow: View {
         .foregroundStyle(Naqi.C.primary)
         .frame(minHeight: 56)
         .padding(.horizontal, Naqi.S.s4)
+        .onAppear { openFolderIfNeeded() }
+        .onDisappear { closeFolder() }
+    }
+
+    /// After a relaunch the sandbox will not see a user-folder file until the
+    /// bookmark is opened. Play already does this; Share has to as well.
+    private var shareURL: URL? {
+        guard case .done(let published) = job.state else { return nil }
+        if let url = published.url, FileManager.default.fileExists(atPath: url.path) {
+            return url
+        }
+        if let folder = job.resolvedFolder {
+            let url = folder.appendingPathComponent(published.name)
+            if FileManager.default.fileExists(atPath: url.path) { return url }
+        }
+        return nil
+    }
+
+    private func openFolderIfNeeded() {
+        guard job.destination == .userFolder, let folder = job.resolvedFolder else { return }
+        if folder.startAccessingSecurityScopedResource() { scopedFolder = folder }
+    }
+
+    private func closeFolder() {
+        scopedFolder?.stopAccessingSecurityScopedResource()
+        scopedFolder = nil
     }
 }

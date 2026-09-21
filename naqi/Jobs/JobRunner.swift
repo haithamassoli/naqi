@@ -250,8 +250,10 @@ enum JobRunner {
             // stops being writable once the app relaunches or the user picks a
             // different folder, and this is the last step of a job that may
             // have been rendering for an hour.
+            let folder = job.destination == .userFolder
+                ? (job.resolvedFolder ?? OutputLibrary.root) : job.resolvedFolder
             let published = try await Publish.save(out, named: outputName(for: url, ext: ext),
-                                                   to: job.destination, folder: job.resolvedFolder)
+                                                   to: job.destination, folder: folder)
             post(.publish, 1)
             // Success takes the whole directory: the checkpoints only exist to
             // survive an interruption, and this run had none.

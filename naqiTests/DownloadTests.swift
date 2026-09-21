@@ -6,6 +6,12 @@ import Testing
 @Suite("Download")
 struct DownloadTests {
 
+    @Test("the paste field stays hidden until 12 Oct 2026")
+    func pasteGate() {
+        #expect(!LinkPaste.isVisible(at: Date(timeIntervalSince1970: 1_791_763_199)))
+        #expect(LinkPaste.isVisible(at: Date(timeIntervalSince1970: 1_791_763_200)))
+    }
+
     @Test("the pasted-link regex takes the first http(s) URL and strips trailing punctuation")
     func urlInText() {
         #expect(VideoURL.first(in: "https://youtu.be/dQw4w9WgXcQ")
@@ -14,6 +20,7 @@ struct DownloadTests {
                 == "https://example.com/v/a.mp4")
         #expect(VideoURL.first(in: "no link here") == nil)
         #expect(VideoURL.first(in: "ftp://not-this.example/") == nil)
+        #expect(VideoURL.first(in: "file:///tmp/clip.mp4") == nil)
         #expect(NativeExtract.youtubeID("https://www.youtube.com/watch?v=dQw4w9WgXcQ")
                 == "dQw4w9WgXcQ")
         #expect(NativeExtract.youtubeID("https://youtu.be/dQw4w9WgXcQ") == "dQw4w9WgXcQ")
@@ -150,6 +157,31 @@ struct DownloadTests {
         #expect(job.quality == "P720")
         #expect(job.ops.removeMusic)
         #expect(!job.ops.censor)
+        await queue.cancel(job.id)
+    }
+
+    @Test("an audio-quality shared link lands in the in-app library when no folder is set")
+    func drainAudioLink() async throws {
+        guard let dir = JobTests.usableInbox() else {
+            #if os(iOS)
+            Issue.record("App Group container unusable")
+            #endif
+            return
+        }
+        let id = UUID()
+        let manifest = ShareManifest(id: id, fileName: "youtu.be", receivedAt: Date(),
+                                     options: ShareOptions(removeMusic: true, censor: false, who: "everyone"),
+                                     url: "https://youtu.be/dQw4w9WgXcQ", quality: "AUDIO")
+        try JSONEncoder().encode(manifest)
+            .write(to: ShareManifest.manifestURL(dir, id: id), options: .atomic)
+        let queue = JobQueue(storeURL: Fixtures.scratch("dl-audio-link-\(id.uuidString).json"))
+        #expect(await ShareInbox.drain(into: queue, destination: .photos) == 1)
+        let job = try #require(await queue.jobs.first)
+        #expect(job.remoteURL == "https://youtu.be/dQw4w9WgXcQ")
+        #expect(DownloadQuality.of(job.quality) == .audio)
+        #expect(job.destination == .userFolder)
+        #expect(job.folder?.standardizedFileURL == OutputLibrary.root.standardizedFileURL)
+        await queue.cancel(job.id)
     }
 
     @Test("a link job captures the page URL so enqueue KEEP sees a retry as the same row")

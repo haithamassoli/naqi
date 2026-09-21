@@ -32,10 +32,10 @@ struct RootView: View {
         // while the app is already open show up without a relaunch.
         //
         // The destination comes from the flow's `export`, not from `Publish`'s
-        // `.photos` default: the extension deliberately carries no options, so
-        // a shared-in video that ignored the folder the user picked would be
-        // the only route in the app that saves somewhere they did not choose —
-        // and on an audio-only share it would fail at publish outright.
+        // `.photos` default: a shared-in video that ignored the folder the user
+        // picked would be the only route that saves somewhere they did not
+        // choose — and an audio-only share bound for Photos would fail at
+        // publish outright.
         //
         // Survivors are read first and in the same task, not in a second one:
         // `drainSharedIn` enqueues rows that are `.pending` for the moment
@@ -49,7 +49,9 @@ struct RootView: View {
                 await flow.loadResumable()
                 loadedResumable = true
             }
-            await flow.drainSharedIn()
+            if await flow.drainSharedIn() > 0 {
+                flow.revealSharedIn()
+            }
         }
         #if DEBUG
         .task { flow.seedFromLaunchArguments() }

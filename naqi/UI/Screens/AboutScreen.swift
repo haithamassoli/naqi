@@ -35,6 +35,10 @@ struct AboutScreen: View {
                         }
                     }
                     VStack(alignment: .leading, spacing: 0) {
+                        SectionHeader(.aboutEyebrowDownloader)
+                        YtDlpCard()
+                    }
+                    VStack(alignment: .leading, spacing: 0) {
                         SectionHeader(.aboutEyebrowUpdates)
                         NaqiCard {
                             Text(.aboutReleasesTitle)
@@ -110,6 +114,54 @@ struct AboutScreen: View {
     }
 }
 
+/// Weekly auto-check is fire-and-forget in RootView; this is the manual button
+/// for when a link stops working before the week is up.
+private struct YtDlpCard: View {
+    @State private var version: String?
+    @State private var status: LocalizedStringResource?
+    @State private var busy = false
+
+    var body: some View {
+        NaqiCard {
+            Text(.aboutYtdlpVersion(version ?? String(localized: .aboutYtdlpUnknown)))
+                .font(Naqi.F.titleSmall)
+                .foregroundStyle(Naqi.C.onSurface)
+            Text(.aboutYtdlpDesc)
+                .font(Naqi.F.bodySmall)
+                .foregroundStyle(Naqi.C.onSurfaceVariant)
+                .padding(.top, 2)
+            Button {
+                Task { await update() }
+            } label: {
+                Text(busy ? .aboutUpdating : .aboutUpdate)
+                    .font(Naqi.F.labelLarge)
+                    .frame(maxWidth: .infinity, minHeight: 44)
+            }
+            .buttonStyle(NaqiOutlineButtonStyle())
+            .disabled(busy)
+            .padding(.top, Naqi.S.s3)
+            if let status {
+                Text(status)
+                    .font(Naqi.F.bodySmall)
+                    .foregroundStyle(Naqi.C.onSurfaceVariant)
+                    .padding(.top, Naqi.S.s2)
+            }
+        }
+        .task { version = await Downloader.version() }
+    }
+
+    private func update() async {
+        busy = true
+        defer { busy = false }
+        do {
+            version = try await Downloader.update()
+            status = .aboutUpdateOk
+        } catch {
+            status = .aboutUpdateFailed
+        }
+    }
+}
+
 /// Terms for exactly the five non-Apple artifacts in this build. Links point
 /// at upstream terms; Naqi's own licence cannot broaden what their owners
 /// permit.
@@ -122,6 +174,9 @@ struct ThirdPartyLicensesScreen: View {
                         .font(Naqi.F.bodyMedium)
                         .foregroundStyle(Naqi.C.onSurfaceVariant)
 
+                    notice(title: .licensesYtdlpTitle,
+                           terms: .licensesYtdlpTerms,
+                           source: "https://github.com/yt-dlp/yt-dlp")
                     notice(title: .licensesOnnxTitle,
                            terms: .licensesOnnxTerms,
                            source: "https://github.com/microsoft/onnxruntime-swift-package-manager/tree/1.24.2")

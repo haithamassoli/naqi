@@ -58,6 +58,7 @@ extension Job.Stage {
     /// mean explaining why a file that is already filtered is still moving.
     var label: LocalizedStringResource {
         switch self {
+        case .download: .stageDownloading
         case .analyze: .stageAnalyzing
         case .render: .stageRendering
         case .separate: .stageSeparating
@@ -91,6 +92,9 @@ extension JobFailure {
         //
         // `nothingSelected` is unreachable from the UI's own guards: Start is
         // disabled without an operation.
+        case .downloadUnsupported: .errDownloadUnsupported
+        case .downloadNetwork: .errDownloadNetwork
+        case .downloadGeneric: .errDownloadGeneric
         case .nothingSelected, .publishFailed, .generic: .errGeneric
         }
     }

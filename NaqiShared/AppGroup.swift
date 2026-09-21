@@ -56,13 +56,20 @@ struct ShareOptions: Codable, Sendable, Equatable {
     }
 }
 
-/// What the extension writes beside each copied video.
+/// What the extension writes beside each copied video — or, for a shared
+/// link, instead of a copied video. `url` set and no media file is a link
+/// the app will fetch with yt-dlp; a media file and no `url` is the original
+/// share-in. Older manifests have neither `url` nor `quality` and still decode.
 struct ShareManifest: Codable, Sendable {
     var id: UUID
     var fileName: String
     var receivedAt: Date
     /// Nil keeps manifests written by older extension builds decodable.
     var options: ShareOptions? = nil
+    /// http(s) URL to fetch. Mutually exclusive with a media file of `id`.
+    var url: String? = nil
+    /// `DownloadQuality.rawValue`. Nil means last-used / BEST.
+    var quality: String? = nil
 
     static func mediaURL(_ dir: URL, id: UUID, ext: String) -> URL {
         dir.appendingPathComponent("\(id.uuidString).\(ext)")

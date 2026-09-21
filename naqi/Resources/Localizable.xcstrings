@@ -129,13 +129,13 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "لا يجمع نقي أي بيانات، ولا يستخدم أدوات تحليل أو إعلان، ولا يتطلب حساباً. لا تستخدم الفلترة الشبكة؛ تعمل كل النماذج على هذا الجهاز وتعمل المعالجة في وضع الطيران. وحدها روابط التراخيص الاختيارية تفتح متصفحك. والفيديو الذي تختاره يُفتح للقراءة فقط ولا يُعدَّل أبداً."
+            "value" : "لا يجمع نقي أي بيانات، ولا يستخدم أدوات تحليل أو إعلان، ولا يتطلب حساباً. تعمل الفلترة على هذا الجهاز وتعمل في وضع الطيران. تُستخدم الشبكة فقط عندما تلصق أو تشارك رابطاً: يجلب نقي ذلك الفيديو عبر yt-dlp ويتحقق أسبوعياً من GitHub من أداة تنزيل جديدة. والفيديو الذي تختاره يُفتح للقراءة فقط ولا يُعدَّل أبداً."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Naqi collects no data, uses no analytics or advertising SDKs and needs no account. Filtering never uses the network; every model runs on this device and processing works in Airplane Mode. Only the optional licence links open your browser. The video you pick is opened read-only and is never modified."
+            "value" : "Naqi collects no data, uses no analytics or advertising SDKs and needs no account. Filtering runs on this device and works in Airplane Mode. Network is used only when you paste or share a link: Naqi fetches that video with yt-dlp and checks GitHub weekly for a new downloader. The video you pick is opened read-only and is never modified."
           }
         }
       }
@@ -3152,6 +3152,485 @@
             "value" : "Removing music"
           }
         }
+      }
+    },
+    "pick_link_hint" : {
+      "comment" : "Placeholder on the pick-screen link field.",
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "أو الصق رابط فيديو"
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "Or paste a video link"
+              }
+            }
+      }
+    },
+    "pick_link_action" : {
+      "comment" : "Accessibility label of the trailing download button.",
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "تنزيل الرابط"
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "Download link"
+              }
+            }
+      }
+    },
+    "share_untitled" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "فيديو مُشارَك"
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "Shared video"
+              }
+            }
+      }
+    },
+    "share_eyebrow_quality" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "الجودة"
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "Quality"
+              }
+            }
+      }
+    },
+    "share_eyebrow_filters" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "الفلاتر"
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "Filters"
+              }
+            }
+      }
+    },
+    "share_quality_best" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "الأفضل"
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "Best"
+              }
+            }
+      }
+    },
+    "share_quality_1080" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "1080p"
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "1080p"
+              }
+            }
+      }
+    },
+    "share_quality_720" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "720p"
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "720p"
+              }
+            }
+      }
+    },
+    "share_quality_480" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "480p"
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "480p"
+              }
+            }
+      }
+    },
+    "share_quality_audio" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "الصوت فقط"
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "Audio only"
+              }
+            }
+      }
+    },
+    "action_download" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "تنزيل"
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "Download"
+              }
+            }
+      }
+    },
+    "action_filter" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "تصفية"
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "Filter"
+              }
+            }
+      }
+    },
+    "share_no_url" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "هذا لا يبدو رابط فيديو."
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "That doesn’t look like a video link."
+              }
+            }
+      }
+    },
+    "share_already_queued" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "موجود في القائمة مسبقاً."
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "Already in the queue."
+              }
+            }
+      }
+    },
+    "stage_downloading" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "جارٍ التنزيل"
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "Downloading"
+              }
+            }
+      }
+    },
+    "err_download_unsupported" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "لا يستطيع نقي التنزيل من هذا الرابط. قد لا يكون الموقع مدعوماً، أو الفيديو خاصاً."
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "Naqi can’t download from this link. The site may not be supported, or the video may be private."
+              }
+            }
+      }
+    },
+    "err_download_network" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "فشل التنزيل. تحقق من الاتصال وحاول مرة أخرى."
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "Download failed. Check your connection and try again."
+              }
+            }
+      }
+    },
+    "err_download_generic" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "فشل التنزيل."
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "Download failed."
+              }
+            }
+      }
+    },
+    "about_eyebrow_downloader" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "أداة التنزيل"
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "Downloader"
+              }
+            }
+      }
+    },
+    "about_ytdlp_version" : {
+      "comment" : "Installed yt-dlp version. %1$@ is a tag like 2026.08.19.",
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "yt-dlp %1$@"
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "yt-dlp %1$@"
+              }
+            }
+      }
+    },
+    "about_ytdlp_unknown" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "لم يُحدَّث بعد"
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "not updated yet"
+              }
+            }
+      }
+    },
+    "about_ytdlp_desc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "تغيّر المواقع طريقة تقديم الفيديو كل بضعة أسابيع. يتحقق نقي من أداة تنزيل جديدة مرة في الأسبوع؛ حدّث هنا إذا توقف رابط عن العمل."
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "Sites change how they serve video every few weeks. Naqi checks for a new downloader once a week; update here if a link stops working."
+              }
+            }
+      }
+    },
+    "about_update" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "تحقق من التحديث"
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "Check for update"
+              }
+            }
+      }
+    },
+    "about_updating" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "جارٍ التحديث…"
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "Updating…"
+              }
+            }
+      }
+    },
+    "about_update_ok" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "أداة التنزيل محدّثة."
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "Downloader is up to date."
+              }
+            }
+      }
+    },
+    "about_update_failed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "تعذّر التحديث. تحقق من الاتصال وحاول مرة أخرى."
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "Couldn’t update. Check your connection and try again."
+              }
+            }
+      }
+    },
+    "licenses_ytdlp_title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "yt-dlp"
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "yt-dlp"
+              }
+            }
+      }
+    },
+    "licenses_ytdlp_terms" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "يجلب المنزّل إصدار yt-dlp الحالي من GitHub ويشغّله محلياً. yt-dlp مرخّص Unlicense (ملك عام)."
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "The downloader fetches the current yt-dlp release from GitHub and runs it locally. yt-dlp is Unlicense (public domain)."
+              }
+            }
       }
     }
   },

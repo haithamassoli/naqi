@@ -110,6 +110,108 @@
           }
         }
       }
+    },
+    "share.quality_best" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "الأفضل"
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "Best"
+              }
+            }
+      }
+    },
+    "share.quality_1080" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "1080p"
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "1080p"
+              }
+            }
+      }
+    },
+    "share.quality_720" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "720p"
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "720p"
+              }
+            }
+      }
+    },
+    "share.quality_480" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "480p"
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "480p"
+              }
+            }
+      }
+    },
+    "share.quality_audio" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "الصوت فقط"
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "Audio only"
+              }
+            }
+      }
+    },
+    "share.download" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "تنزيل"
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "Download"
+              }
+            }
+      }
     }
   },
   "version" : "1.1"

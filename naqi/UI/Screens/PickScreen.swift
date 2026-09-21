@@ -19,6 +19,9 @@ struct PickScreen: View {
     /// no alert anywhere: a failure says so in place, the way the Done screen
     /// reports a delete it could not perform.
     @State private var importFailed = false
+    @State private var link = ""
+    @State private var linkError = false
+    @State private var linkToDownload: String?
 
     /// Tied to the card's own title, the way `ToggleTile`'s tile is: a 52 pt
     /// square left at 52 pt beside a 50 pt filename reads as a bullet rather
@@ -138,6 +141,24 @@ struct PickScreen: View {
             Button(role: .cancel) {} label: { Text(.actionCancel) }
         }
         .onChange(of: photoItem) { adoptPhotoPick() }
+        .sheet(isPresented: Binding(
+            get: { linkToDownload != nil },
+            set: { if !$0 { linkToDownload = nil } }
+        )) {
+            if let url = linkToDownload {
+                DownloadSheet(shared: .link(url),
+                              initialOps: flow.ops.isValid ? flow.ops : nil,
+                              onDismiss: { linkToDownload = nil }) { quality, ops in
+                    linkToDownload = nil
+                    link = ""
+                    Task { await flow.startLink(url, quality: quality, ops: ops) }
+                }
+                #if os(iOS)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.hidden)
+                #endif
+            }
+        }
     }
 
     // MARK: - Panels
@@ -174,6 +195,8 @@ struct PickScreen: View {
             }
 
             pickCard
+            linkField
+                .padding(.top, Naqi.S.s3)
             if importFailed {
                 Text(.errImportFailed)
                     .font(Naqi.F.bodySmall)
@@ -342,6 +365,57 @@ struct PickScreen: View {
             }
         }
         .animation(Naqi.spring, value: flow.isAudioOnly)
+    }
+
+    /// The other half of the source decision: one field, one action. The
+    /// placeholder carries the "or", so the field needs no section label.
+    private var linkField: some View {
+        VStack(alignment: .leading, spacing: Naqi.S.s1) {
+            HStack(spacing: Naqi.S.s2) {
+                TextField(text: $link, prompt: Text(.pickLinkHint)) {
+                    Text(.pickLinkHint)
+                }
+                #if os(iOS)
+                .textContentType(.URL)
+                .keyboardType(.URL)
+                .textInputAutocapitalization(.never)
+                #endif
+                .autocorrectionDisabled()
+                .font(Naqi.F.bodyMedium)
+                .foregroundStyle(Naqi.C.onSurface)
+                .onSubmit(submitLink)
+                Button(action: submitLink) {
+                    Image(systemName: "arrow.down.circle")
+                        .font(.title3)
+                        .foregroundStyle(link.isEmpty ? Naqi.C.onSurfaceVariant : Naqi.C.primary)
+                }
+                .disabled(link.isEmpty)
+                .accessibilityLabel(Text(.pickLinkAction))
+                .accessibilityIdentifier("action.pasteLink")
+            }
+            .padding(.horizontal, Naqi.S.s4)
+            .padding(.vertical, Naqi.S.s3)
+            .background(Naqi.C.surfaceContainer, in: .rect(cornerRadius: Naqi.R.button))
+            .overlay(RoundedRectangle(cornerRadius: Naqi.R.button)
+                .strokeBorder(linkError ? Naqi.C.error : Naqi.C.outlineVariant,
+                              lineWidth: Naqi.Border.hairline))
+            if linkError {
+                Text(.shareNoUrl)
+                    .font(Naqi.F.bodySmall)
+                    .foregroundStyle(Naqi.C.error)
+                    .padding(.horizontal, Naqi.S.s1)
+            }
+        }
+        .onChange(of: link) { linkError = false }
+    }
+
+    private func submitLink() {
+        guard let url = VideoURL.first(in: link) else {
+            linkError = true
+            return
+        }
+        linkError = false
+        linkToDownload = url
     }
 
     // MARK: - Photos

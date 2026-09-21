@@ -532,7 +532,8 @@ struct UITests {
     func failureSentences(_ language: String) {
         let all: [JobFailure] = [.nothingSelected, .drmProtected, .noVideoTrack, .noAudioTrack,
                                  .unsupportedContainer, .unsupportedCodec, .lowSpace,
-                                 .outOfSpace, .sourceUnreadable, .publishFailed, .generic]
+                                 .outOfSpace, .sourceUnreadable, .publishFailed, .generic,
+                                 .downloadUnsupported, .downloadNetwork, .downloadGeneric]
         for failure in all {
             var r = failure.sentence
             r.locale = Locale(identifier: language)
@@ -593,6 +594,7 @@ struct UITests {
         // Pick
         .appName, .actionMore, .pickSealOnDevice, .pickSealPrivate,
         .pickVideoNone, .pickVideoSelected, .pickVideoChange, .pickVideoFormats,
+        .pickLinkHint, .pickLinkAction,
         .pickSourcePhotos, .pickSourceFiles, .pickDropHint,
         .pickEyebrowChoose, .pickOpMusicTitle, .pickOpMusicDesc,
         .pickOpFacesTitle, .pickOpFacesDesc("Women"), .pickOpFacesDescOff,
@@ -644,6 +646,15 @@ struct UITests {
         // Failure sentences
         .errDrm, .errUnreadable, .errNoVideo, .errNoAudio,
         .errLowSpace, .errUnsupportedCodec, .errOutOfSpace, .errGeneric,
+        .errDownloadUnsupported, .errDownloadNetwork, .errDownloadGeneric,
+        .shareUntitled, .shareEyebrowQuality, .shareEyebrowFilters,
+        .shareQualityBest, .shareQuality1080, .shareQuality720, .shareQuality480,
+        .shareQualityAudio, .actionDownload, .actionFilter, .shareNoUrl,
+        .shareAlreadyQueued, .stageDownloading,
+        .aboutEyebrowDownloader, .aboutYtdlpVersion("2026.08.19"),
+        .aboutYtdlpUnknown, .aboutYtdlpDesc, .aboutUpdate, .aboutUpdating,
+        .aboutUpdateOk, .aboutUpdateFailed,
+        .licensesYtdlpTitle, .licensesYtdlpTerms,
         // Stage names
         .stagePreparing, .stageAnalyzing, .stageRendering,
         .stageSeparating, .stageMuxing,

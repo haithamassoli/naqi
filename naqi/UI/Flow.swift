@@ -181,6 +181,20 @@ func isDroppableSource(_ url: URL) -> Bool {
                             destination: destination, folder: export.folder)
     }
 
+    /// Queue a pasted or shared link: fetch with yt-dlp, then filter (or just
+    /// publish, when both toggles are off — a download is still work).
+    func startLink(_ url: String, quality: DownloadQuality, ops: FilterOps) async {
+        var ops = ops
+        if quality == .audio { ops.fit(hasVideo: false) }
+        ops.saveAsLastUsed()
+        quality.saveAsLastUsed()
+        path = [.progress]
+        let dest: Destination = quality == .audio ? .userFolder : export.destination
+        let folder = dest == .userFolder ? (export.folder ?? OutputLibrary.root) : export.folder
+        await monitor.startLink(url, quality: quality, ops: ops,
+                                destination: dest, folder: folder)
+    }
+
     /// Enqueues whatever the share extension left in the App Group container,
     /// with the destination this launch resolved. Returns how many it took, so
     /// a test can assert the choice travelled rather than that the call exists.

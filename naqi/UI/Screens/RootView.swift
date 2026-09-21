@@ -43,6 +43,7 @@ struct RootView: View {
         // a share that has just arrived look like a job that died with the app.
         .task(id: scenePhase) {
             guard scenePhase == .active else { return }
+            await Downloader.updateIfDue()
             await JobQueue.shared.continueInForeground()
             if !loadedResumable {
                 await flow.loadResumable()

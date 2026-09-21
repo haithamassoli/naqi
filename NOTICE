@@ -51,5 +51,11 @@ TensorFlow Models / YAMNet
   Code license: https://github.com/tensorflow/models/blob/master/LICENSE
   Weight source: https://storage.googleapis.com/audioset/yamnet.h5
 
+yt-dlp
+  Fetched at runtime from GitHub Releases into Application Support (not bundled).
+  Terms: Unlicense (public domain equivalent).
+  Source: https://github.com/yt-dlp/yt-dlp
+  License: https://github.com/yt-dlp/yt-dlp/blob/master/LICENSE
+
 Apple system frameworks are supplied by Apple as part of the platform and are
 not relicensed by this notice.

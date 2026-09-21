@@ -95,7 +95,7 @@ struct ExtensionTests {
     /// only as Naqi never appearing in the share sheet. So this reads the
     /// string out of the built `.appex` — not a copy of it — and evaluates it
     /// against the same attachment graph the share sheet supplies.
-    @Test("the share extension admits video and audio, and nothing else")
+    @Test("the share extension admits video, audio and links, and nothing else")
     func shareActivationRule() throws {
         let appex = try #require(embedded.first { $0.lastPathComponent == "NaqiShare.appex" })
         let dict = try #require(NSDictionary(contentsOf: appex.appendingPathComponent("Info.plist"))
@@ -113,7 +113,10 @@ struct ExtensionTests {
                     "com.apple.m4a-audio", "com.microsoft.waveform-audio", "org.xiph.flac"] {
             #expect(shares([uti]), "\(uti) should reach the extension")
         }
-        for uti in ["com.adobe.pdf", "public.jpeg", "public.url", "public.plain-text"] {
+        for uti in ["public.url", "public.plain-text"] {
+            #expect(shares([uti]), "\(uti) should reach the extension as a link")
+        }
+        for uti in ["com.adobe.pdf", "public.jpeg"] {
             #expect(!shares([uti]), "\(uti) must not reach the extension")
         }
         // The cap is the share-in promise — the app's queue is serial — and it

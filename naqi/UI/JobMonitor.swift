@@ -127,6 +127,16 @@ import os
         jobID = await queue.enqueue(candidate)
     }
 
+    func startLink(_ url: String, quality: DownloadQuality, ops: FilterOps,
+                   destination: Destination = .photos, folder: URL? = nil) async {
+        let candidate = Job.captureLink(url, quality: quality, ops: ops,
+                                        destination: destination, folder: folder)
+        job = candidate
+        progress = nil
+        startedAt = .now
+        jobID = await queue.enqueue(candidate)
+    }
+
     /// Binds to a row the queue already holds, rather than one this flow just
     /// enqueued — a job that outlived the app and is being resumed from the pick
     /// screen. `observe` resolves the row out of the next snapshot, so there is

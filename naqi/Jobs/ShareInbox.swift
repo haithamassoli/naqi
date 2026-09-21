@@ -33,8 +33,31 @@ enum ShareInbox {
         // promise, and the queue itself is strictly serial.
         for manifest in entries.filter({ $0.pathExtension == "json" }).sorted(by: olderFirst) {
             guard let data = try? Data(contentsOf: manifest),
-                  let handoff = try? JSONDecoder().decode(ShareManifest.self, from: data),
-                  let media = media(for: handoff, in: dir) else {
+                  let handoff = try? JSONDecoder().decode(ShareManifest.self, from: data) else {
+                try? FileManager.default.removeItem(at: manifest)
+                continue
+            }
+
+            if let page = handoff.url, VideoURL.first(in: page) != nil {
+                var ops = FilterOps.loadLastUsed()
+                if let shared = handoff.options {
+                    ops.removeMusic = shared.removeMusic
+                    ops.censor = shared.censor
+                    ops.who = FilterOps.Who(rawValue: shared.who) ?? ops.who
+                }
+                let quality = DownloadQuality.of(handoff.quality)
+                if quality == .audio { ops.fit(hasVideo: false) }
+                let job = Job.captureLink(page, quality: quality, ops: ops,
+                                          destination: quality == .audio ? .userFolder : destination,
+                                          folder: folder,
+                                          title: handoff.fileName.isEmpty ? nil : handoff.fileName)
+                await queue.enqueue(job)
+                try? FileManager.default.removeItem(at: manifest)
+                taken += 1
+                continue
+            }
+
+            guard let media = media(for: handoff, in: dir) else {
                 // A manifest with no media is an extension that died between
                 // the two writes. Nothing to run, so drop it.
                 try? FileManager.default.removeItem(at: manifest)

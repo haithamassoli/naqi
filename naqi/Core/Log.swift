@@ -13,6 +13,7 @@ enum Log {
     static let analyze = Logger(subsystem: subsystem, category: "analyze")
     static let render = Logger(subsystem: subsystem, category: "render")
     static let job = Logger(subsystem: subsystem, category: "job")
+    static let download = Logger(subsystem: subsystem, category: "download")
     static let perf = Logger(subsystem: subsystem, category: "perf")
 
     static let signposter = OSSignposter(subsystem: subsystem, category: "perf")

@@ -121,7 +121,7 @@ struct CensorSection: View {
         VStack(alignment: .leading, spacing: 0) {
             SectionHeader(.optSectionCensorFaces)
             NaqiCard(padding: 0) {
-                whoRow
+                WhoRow(flow: flow)
                 NaqiRowDivider()
                 // Directly under Who: the other "how much gets covered"
                 // decision. `regions` is off, `wholeFrame` is on.
@@ -162,9 +162,15 @@ struct CensorSection: View {
         }
     }
 
-    /// Three segments, not four. `none` is the step-1 toggle, and an "Off"
-    /// segment here would be a control that turns off the card containing it.
-    private var whoRow: some View {
+}
+
+/// Three segments, not four. `none` is the step-1 toggle, and an "Off"
+/// segment here would be a control that turns off the card containing it.
+/// Shared with onboarding, which asks the same question.
+struct WhoRow: View {
+    @Bindable var flow: Flow
+
+    var body: some View {
         VStack(alignment: .leading, spacing: Naqi.S.s2) {
             Text(.optWhoTitle)
                 .font(Naqi.F.titleSmall)
@@ -206,7 +212,7 @@ struct CensorSection: View {
 
 /// Blur or one of five fixed opaque fills. Picking a swatch also picks Solid,
 /// so the common path takes one tap and the stored colour carries both choices.
-private struct CensorStyleRow: View {
+struct CensorStyleRow: View {
     @Bindable var flow: Flow
 
     var body: some View {

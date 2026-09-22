@@ -44,10 +44,10 @@ for lang in en ar; do
     stem=${pair%%:*}
     xcrun simctl terminate "$DEV" $BUNDLE 2>/dev/null || true
     if [ "$lang" = ar ]; then
-      xcrun simctl launch "$DEV" $BUNDLE -naqiScreen "${pair#*:}" \
+      xcrun simctl launch "$DEV" $BUNDLE -naqi.onboarded YES -naqiScreen "${pair#*:}" \
         -AppleLanguages "(ar)" -AppleLocale ar_SA >/dev/null
     else
-      xcrun simctl launch "$DEV" $BUNDLE -naqiScreen "${pair#*:}" >/dev/null
+      xcrun simctl launch "$DEV" $BUNDLE -naqi.onboarded YES -naqiScreen "${pair#*:}" >/dev/null
     fi
     sleep 4   # SwiftUI settles; a shot taken sooner catches the launch fade
     xcrun simctl io "$DEV" screenshot "$OUT/$stem-$lang.png" 2>/dev/null

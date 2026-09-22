@@ -547,6 +547,19 @@ struct UITests {
         }
     }
 
+    /// Onboarding offers exactly the languages the bundle carries, and the
+    /// pick lands where iOS reads the per-app language on the next launch.
+    @Test("Onboarding languages match the bundle and persist")
+    func onboardingLanguage() {
+        #expect(Set(AppLanguage.all.map(\.code)) == Set(Bundle.main.localizations).subtracting(["Base"]))
+        #expect(AppLanguage.all.map(\.code).contains(AppLanguage.current))
+
+        let saved = UserDefaults.standard.object(forKey: "AppleLanguages")
+        defer { UserDefaults.standard.set(saved, forKey: "AppleLanguages") }
+        AppLanguage.save("ar")
+        #expect(UserDefaults.standard.stringArray(forKey: "AppleLanguages") == ["ar"])
+    }
+
     /// One of three whole sentences, never a number glued to a unit.
     @Test("durationText picks the right sentence")
     func duration() {
@@ -682,5 +695,10 @@ struct UITests {
         // Spoken, never drawn: a missing translation here is invisible until
         // someone turns VoiceOver on in Arabic.
         .progressBarLabel, .optStrictnessHint, .optBlurHint,
+        // Onboarding
+        .onbGetStarted, .onbWelcomeTitle, .onbWelcomeBody,
+        .onbFeatBlur, .onbFeatMusic, .onbFeatPrivate,
+        .onbBlurTitle, .onbBlurBody, .onbMusicTitle, .onbMusicBody,
+        .onbReadyTitle, .onbReadyBody,
     ]
 }

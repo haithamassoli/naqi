@@ -7,24 +7,23 @@ import SwiftUI
 struct RootView: View {
     @State private var flow = Flow()
     @State private var loadedResumable = false
+    @AppStorage("naqi.onboarded") private var onboarded = false
+    /// The language picked on the first onboarding page. `AppLanguage.save`
+    /// only takes effect at the next launch, so this session applies it
+    /// through the environment instead of asking for a relaunch.
+    @State private var language = AppLanguage.current
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
-        NavigationStack(path: $flow.path) {
-            PickScreen(flow: flow)
-                .navigationDestination(for: Flow.Step.self) { step in
-                    switch step {
-                    case .options: OptionsScreen(flow: flow)
-                    case .progress: ProgressScreen(flow: flow)
-                    case .done: DoneScreen(flow: flow)
-                    case .jobs: JobsScreen(flow: flow)
-                    case .settings: SettingsScreen(flow: flow)
-                    case .about: AboutScreen()
-                    case .licenses: ThirdPartyLicensesScreen()
-                    case .diagnostics: DeviceRuntimeView()
-                    }
+        Group {
+            if onboarded { stack } else {
+                OnboardingScreen(flow: flow, language: $language) {
+                    withAnimation(.smooth) { onboarded = true }
                 }
+            }
         }
+        .environment(\.locale, Locale(identifier: language))
+        .environment(\.layoutDirection, language == "ar" ? .rightToLeft : .leftToRight)
         .tint(Naqi.C.primary)
         // The share extension leaves manifests in the App Group container; the
         // app is the only thing that can enqueue them. Draining on every
@@ -61,6 +60,24 @@ struct RootView: View {
         // is persisted as it happens rather than only on Start — a user who
         // backs out of Options still changed their mind.
         .onChange(of: flow.ops) { flow.ops.saveAsLastUsed() }
+    }
+
+    private var stack: some View {
+        NavigationStack(path: $flow.path) {
+            PickScreen(flow: flow)
+                .navigationDestination(for: Flow.Step.self) { step in
+                    switch step {
+                    case .options: OptionsScreen(flow: flow)
+                    case .progress: ProgressScreen(flow: flow)
+                    case .done: DoneScreen(flow: flow)
+                    case .jobs: JobsScreen(flow: flow)
+                    case .settings: SettingsScreen(flow: flow)
+                    case .about: AboutScreen()
+                    case .licenses: ThirdPartyLicensesScreen()
+                    case .diagnostics: DeviceRuntimeView()
+                    }
+                }
+        }
     }
 }
 

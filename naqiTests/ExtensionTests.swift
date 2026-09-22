@@ -171,6 +171,43 @@ struct ExtensionTests {
         #expect(ActivityAuthorizationInfo().areActivitiesEnabled,
                 "activities disabled — either the plist key or the widget target regressed")
     }
+
+    /// The card must never outlive the truth: stale 30 s after the app leaves
+    /// the foreground (the widget draws that as paused), and a finished job
+    /// ends on its own words instead of vanishing.
+    ///
+    /// Pure functions only: `LiveActivity` is one global card, and the queue
+    /// suites run real jobs in parallel that start and end it.
+    @Test("live activity says what is true: running, done, paused, failed")
+    @MainActor
+    func liveActivityStates() {
+        var progress = JobProgress(shape: .musicOnly, removeMusic: true)
+        progress.postDownload(0.4)
+
+        let running = LiveActivity.state(progress, etaMs: 12 * 60_000, queued: 2)
+        #expect(running.phase == .running && running.symbol == "arrow.down")
+        #expect(running.caption == String(localized: .stageDownloading))
+        #expect(running.detail == String(localized: .jobsEtaRemaining(String(localized: .durMin(12))))
+                + " · " + String(localized: .progressMoreQueued(2)))
+        #expect(abs(running.fraction - 0.4) < 0.001)
+        // Too early for an ETA and nothing queued: no secondary line at all.
+        #expect(LiveActivity.state(progress, etaMs: 0, queued: 0).detail.isEmpty)
+
+        let now = Date()
+        #expect(LiveActivity.staleDate(background: true, now: now).timeIntervalSince(now) <= 30)
+        #expect(LiveActivity.staleDate(background: false, now: now).timeIntervalSince(now) >= 10 * 60)
+
+        let done = LiveActivity.final(running, .done(name: "clip (Naqi).mp4"))
+        #expect(done.phase == .done && done.fraction == 1 && done.detail == "clip (Naqi).mp4")
+
+        let paused = LiveActivity.final(running, .paused)
+        #expect(paused.phase == .paused && paused.symbol == "pause.fill")
+        #expect(paused.detail == String(localized: .laOpenToContinue))
+        #expect(paused.fraction == running.fraction, "how far it got is still true")
+
+        let failed = LiveActivity.final(running, .failed(.lowSpace))
+        #expect(failed.phase == .failed && failed.detail == String(localized: JobFailure.lowSpace.sentence))
+    }
     #endif
 }
 

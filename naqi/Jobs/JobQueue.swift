@@ -250,12 +250,9 @@ actor JobQueue {
         await LiveActivity.start(title: job.title)
         await Notify.requestAuthorization()
         let flag = stopFlag
-        defer {
-            Task {
-                await Lifecycle.shared.jobFinished()
-                await LiveActivity.end()
-            }
-        }
+        // What the lock-screen card ends on. Every exit path sets it; the
+        // default is the one path that says nothing.
+        var outcome = LiveActivity.Outcome.cancelled
 
         do {
             let done = try await JobRunner.run(
@@ -267,6 +264,7 @@ actor JobQueue {
                 done \(done.shape.rawValue, privacy: .public) in \(Int(done.wallMs))ms \
                 resumed=\(done.resumed.map(\.rawValue).sorted().joined(separator: ","), privacy: .public)
                 """)
+            outcome = .done(name: done.output.name)
             await Notify.done(name: done.output.name)
         } catch let stopped as JobStopped {
             // An interruption is not a failure of the work — the OS took the
@@ -279,7 +277,12 @@ actor JobQueue {
             }
             // A deliberate cancel needs no announcement; an interruption is by
             // definition something that happened while the user was elsewhere.
-            if stopped.reason != .userCancelled { await Notify.failed() }
+            if stopped.reason != .userCancelled {
+                // Only a stop that kept its checkpoint can honestly say
+                // "open to resume".
+                outcome = stopped.resumable ? .paused : .failed(.interrupted)
+                await Notify.failed()
+            }
         } catch {
             let failure = JobFailure.of(error)
             // The byte counts cannot ride on the failure case — see
@@ -290,8 +293,15 @@ actor JobQueue {
                 $0.shortfall = shortfall
                 $0.state = .failed(failure, resumable: false)
             }
+            outcome = .failed(failure)
             await Notify.failed()
         }
+
+        // Awaited here, not fired from a `defer` Task: `drain()` below starts
+        // the next job, and a teardown that lost that race would switch off
+        // the next job's keep-awake and leave it without a card.
+        await Lifecycle.shared.jobFinished()
+        await LiveActivity.end(outcome)
 
         runningID = nil
         runningSince = nil
@@ -315,7 +325,8 @@ actor JobQueue {
         // rather than printing a number that will be wrong.
         let eta = Eta.liveMs(elapsedMs: Date.now.timeIntervalSince(runningSince ?? .now) * 1000,
                              pct: p.pct)
-        Task { await LiveActivity.update(p, etaSeconds: Int(eta / 1000)) }
+        let queued = jobs.count { if case .pending = $0.state { true } else { false } }
+        Task { await LiveActivity.update(p, etaMs: eta, queued: queued) }
     }
 
     private func update(_ id: Job.ID, _ transform: (inout Job) -> Void) {

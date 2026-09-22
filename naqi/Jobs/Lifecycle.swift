@@ -89,6 +89,7 @@ final class Lifecycle {
     #if os(iOS)
     private func didEnterBackground() {
         onBackground?()
+        Task { await LiveActivity.setBackground(true) }
         guard graceTask == .invalid else { return }
         // ~30 s of runtime, then the expiration handler, then suspension. The
         // job is NOT stopped here: a two-second app switch should not cost a
@@ -111,6 +112,7 @@ final class Lifecycle {
         // it resumable and the flag is moot — or it is still running and should
         // keep running.
         flag.withLock { $0 = false }
+        Task { await LiveActivity.setBackground(false) }
         endGrace()
     }
 

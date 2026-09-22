@@ -1472,6 +1472,23 @@
         }
       }
     },
+    "la_open_to_continue" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "افتح نقي للاستئناف"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Open Naqi to resume"
+          }
+        }
+      }
+    },
     "licenses_demucs_terms" : {
       "extractionState" : "manual",
       "localizations" : {

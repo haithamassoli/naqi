@@ -322,13 +322,13 @@ struct DeviceRuntimeView: View {
                         HStack {
                             Image(systemName: r.ok ? "checkmark.seal.fill" : "xmark.octagon.fill")
                                 .foregroundStyle(r.ok ? Naqi.C.primary : Naqi.C.error)
-                            Text(r.model).font(.headline)
+                            Text(r.model).font(Naqi.F.titleSmall)
                             Spacer()
                             Text(verbatim: "\(Int(r.loadMs))ms load · \(Int(r.inferMs))ms run")
-                                .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                                .font(Naqi.F.bodySmall).foregroundStyle(.secondary)
                         }
                         Text(r.error ?? r.detail)
-                            .font(.caption.monospaced())
+                            .font(Naqi.F.bodySmall)
                             .foregroundStyle(r.ok ? AnyShapeStyle(.secondary) : AnyShapeStyle(Naqi.C.error))
                     }
                     .padding(.vertical, 2)

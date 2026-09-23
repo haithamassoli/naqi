@@ -69,6 +69,8 @@ enum Naqi {
         static let titleMedium = heading("Medium", 17)
         /// titleSmall 14 — every card row title.
         static let titleSmall = heading("Medium", 15)
+        /// bodyLarge 16 — app-wide default for any Text without its own font.
+        static let body = Font.custom("thmanyahsans-Regular", size: 17, relativeTo: .body)
         /// bodyMedium 14 — failure sentence, dialog body.
         static let bodyMedium = Font.custom("thmanyahsans-Regular", size: 15, relativeTo: .subheadline)
         /// bodySmall 12 — every row description, ETA lines, note lines.

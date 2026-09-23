@@ -727,7 +727,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				"INFOPLIST_FILE[sdk=iphoneos*]" = naqi/Info.plist;
 				"INFOPLIST_FILE[sdk=iphonesimulator*]" = naqi/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Naqi;
+				INFOPLIST_KEY_CFBundleDisplayName = "Naqi | نقي";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Naqi saves the filtered copy back to your photo library. Your original is never changed.";
@@ -783,7 +783,7 @@
 				GENERATE_INFOPLIST_FILE = YES;
 				"INFOPLIST_FILE[sdk=iphoneos*]" = naqi/Info.plist;
 				"INFOPLIST_FILE[sdk=iphonesimulator*]" = naqi/Info.plist;
-				INFOPLIST_KEY_CFBundleDisplayName = Naqi;
+				INFOPLIST_KEY_CFBundleDisplayName = "Naqi | نقي";
 				INFOPLIST_KEY_ITSAppUsesNonExemptEncryption = NO;
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.lifestyle";
 				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "Naqi saves the filtered copy back to your photo library. Your original is never changed.";

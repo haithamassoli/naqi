@@ -13,8 +13,14 @@
 			     dictionary, because that dictionary has no audio key at all —
 			     Movie/Image/File/Text/WebURL/WebPage/Attachments is the whole
 			     list, and NSExtensionActivationSupportsFileWithMaxCount would
-			     put us in the share sheet for PDFs. The BETWEEN keeps the cap
-			     the dictionary form gave for free.
+			     put us in the share sheet for PDFs. The ">= 1 AND <= 10" pair
+			     keeps the cap the dictionary form gave for free.
+
+			     Never BETWEEN: NSPredicate evaluates it fine (so ExtensionTests
+			     passed), but the share sheet's own matcher rejects the
+			     WHOLE rule over it, so a Safari link, which only needs the
+			     URL branch, lost Naqi too. Checked on the iOS 26 simulator:
+			     BETWEEN hides Naqi, this form shows it.
 
 			     Silent-failure warning: a typo here does not fail the build and
 			     does not log — the extension simply never appears in the share
@@ -29,12 +35,21 @@
 			<string>SUBQUERY (
 				extensionItems,
 				$item,
-				SUBQUERY (
-					$item.attachments,
-					$att,
-					ANY $att.registeredTypeIdentifiers UTI-CONFORMS-TO "public.movie"
-					|| ANY $att.registeredTypeIdentifiers UTI-CONFORMS-TO "public.audio"
-				).@count BETWEEN { 1, 10 }
+				(
+					SUBQUERY (
+						$item.attachments,
+						$att,
+						ANY $att.registeredTypeIdentifiers UTI-CONFORMS-TO "public.movie"
+						|| ANY $att.registeredTypeIdentifiers UTI-CONFORMS-TO "public.audio"
+					).@count &gt;= 1
+					AND
+					SUBQUERY (
+						$item.attachments,
+						$att,
+						ANY $att.registeredTypeIdentifiers UTI-CONFORMS-TO "public.movie"
+						|| ANY $att.registeredTypeIdentifiers UTI-CONFORMS-TO "public.audio"
+					).@count &lt;= 10
+				)
 				OR
 				SUBQUERY (
 					$item.attachments,

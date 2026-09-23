@@ -43,6 +43,10 @@ enum AudioPipeline {
                             includeVideo: Bool = true,
                             progress: @escaping @Sendable (Double) -> Void = { _ in },
                             isCancelled: @escaping @Sendable () -> Bool = { false }) async throws -> Result {
+        // Shared lifetime boundary: every caller and every exit path releases
+        // the heavy graph, including audio-only jobs that bypass JobRunner's
+        // checkpoint helper.
+        defer { ModelRegistry.evict(Models.Demucs.file) }
         let started = ContinuousClock.now
         let job = Stage("audio.job")
         let asset = AVURLAsset(url: src.url, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
@@ -148,7 +152,7 @@ enum AudioPipeline {
         try decoder.start()
         let gate = MusicGate.open()
         defer { if gate != nil { ModelRegistry.evict(Models.YamNet.file) } }
-        let session = try DemucsSession(keepStems: keepStems)
+        let session = Confined<DemucsSession?>(nil)
         let format = try lpcmFormat()
         nonisolated(unsafe) let sink = input
 
@@ -158,9 +162,13 @@ enum AudioPipeline {
         let score: Demucs.MusicScore? = gate.map { gate in
             { try gate.score($0, frames: $1) }
         }
+        let infer: Demucs.Infer = { wav, spec, specSum, timeSum in
+            if session.v == nil { session.v = try DemucsSession(keepStems: keepStems) }
+            try session.v!.run(wav, spec, specSum, timeSum)
+        }
         nonisolated(unsafe) let separator = Demucs(
             mean: stats.mean, std: stats.std, estimatedFrames: estimatedFrames,
-            infer: session.run,
+            infer: infer,
             musicScore: score,
             onChunk: { done, total in
                 // ~4800 chunks map onto 100 values; posting every one measured

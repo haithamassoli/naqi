@@ -45,15 +45,17 @@ struct BenchTests {
         cols.map { $0.padding(toLength: max(13, $0.count + 1), withPad: " ", startingAt: 0) }.joined()
     }
 
-    /// Runs `body` `n` times and returns the fastest, in milliseconds.
-    private func best(_ n: Int, _ body: () throws -> Void) rethrows -> Double {
-        var ms = Double.infinity
+    /// Typical latency. Minimum remains useful in traces, but it hides thermal
+    /// and scheduling behavior when presented as the provider's speed.
+    private func median(_ n: Int, _ body: () throws -> Void) rethrows -> Double {
+        var samples: [Double] = []
         for _ in 0..<n {
             let t = ContinuousClock.now
             try body()
-            ms = min(ms, t.duration(to: .now).milliseconds)
+            samples.append(t.duration(to: .now).milliseconds)
         }
-        return ms
+        samples.sort()
+        return samples[samples.count / 2]
     }
 
     @Test("htdemucs: CPU vs CoreML execution provider")
@@ -64,7 +66,7 @@ struct BenchTests {
         let spec = try ORTValue.zeros(shape: [1, 4, D.specBins, D.specFrames])
 
         print("\n=== htdemucs, one 2.6 s segment · Android baseline \(Self.baselineS23) ===")
-        print(row("provider", "session ms", "best infer", "x-realtime", "finite"))
+        print(row("provider", "session ms", "median infer", "x-realtime", "finite"))
 
         for unit in [ComputeUnit.cpu, .coreMLGPU] {
             // Session creation is reported separately: the CoreML EP compiles
@@ -77,11 +79,11 @@ struct BenchTests {
             let sessionMs = t0.duration(to: .now).milliseconds
 
             var out: [String: ORTValue] = [:]
-            let inferMs = try best(3) {
+            let inferMs = try median(5) {
                 out = try m.run([D.waveInput: wave, D.specInput: spec])
             }
             let finite = try (out[D.waveOutput]?.floats() ?? []).allSatisfy { $0.isFinite }
-            print(row("\(unit)",
+            print(row("\(unit)→\(m.executionCompute)",
                       String(format: "%.0f", sessionMs),
                       String(format: "%.0f", inferMs),
                       String(format: "%.2fx", audioSeconds / (inferMs / 1000)),
@@ -128,8 +130,8 @@ struct BenchTests {
     /// set; if that is over budget, no amount of cleanup helps and the fix has
     /// to be the chunk size or the graph. What is **retained afterwards** is
     /// ORT's CPU arena, which cannot be disabled through the ObjC API (hazard
-    /// 9) and so has to be dropped with the session — `JobRunner.separate`
-    /// does that on a `defer`.
+    /// 9) and so has to be dropped with the session — `AudioPipeline` does that
+    /// at its shared lifetime boundary.
     @Test("music separation stays inside the memory budget")
     func demucsFootprint() async throws {
         let src = try await MediaSource.probe(try requireQAVideo())
@@ -142,7 +144,7 @@ struct BenchTests {
         _ = try await AudioPipeline.removeMusic(src, to: out, includeVideo: false)
         let peak = Double(MemoryFootprint.peakBytes) / 1_048_576
         let held = MemoryFootprint.currentMB
-        // What `JobRunner.separate` does on every real music job.
+        // Redundant after a real pipeline run, but explicit for this diagnostic.
         ModelRegistry.evict(Models.Demucs.file)
         let released = MemoryFootprint.currentMB
         let budget = Double(MemoryFootprint.budgetBytes) / 1_048_576

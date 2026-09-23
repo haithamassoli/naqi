@@ -52,6 +52,18 @@ struct TransformTests {
         #expect(abs(back.height - upright.height) < 0.001, "\(c.name) h")
     }
 
+    @Test("resized transforms preserve orientation and fit the new buffer", arguments: cases.indices)
+    func resized(i: Int) {
+        let c = Self.cases[i]
+        let source = VideoTransform(preferredTransform: c.t, naturalSize: c.stored)
+        let resized = source.resized(to: CGSize(width: 1280, height: 720))
+        #expect(resized.rotationDegrees == source.rotationDegrees)
+        #expect(resized.storedSize == CGSize(width: 1280, height: 720))
+        let expectedUpright = source.rotationDegrees == 90 || source.rotationDegrees == 270
+            ? CGSize(width: 720, height: 1280) : CGSize(width: 1280, height: 720)
+        #expect(resized.uprightSize == expectedUpright)
+    }
+
     /// A rect inside the upright frame must land inside the stored frame — if
     /// it does not, the blur is being drawn off-canvas.
     @Test("mapped rect stays inside the stored buffer", arguments: cases.indices)

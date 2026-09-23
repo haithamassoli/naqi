@@ -82,6 +82,19 @@ struct PassthroughTests {
         #expect(FileManager.default.fileExists(atPath: inURL.path))
     }
 
+    @Test("composition passthrough keeps compressed video and audio")
+    func compositionPassthrough() async throws {
+        let input = try requireQAVideo()
+        let output = Fixtures.scratch("composition-passthrough.mp4")
+        try await Remux.passthrough(source: input, to: output)
+        for type in [AVMediaType.video, .audio] {
+            let before = try await elementaryStreamDigest(input, type)
+            let after = try await elementaryStreamDigest(output, type)
+            #expect(before.hash == after.hash)
+            #expect(before.bytes == after.bytes)
+        }
+    }
+
     @Test("cancel leaves no partial output file")
     func cancelLeavesNothing() async throws {
         let inURL = try requireQAVideo()

@@ -494,6 +494,28 @@ struct RenderTests {
         #expect(v0 != v1, "video stream is byte-identical — the censor never ran")
     }
 
+    @Test("Fast mode caps the output short side at 720 without changing cadence")
+    func fastModeGeometry() async throws {
+        let input = try requireQAVideo()
+        let source = try await MediaSource.probe(input)
+        var ops = FilterOps()
+        ops.processingMode = .fast
+        let context = try RenderPass.Context(source: source, ops: ops)
+        #expect(min(context.video.naturalSize.width, context.video.naturalSize.height) == 720)
+        #expect(Int(context.video.naturalSize.width) % 2 == 0)
+        #expect(Int(context.video.naturalSize.height) % 2 == 0)
+
+        let output = Fixtures.scratch("fast-720.mp4")
+        let result = try await RenderPass.run(
+            source: source, edl: Edl(censorIntervalsMs: [0...250]), ops: ops,
+            output: output, context: context)
+        let rendered = try await MediaSource.probe(output)
+        let video = try #require(rendered.video)
+        let inputFrames = try await Self.sampleCount(input, .video)
+        #expect(video.naturalSize == context.video.naturalSize)
+        #expect(result.frames == inputFrames)
+    }
+
     /// The both-ops seam. M2 owns producing the replacement track; this pass
     /// only muxes it, so the check is that the output carries the replacement's
     /// bytes and not the source's, with the censor render intact alongside.

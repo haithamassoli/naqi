@@ -93,6 +93,8 @@ enum Ort {
 /// thread-safe for concurrent `Run` calls, and making this an actor would
 /// serialize inference that we explicitly want to overlap with decode.
 final class OrtModel: @unchecked Sendable {
+    private static let hashCache = OSAllocatedUnfairLock(initialState: [String: String]())
+    private static let coreMLCacheGeneration = "ort-1.24.2-v1"
     let name: String
     let session: ORTSession
     let inputNames: [String]
@@ -123,6 +125,7 @@ final class OrtModel: @unchecked Sendable {
     ///   allocator cost. See `NaqiOrtArena.h`.
     init(name: String, path: String, compute: ComputeUnit, threads: Int = 1,
          disableArena: Bool = false) throws {
+        let loadStarted = ContinuousClock.now
         self.name = name
         let requested = Ort.effectiveCompute(compute)
         self.compute = requested
@@ -164,7 +167,7 @@ final class OrtModel: @unchecked Sendable {
         self.session = loaded
         self.inputNames = try loaded.inputNames()
         self.outputNames = try loaded.outputNames()
-        Log.ml.info("loaded \(name, privacy: .public) ep=\(String(describing: resolved), privacy: .public) in=\(self.inputNames, privacy: .public) out=\(self.outputNames, privacy: .public)")
+        Log.ml.info("loaded \(name, privacy: .public) requested=\(String(describing: requested), privacy: .public) resolved=\(String(describing: resolved), privacy: .public) wall=\(Int(msSince(loadStarted)))ms in=\(self.inputNames, privacy: .public) out=\(self.outputNames, privacy: .public)")
     }
 
     private static func sessionOptions(name: String, path: String, compute: ComputeUnit,
@@ -223,7 +226,8 @@ final class OrtModel: @unchecked Sendable {
         let support = try FileManager.default.url(for: .applicationSupportDirectory,
                                                   in: .userDomainMask,
                                                   appropriateFor: nil, create: true)
-        var cache = support.appendingPathComponent("CoreMLCache/\(sha)", isDirectory: true)
+        var cache = support.appendingPathComponent(
+            "CoreMLCache/\(coreMLCacheGeneration)/\(sha)", isDirectory: true)
         try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true)
         var values = URLResourceValues()
         values.isExcludedFromBackup = true
@@ -232,13 +236,18 @@ final class OrtModel: @unchecked Sendable {
     }
 
     private static func sha256(_ path: String) throws -> String {
+        if let cached = hashCache.withLock({ $0[path] }) { return cached }
+        let started = ContinuousClock.now
         let handle = try FileHandle(forReadingFrom: URL(fileURLWithPath: path))
         defer { try? handle.close() }
         var hasher = SHA256()
         while let block = try handle.read(upToCount: 1024 * 1024), !block.isEmpty {
             hasher.update(data: block)
         }
-        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
+        let value = hasher.finalize().map { String(format: "%02x", $0) }.joined()
+        hashCache.withLock { $0[path] = value }
+        Log.ml.info("model hash \((path as NSString).lastPathComponent, privacy: .public) \(Int(msSince(started)))ms")
+        return value
     }
 
     func run(_ inputs: [String: ORTValue], outputs: Set<String>? = nil) throws -> [String: ORTValue] {
@@ -292,8 +301,8 @@ enum ModelRegistry {
     }
 
     /// Drops one graph. Call after a job finishes with htdemucs so its ~1.3 GB
-    /// arena is not held while the user is just browsing — `JobRunner.separate`
-    /// does exactly that, on a `defer`.
+    /// arena is not held while the user is just browsing — `AudioPipeline`
+    /// does exactly that at its shared lifetime boundary.
     static func evict(_ file: String) {
         lock.lock(); defer { lock.unlock() }
         cache[file] = nil

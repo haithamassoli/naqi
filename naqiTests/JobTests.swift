@@ -252,6 +252,19 @@ struct JobTests {
                 != Checkpoint.key(source: url, ops: ops, forcedSegmentMs: 5_000))
     }
 
+    @Test("quality, processing mode and downloaded bytes move checkpoint identity")
+    func sourceIdentityMovesTheKey() {
+        let url = URL(string: "https://example.com/watch/1")!
+        let current = FilterOps()
+        var fast = current
+        fast.processingMode = .fast
+        let base = Checkpoint.key(source: url, ops: current, quality: "BEST")
+        #expect(Checkpoint.key(source: url, ops: current, quality: "P720") != base)
+        #expect(Checkpoint.key(source: url, ops: fast, quality: "BEST") != base)
+        #expect(Checkpoint.key(source: url, ops: current, quality: "BEST",
+                               sourceIdentity: "abc") != base)
+    }
+
     // MARK: - Preflight free space
 
     /// Hand-computed from spec §4.1:
@@ -281,9 +294,9 @@ struct JobTests {
         // with the muxed output, which is what buys music-only its resume.
         #expect(required(music, seconds: 600, segmented: false)
                 == 2 * gib + 600 * 24_000 + slack)
-        // music-only at 30 min: resumable, so 1800 s x 176 400 B/s of int16 PCM.
+        // Long jobs still stream directly to AAC; there is no duration-sized PCM file.
         #expect(required(music, seconds: 1800, segmented: false)
-                == 2 * gib + 1800 * (176_400 + 24_000) + slack)
+                == 2 * gib + 1800 * 24_000 + slack)
         // combined: render temp AND published output coexist; under 30 min by
         // construction, so no PCM scratch — the separated track is still a file.
         #expect(required(both, seconds: 600, segmented: false)
@@ -291,9 +304,9 @@ struct JobTests {
         // segmented censor-only: the rendered segments and the concat output.
         // The source's own audio is passed through, so nothing is encoded.
         #expect(required(censor, seconds: 3600, segmented: true) == 3 * gib + slack)
-        // segmented with music: the PCM scratch scales with duration, not size.
+        // Segmented music keeps one continuous AAC checkpoint.
         #expect(required(both, seconds: 3600, segmented: true)
-                == 3 * gib + 3600 * (176_400 + 24_000) + slack)
+                == 3 * gib + 3600 * 24_000 + slack)
 
         // Photos keeps a local copy for Play/Share/Save, so the budget carries
         // one more full-size file than a folder publish of the same shape.
@@ -302,11 +315,9 @@ struct JobTests {
             tempCopies: Preflight.tempCopies(for: censor, segmented: false) + 1,
             extraScratch: 0) == 3 * gib + slack)
 
-        // ~1.6 GB of PCM on a 155-minute film is the number that made the
-        // scratch a separate term instead of another "temp copy"; the AAC track
-        // beside it is ~223 MB.
+        // 192 kbit/s AAC on a 155-minute film is ~223 MB.
         #expect(Preflight.extraScratchBytes(for: music, durationSeconds: 155 * 60,
-                                            segmented: false) == 1_863_720_000)
+                                            segmented: false) == 223_200_000)
         // A censor-only job encodes no audio at all, so nothing is charged for
         // one — the term has to be tied to the shape, not added everywhere.
         #expect(Preflight.extraScratchBytes(for: censor, durationSeconds: 155 * 60,
@@ -847,8 +858,8 @@ struct JobTests {
         try? FileManager.default.removeItem(at: folder)
     }
 
-    /// `Remux` cannot be cancelled, so the segmented route has to stop *between*
-    /// its two passthrough copies. On a silent source the join is **moved** into
+    /// Stop after the concat has become an atomic checkpoint but before it is
+    /// moved or muxed into the output. On a silent source the join is **moved** into
     /// the output rather than copied, so a mux that ran anyway after a cancel
     /// consumed the one checkpoint the resume had — the failure path then
     /// deletes the output, `hasResumableWork` finds nothing (the segments went
@@ -875,25 +886,21 @@ struct JobTests {
         let key = Checkpoint.key(source: sourceURL, ops: ops, forcedSegmentMs: segmentMs)
         WorkDir.clear(key)
         let dir = WorkDir.job(key)
-        try Checkpoint.writeEdl(Edl(), dir: dir)
+        try Checkpoint.writeEdl(Edl(censorIntervalsMs: [0...100]), dir: dir)
 
-        // Raised on the concat stage's first post, which lands before the join
-        // runs — so the run passes the pre-concat stop point and has to be
-        // caught by the one before the mux.
-        let atConcat = OSAllocatedUnfairLock(initialState: false)
+        let joined = dir.appendingPathComponent(Checkpoint.concatName)
         var thrown: (any Error)?
         do {
             _ = try await JobRunner.run(
                 job,
-                progress: { if $0.stage == .concat { atConcat.withLock { $0 = true } } },
-                stop: { atConcat.withLock { $0 } ? .interrupted : nil },
+                stop: { FileManager.default.fileExists(atPath: joined.path) ? .interrupted : nil },
                 forcedSegmentMs: segmentMs)
         } catch { thrown = error }
 
         let stopped = try #require(thrown as? JobStopped, "the run should have been interrupted")
         #expect(stopped.reason == .interrupted)
         #expect(FileManager.default.fileExists(
-            atPath: dir.appendingPathComponent(Checkpoint.concatName).path),
+            atPath: joined.path),
             "the join was consumed by a mux that ran after the cancel")
         #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).isEmpty,
                 "a cancelled run must not publish anything")

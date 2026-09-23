@@ -55,6 +55,91 @@
         }
       }
     },
+    "about_eyebrow_feedback" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "التواصل"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Contact"
+          }
+        }
+      }
+    },
+    "about_feedback_title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "أرسل ملاحظة أو اقتراحًا"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Send feedback or a suggestion"
+          }
+        }
+      }
+    },
+    "about_feedback_copied" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لا يوجد تطبيق بريد مُعدّ. نُسخ العنوان: %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No mail app is set up. Address copied: %@"
+          }
+        }
+      }
+    },
+    "about_feedback_desc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يفتح تطبيق البريد برسالة جاهزة إلى المطوّر."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opens Mail with a message to the developer, ready to write."
+          }
+        }
+      }
+    },
+    "about_feedback_subject" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ملاحظات على نقي"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Naqi feedback"
+          }
+        }
+      }
+    },
     "about_license" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3478,6 +3563,41 @@
                 "value" : "Shared video"
               }
             }
+      }
+    },
+    "opt_performance_title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "سرعة المعالجة" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Processing speed" } }
+      }
+    },
+    "opt_performance_current" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "الجودة الحالية" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Current quality" } }
+      }
+    },
+    "opt_performance_fast" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "سريع" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Fast" } }
+      }
+    },
+    "opt_performance_current_desc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "يحافظ على دقة الفيديو الأصلية." } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Keeps the original video resolution." } }
+      }
+    },
+    "opt_performance_fast_desc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "يُنهي الفيديو أسرع بدقة تصل إلى 720 بكسل للضلع الأقصر. إزالة الموسيقى لا تتغير." } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Finishes video faster with a short side up to 720 pixels. Music removal is unchanged." } }
       }
     },
     "share_eyebrow_quality" : {

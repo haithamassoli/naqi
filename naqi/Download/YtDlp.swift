@@ -1,7 +1,7 @@
 import Foundation
 import os
 
-/// Managed yt-dlp: the latest zipapp from GitHub, kept in Application Support
+/// Managed yt-dlp: the latest standalone macOS executable from GitHub, kept in Application Support
 /// and refreshed weekly the same way Android's `Downloader.updateIfDue` does.
 ///
 /// YouTube (and Instagram, TikTok, …) rotate extractors on the order of weeks.
@@ -20,7 +20,7 @@ actor YtDlp {
 
     private var ready = false
     /// The App Sandbox quarantines every file the app writes and refuses to
-    /// exec it (EPERM), so a downloaded yt-dlp may never launch. That is not
+    /// execute it (EPERM), so a downloaded yt-dlp may never launch. That is not
     /// staleness — updating again cannot fix it — so retries skip the update.
     private(set) var launchBlocked = false
 
@@ -143,28 +143,66 @@ actor YtDlp {
 
     #if os(macOS)
     private func runProcess(args: [String]) async throws -> String {
-        try await withCheckedThrowingContinuation { cont in
+        let owner = ProcessOwner()
+        let timeout = Task {
+            do { try await Task.sleep(for: .seconds(60)) }
+            catch { return }
+            owner.terminate(timedOut: true)
+        }
+        defer { timeout.cancel() }
+        return try await withTaskCancellationHandler {
+            try await withCheckedThrowingContinuation { cont in
             let proc = Process()
+            owner.set(proc)
             proc.executableURL = binary
             proc.arguments = args
             proc.currentDirectoryURL = installDir
             var env = ProcessInfo.processInfo.environment
             env["PYTHONUNBUFFERED"] = "1"
-            env["HOME"] = installDir.path
+            env["XDG_CACHE_HOME"] = installDir.appendingPathComponent("cache", isDirectory: true).path
+            env["XDG_CONFIG_HOME"] = installDir.appendingPathComponent("config", isDirectory: true).path
             proc.environment = env
             let out = Pipe()
             let err = Pipe()
             proc.standardOutput = out
             proc.standardError = err
+            let captured = OSAllocatedUnfairLock(initialState: (stdout: Data(), stderr: Data()))
+            out.fileHandleForReading.readabilityHandler = { handle in
+                let data = handle.availableData
+                if data.isEmpty == false { captured.withLock { $0.stdout.append(data) } }
+            }
+            err.fileHandleForReading.readabilityHandler = { handle in
+                let data = handle.availableData
+                if data.isEmpty == false {
+                    captured.withLock {
+                        if $0.stderr.count < 1024 * 1024 {
+                            $0.stderr.append(data.prefix(1024 * 1024 - $0.stderr.count))
+                        }
+                    }
+                }
+            }
             proc.terminationHandler = { p in
-                let stdout = String(data: out.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
-                let stderr = String(data: err.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+                out.fileHandleForReading.readabilityHandler = nil
+                err.fileHandleForReading.readabilityHandler = nil
+                let tailOut = out.fileHandleForReading.readDataToEndOfFile()
+                let tailErr = err.fileHandleForReading.readDataToEndOfFile()
+                let data = captured.withLock { value -> (Data, Data) in
+                    value.stdout.append(tailOut)
+                    if value.stderr.count < 1024 * 1024 {
+                        value.stderr.append(tailErr.prefix(1024 * 1024 - value.stderr.count))
+                    }
+                    return (value.stdout, value.stderr)
+                }
+                let stdout = String(data: data.0, encoding: .utf8) ?? ""
+                let stderr = String(data: data.1, encoding: .utf8) ?? ""
                 if p.terminationStatus == 0 {
                     cont.resume(returning: stdout)
                 } else {
                     let text = (stdout + "\n" + stderr)
                     Log.download.error("yt-dlp exit \(p.terminationStatus): \(text.prefix(800), privacy: .public)")
-                    cont.resume(throwing: Self.classify(text))
+                    cont.resume(throwing: owner.didTimeOut
+                                ? DownloadError.network("yt-dlp timed out")
+                                : Self.classify(text))
                 }
             }
             do { try proc.run() }
@@ -173,6 +211,9 @@ actor YtDlp {
                 Log.download.error("yt-dlp cannot launch: \(error.localizedDescription, privacy: .public)")
                 cont.resume(throwing: DownloadError.generic(error.localizedDescription))
             }
+            }
+        } onCancel: {
+            owner.terminate(timedOut: false)
         }
     }
     #endif
@@ -231,6 +272,23 @@ actor YtDlp {
         return ExtractedMedia(title: String(title.prefix(80)), webpageURL: webpage, formats: formats)
     }
 }
+
+#if os(macOS)
+private final class ProcessOwner: @unchecked Sendable {
+    private struct State { var process: Process?; var timedOut = false }
+    private let state = OSAllocatedUnfairLock(initialState: State())
+
+    var didTimeOut: Bool { state.withLock { $0.timedOut } }
+    func set(_ process: Process) { state.withLock { $0.process = process } }
+    func terminate(timedOut: Bool) {
+        let process = state.withLock { value -> Process? in
+            if timedOut { value.timedOut = true }
+            return value.process
+        }
+        if process?.isRunning == true { process?.terminate() }
+    }
+}
+#endif
 
 private extension String {
     var nonEmpty: String? { isEmpty ? nil : self }

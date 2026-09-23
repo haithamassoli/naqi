@@ -1,7 +1,7 @@
 import Foundation
 
 /// Extractor that does not spawn yt-dlp. Used on iOS (no `Process`) and as the
-/// fallback when the zipapp is not yet installed. Covers:
+/// fallback when the managed macOS executable is unavailable. Covers:
 ///
 /// - a URL that is already a media file
 /// - YouTube / youtu.be via InnerTube (ANDROID client, which usually returns
@@ -10,6 +10,7 @@ import Foundation
 enum NativeExtract {
 
     private static let userAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
+    static let maxPageBytes = 2 * 1024 * 1024
 
     static func extract(_ url: String) async throws -> ExtractedMedia {
         guard let page = URL(string: url), page.scheme == "http" || page.scheme == "https"
@@ -26,16 +27,41 @@ enum NativeExtract {
         let ext = page.pathExtension.lowercased()
         if let direct = directMedia(page, ext: ext, mime: nil, size: nil) { return direct }
 
+        var head = URLRequest(url: page)
+        head.httpMethod = "HEAD"
+        configure(&head)
+        if let (_, response) = try? await URLSession.shared.data(for: head),
+           let http = response as? HTTPURLResponse,
+           (200..<300).contains(http.statusCode) {
+            let mime = http.value(forHTTPHeaderField: "Content-Type") ?? ""
+            let length = http.value(forHTTPHeaderField: "Content-Length").flatMap(Int64.init)
+            if let direct = directMedia(http.url ?? page, ext: ext, mime: mime, size: length) {
+                return direct
+            }
+            if let length, length > maxPageBytes { throw DownloadError.unsupported }
+        }
+
         var req = URLRequest(url: page)
-        req.setValue(userAgent, forHTTPHeaderField: "User-Agent")
-        req.setValue("text/html,application/xhtml+xml,application/json,video/*,audio/*;q=0.9,*/*;q=0.8",
-                     forHTTPHeaderField: "Accept")
-        let (data, response) = try await URLSession.shared.data(for: req)
-        let mime = (response as? HTTPURLResponse)?.value(forHTTPHeaderField: "Content-Type") ?? ""
-        let length = (response as? HTTPURLResponse)
-            .flatMap { $0.value(forHTTPHeaderField: "Content-Length") }
-            .flatMap { Int64($0) }
-        if let direct = directMedia(page, ext: ext, mime: mime, size: length) { return direct }
+        configure(&req)
+        // Stream so a server that ignores HEAD/Range cannot make an unknown
+        // page allocate an entire media body before its headers are inspected.
+        let (bytes, response) = try await URLSession.shared.bytes(for: req)
+        guard let http = response as? HTTPURLResponse,
+              (200..<300).contains(http.statusCode) else {
+            throw DownloadError.network("HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)")
+        }
+        let mime = http.value(forHTTPHeaderField: "Content-Type") ?? ""
+        let length = http.value(forHTTPHeaderField: "Content-Length").flatMap(Int64.init)
+        if let direct = directMedia(http.url ?? page, ext: ext, mime: mime, size: length) {
+            return direct
+        }
+        if let length, length > maxPageBytes { throw DownloadError.unsupported }
+        var data = Data()
+        data.reserveCapacity(min(maxPageBytes, Int(length ?? 0)))
+        for try await byte in bytes {
+            guard data.count < maxPageBytes else { throw DownloadError.unsupported }
+            data.append(byte)
+        }
         let html = String(data: data, encoding: .utf8)
             ?? String(data: data, encoding: .isoLatin1)
             ?? ""
@@ -64,6 +90,12 @@ enum NativeExtract {
         for m in quotedURLs(html) where looksLikeMedia(m) { add(m, id: "quoted", height: nil) }
         if found.isEmpty { throw DownloadError.unsupported }
         return ExtractedMedia(title: String(title.prefix(80)), webpageURL: page.absoluteString, formats: found)
+    }
+
+    private static func configure(_ request: inout URLRequest) {
+        request.setValue(userAgent, forHTTPHeaderField: "User-Agent")
+        request.setValue("text/html,application/xhtml+xml,application/json,video/*,audio/*;q=0.9,*/*;q=0.8",
+                         forHTTPHeaderField: "Accept")
     }
 
     private static let mediaExts: Set<String> = ["mp4", "m4a", "mp3", "mov", "webm", "aac", "wav"]

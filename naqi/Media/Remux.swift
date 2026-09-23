@@ -27,7 +27,8 @@ enum Remux {
     /// and this joins them in a pass that costs no encode. `spec-render.md` §4.2
     /// measured what re-encoding audio here would cost on a non-AAC source —
     /// 12.9 s per 193 s track, ~10 min on a film, all of it thrown away.
-    static func mux(video: URL, audio: URL, to output: URL) async throws {
+    static func mux(video: URL, audio: URL, to output: URL,
+                    isCancelled: @escaping @Sendable () -> Bool = { false }) async throws {
         let vAsset = AVURLAsset(url: video)
         let aAsset = AVURLAsset(url: audio)
         // `AVAssetTrack.asset` is weak and the composition reads it back while
@@ -52,8 +53,11 @@ enum Remux {
         let (vRange, vTransform, aRange) = try await (srcV.load(.timeRange),
                                                       srcV.load(.preferredTransform),
                                                       srcA.load(.timeRange))
-        try dstV.insertTimeRange(vRange, of: srcV, at: .zero)
-        try dstA.insertTimeRange(aRange, of: srcA, at: .zero)
+        // Preserve the relative starts while normalizing the earliest sample
+        // to zero. Inserting both at zero shifts offset audio against picture.
+        let origin = CMTimeMinimum(vRange.start, aRange.start)
+        try dstV.insertTimeRange(vRange, of: srcV, at: CMTimeSubtract(vRange.start, origin))
+        try dstA.insertTimeRange(aRange, of: srcA, at: CMTimeSubtract(aRange.start, origin))
         // Rotation lives in the track matrix, not in the pixels. Dropping it
         // here is the failure that plays a portrait film sideways while every
         // frame in it is correct.
@@ -64,7 +68,35 @@ enum Remux {
             + \(aRange.duration.seconds, format: .fixed(precision: 2))s audio \
             -> \(output.lastPathComponent, privacy: .public)
             """)
-        try await export(composition, to: output)
+        try await export(composition, to: output, isCancelled: isCancelled)
+    }
+
+    /// First video and first audio track, copied compressed into MP4. This is
+    /// the empty-EDL path: container work only, with source offsets preserved.
+    static func passthrough(source: URL, to output: URL,
+                            isCancelled: @escaping @Sendable () -> Bool = { false }) async throws {
+        let asset = AVURLAsset(url: source)
+        defer { withExtendedLifetime(asset) {} }
+        guard let srcV = try await asset.loadTracks(withMediaType: .video).first else {
+            throw MediaError.noVideoTrack
+        }
+        let srcA = try await asset.loadTracks(withMediaType: .audio).first
+        let composition = AVMutableComposition()
+        guard let dstV = composition.addMutableTrack(withMediaType: .video,
+                                                     preferredTrackID: kCMPersistentTrackID_Invalid)
+        else { throw MediaError.writerFailed("composition would not take a video track") }
+        let vRange = try await srcV.load(.timeRange)
+        let aRange = try await srcA?.load(.timeRange)
+        let origin = aRange.map { CMTimeMinimum(vRange.start, $0.start) } ?? vRange.start
+        try dstV.insertTimeRange(vRange, of: srcV, at: CMTimeSubtract(vRange.start, origin))
+        dstV.preferredTransform = try await srcV.load(.preferredTransform)
+        if let srcA, let aRange {
+            guard let dstA = composition.addMutableTrack(withMediaType: .audio,
+                                                         preferredTrackID: kCMPersistentTrackID_Invalid)
+            else { throw MediaError.writerFailed("composition would not take an audio track") }
+            try dstA.insertTimeRange(aRange, of: srcA, at: CMTimeSubtract(aRange.start, origin))
+        }
+        try await export(composition, to: output, isCancelled: isCancelled)
     }
 
     /// Same-codec segments concatenated in order, compressed passthrough.
@@ -74,7 +106,8 @@ enum Remux {
     /// there is no per-segment transmux fast path: a container can hold one
     /// sample description per track, so a segment that skipped the encoder and
     /// one that did not cannot be joined (`spec-render.md` §4.1).
-    static func concat(_ segments: [URL], to output: URL) async throws {
+    static func concat(_ segments: [URL], to output: URL,
+                       isCancelled: @escaping @Sendable () -> Bool = { false }) async throws {
         guard !segments.isEmpty else { throw MediaError.readerFailed("concat of nothing") }
 
         let composition = AVMutableComposition()
@@ -121,18 +154,42 @@ enum Remux {
             = \(cursor.seconds, format: .fixed(precision: 2))s \
             -> \(output.lastPathComponent, privacy: .public)
             """)
-        try await export(composition, to: output)
+        try await export(composition, to: output, isCancelled: isCancelled)
     }
 
     // MARK: - Export
 
-    private static func export(_ composition: AVMutableComposition, to output: URL) async throws {
+    private enum ExportOutcome: Sendable { case exported, cancelled }
+
+    private static func export(_ composition: AVMutableComposition, to output: URL,
+                               isCancelled: @escaping @Sendable () -> Bool) async throws {
         try? FileManager.default.removeItem(at: output)
         guard let session = AVAssetExportSession(asset: composition,
                                                  presetName: AVAssetExportPresetPassthrough) else {
             throw MediaError.writerFailed("no passthrough export session")
         }
-        try await session.export(to: output, as: .mp4)
+        nonisolated(unsafe) let exportSession = session
+        let outcome = try await withThrowingTaskGroup(of: ExportOutcome.self) { group in
+            group.addTask {
+                try await exportSession.export(to: output, as: .mp4)
+                return .exported
+            }
+            group.addTask {
+                while Task.isCancelled == false {
+                    if isCancelled() { return .cancelled }
+                    do { try await Task.sleep(for: .milliseconds(100)) }
+                    catch { return .cancelled }
+                }
+                return .cancelled
+            }
+            guard let first = try await group.next() else { throw MediaError.cancelled }
+            group.cancelAll()
+            return first
+        }
+        guard outcome == .exported else {
+            try? FileManager.default.removeItem(at: output)
+            throw MediaError.cancelled
+        }
 
         // The expensive silent failure is a short output — one segment written,
         // the rest dropped — because the export reports success either way.

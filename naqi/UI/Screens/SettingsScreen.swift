@@ -28,6 +28,7 @@ struct SettingsScreen: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, Naqi.S.s1)
 
+                    ProcessingModeSection(selection: $flow.ops.processingMode)
                     operationsSection
                     // Options' rule, applied to the only thing there is here to
                     // apply it to. On Options the sections are hidden because

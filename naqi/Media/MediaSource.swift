@@ -27,6 +27,25 @@ struct MediaSource: Sendable {
         var formatDescription: CMFormatDescription?
 
         var pixelCount: Int { Int(naturalSize.width * naturalSize.height) }
+
+        func capped(shortSide: Int?) -> VideoInfo {
+            guard let shortSide, shortSide > 0 else { return self }
+            let current = min(naturalSize.width, naturalSize.height)
+            guard current > CGFloat(shortSide) else { return self }
+            let scale = CGFloat(shortSide) / current
+            func even(_ value: CGFloat) -> CGFloat {
+                CGFloat(max(2, Int((value * scale).rounded()) / 2 * 2))
+            }
+            let size = CGSize(width: even(naturalSize.width), height: even(naturalSize.height))
+            return VideoInfo(naturalSize: size,
+                             transform: transform.resized(to: size),
+                             nominalFrameRate: nominalFrameRate,
+                             estimatedBitrate: estimatedBitrate,
+                             codec: codec,
+                             isHDR: isHDR,
+                             naturalTimeScale: naturalTimeScale,
+                             formatDescription: formatDescription)
+        }
     }
 
     struct AudioInfo: Sendable {
@@ -129,6 +148,7 @@ enum EncodeSettings {
     /// hardware supports it, else H.264.
     static func videoSettings(for v: MediaSource.VideoInfo, bitrate: Int) -> [String: Any] {
         let useHEVC = v.codec == kCMVideoCodecType_HEVC
+            && hasHardwareEncoder(kCMVideoCodecType_HEVC)
         var props: [String: Any] = [
             AVVideoAverageBitRateKey: bitrate,
             // 2 s GOP: short enough that a resumed segment re-syncs quickly,
@@ -156,6 +176,16 @@ enum EncodeSettings {
                 AVVideoYCbCrMatrixKey: AVVideoYCbCrMatrix_ITU_R_709_2,
             ],
         ]
+    }
+
+    private static func hasHardwareEncoder(_ codec: CMVideoCodecType) -> Bool {
+        var raw: CFArray?
+        guard VTCopyVideoEncoderList(nil, &raw) == noErr,
+              let encoders = raw as? [[CFString: Any]] else { return false }
+        return encoders.contains { encoder in
+            (encoder[kVTVideoEncoderList_CodecType] as? NSNumber)?.uint32Value == codec
+                && (encoder[kVTVideoEncoderList_IsHardwareAccelerated] as? Bool) == true
+        }
     }
 
     /// AAC-LC at a rate that never upsamples a thin source.

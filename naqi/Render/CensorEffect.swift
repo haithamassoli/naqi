@@ -51,6 +51,7 @@ struct BlurPlan: Equatable, Sendable {
 /// so this rides into the writer's serial pump queue unchecked.
 final class CensorEffect: @unchecked Sendable {
     let plan: BlurPlan
+    let outputSize: CGSize
     /// False when the options add up to a visual no-op (no solid fill,
     /// `blurAmount == 0`, and no grayscale), which lets the render pass hand
     /// every frame to the encoder untouched instead of paying a Core Image
@@ -67,6 +68,7 @@ final class CensorEffect: @unchecked Sendable {
 
     init(ops: FilterOps, transform: VideoTransform, tonemapHDR: Bool) {
         self.transform = transform
+        self.outputSize = transform.storedSize
         self.plan = BlurPlan(amount: ops.blurAmount, size: transform.storedSize)
         self.blurEnabled = !ops.solidColor.isSolid && ops.blurAmount > 0
         self.grayscale = !ops.solidColor.isSolid && ops.grayscale

@@ -79,6 +79,8 @@ struct Edl: Codable, Sendable, Equatable {
     /// Sorted by `startMs` at build time.
     var faceTracks: [FaceTrackEdl] = []
 
+    var isEmpty: Bool { censorIntervalsMs.isEmpty && faceTracks.isEmpty }
+
     /// Inclusive at both ends.
     func fullFrame(at t: Int64) -> Bool {
         censorIntervalsMs.contains { $0.contains(t) }

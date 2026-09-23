@@ -34,6 +34,10 @@ final class ShareViewController: UIViewController {
         String(localized: "share.quality_480", defaultValue: "480p"),
         String(localized: "share.quality_audio", defaultValue: "Audio only"),
     ])
+    private let processingControl = UISegmentedControl(items: [
+        String(localized: "share.performance_current", defaultValue: "Current"),
+        String(localized: "share.performance_fast", defaultValue: "Fast"),
+    ])
     private let addButton = UIButton(type: .system)
     private let optionsStack = UIStackView()
     private var accepting = false
@@ -41,7 +45,12 @@ final class ShareViewController: UIViewController {
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .systemBackground
+        view.backgroundColor = Brand.background
+        view.tintColor = Brand.primary
+        for c in [qualityControl, processingControl, whoControl] { Brand.style(c) }
+        musicSwitch.onTintColor = Brand.primary
+        censorSwitch.onTintColor = Brand.primary
+        spinner.color = Brand.primary
 
         let options = ShareOptions.loadLastUsed()
         musicSwitch.isOn = options.removeMusic
@@ -54,26 +63,41 @@ final class ShareViewController: UIViewController {
         qualityControl.selectedSegmentIndex = qualityIndex(DownloadQuality.loadLastUsed())
         qualityControl.addTarget(self, action: #selector(qualityChanged), for: .valueChanged)
         qualityControl.isHidden = true
+        processingControl.selectedSegmentIndex = options.processingMode == "fast" ? 1 : 0
 
         label.text = String(localized: "share.options", defaultValue: "Add to Naqi")
         label.textAlignment = .center
-        label.font = .preferredFont(forTextStyle: .headline)
+        label.font = Brand.font(.title2, .bold)
+        label.textColor = Brand.onSurface
         label.adjustsFontForContentSizeCategory = true
         label.numberOfLines = 0
 
         optionsStack.axis = .vertical
-        optionsStack.spacing = 12
+        optionsStack.spacing = 16
         optionsStack.addArrangedSubview(qualityControl)
-        optionsStack.addArrangedSubview(row(String(localized: "share.remove_music",
-                                                    defaultValue: "Remove music"), musicSwitch))
-        optionsStack.addArrangedSubview(row(String(localized: "share.censor_faces",
-                                                    defaultValue: "Cover faces"), censorSwitch))
-        optionsStack.addArrangedSubview(whoControl)
+        optionsStack.addArrangedSubview(card([
+            row(String(localized: "share.performance", defaultValue: "Processing"), processingControl),
+            row(String(localized: "share.remove_music", defaultValue: "Remove music"), musicSwitch),
+            row(String(localized: "share.censor_faces", defaultValue: "Cover faces"), censorSwitch),
+            whoControl,
+        ]))
 
+        // The app's primary button: jade fill, 20 pt corners, and the same
+        // container-grey when disabled rather than UIKit's translucent tint.
         var config = UIButton.Configuration.filled()
         config.title = String(localized: "share.add", defaultValue: "Add")
-        config.cornerStyle = .large
+        config.background.cornerRadius = 20
+        config.contentInsets = NSDirectionalEdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 16)
+        config.titleTextAttributesTransformer = UIConfigurationTextAttributesTransformer {
+            var a = $0; a.font = Brand.font(.subheadline, .bold); return a
+        }
         addButton.configuration = config
+        addButton.configurationUpdateHandler = { button in
+            button.configuration?.background.backgroundColor =
+                button.isEnabled ? Brand.primary : Brand.surfaceContainerHighest
+            button.configuration?.baseForegroundColor =
+                button.isEnabled ? Brand.onPrimary : Brand.onSurfaceVariant
+        }
         addButton.addTarget(self, action: #selector(addTapped), for: .touchUpInside)
         addButton.isEnabled = musicSwitch.isOn || censorSwitch.isOn
 
@@ -113,10 +137,40 @@ final class ShareViewController: UIViewController {
         Self.accepted.contains { provider.hasItemConformingToTypeIdentifier($0.identifier) }
     }
 
+    /// The app's `NaqiCard`: container fill, 24 pt corners, hairline border,
+    /// never a shadow — with an inset `NaqiRowDivider` between rows.
+    private func card(_ rows: [UIView]) -> UIView {
+        let stack = UIStackView()
+        stack.axis = .vertical
+        stack.spacing = 12
+        for (i, r) in rows.enumerated() {
+            if i > 0 {
+                let rule = UIView()
+                rule.backgroundColor = Brand.outlineVariant.withAlphaComponent(0.7)
+                rule.heightAnchor.constraint(equalToConstant: 1).isActive = true
+                stack.addArrangedSubview(rule)
+            }
+            stack.addArrangedSubview(r)
+        }
+        stack.isLayoutMarginsRelativeArrangement = true
+        stack.directionalLayoutMargins = NSDirectionalEdgeInsets(top: 12, leading: 16, bottom: 12, trailing: 16)
+        stack.backgroundColor = Brand.surfaceContainer
+        stack.layer.cornerRadius = 24
+        stack.layer.cornerCurve = .continuous
+        stack.layer.borderWidth = 1
+        // `layer.borderColor` is a CGColor and does not follow dark mode.
+        stack.registerForTraitChanges([UITraitUserInterfaceStyle.self]) { (v: UIStackView, _) in
+            v.layer.borderColor = Brand.outlineVariant.resolvedColor(with: v.traitCollection).cgColor
+        }
+        stack.layer.borderColor = Brand.outlineVariant.resolvedColor(with: traitCollection).cgColor
+        return stack
+    }
+
     private func row(_ title: String, _ control: UIView) -> UIView {
         let text = UILabel()
         text.text = title
-        text.font = .preferredFont(forTextStyle: .body)
+        text.font = Brand.font(.subheadline, .medium)
+        text.textColor = Brand.onSurface
         text.adjustsFontForContentSizeCategory = true
         text.isAccessibilityElement = false
         control.accessibilityLabel = title
@@ -139,7 +193,8 @@ final class ShareViewController: UIViewController {
         var censor = censorSwitch.isOn
         let quality = selectedQuality()
         if quality == .audio { censor = false; if !removeMusic { removeMusic = true } }
-        let options = ShareOptions(removeMusic: removeMusic, censor: censor, who: who)
+        let options = ShareOptions(removeMusic: removeMusic, censor: censor, who: who,
+                                   processingMode: processingControl.selectedSegmentIndex == 1 ? "fast" : "current")
         options.saveAsLastUsed()
         quality.saveAsLastUsed()
         Task { await accept(options: options, quality: quality) }
@@ -327,5 +382,45 @@ final class ShareViewController: UIViewController {
                 cont.resume(returning: item as? String)
             }
         }
+    }
+}
+
+/// The app's palette (`naqi/UI/Theme/Theme.swift`, `Naqi.C`), restated because
+/// the theme lives in the app target — the same trade the widgets make with
+/// their `Brand`. Hex values must move together with `Naqi.C`.
+private enum Brand {
+    static let primary = dyn(0x1F6E5A, 0x55C3A1)
+    static let onPrimary = dyn(0xFFFFFF, 0x00382A)
+    static let background = dyn(0xF5F7F3, 0x0C1512)
+    static let onSurface = dyn(0x10201C, 0xDEE8E2)
+    static let onSurfaceVariant = dyn(0x3F4A45, 0xBEC9C2)
+    static let surfaceContainer = dyn(0xECF1ED, 0x182420)
+    static let surfaceContainerHighest = dyn(0xE0E7E2, 0x2D3935)
+    static let outlineVariant = dyn(0xBFC9C3, 0x3F4A45)
+
+    /// `Naqi.F` slots: a system text style at a weight, so Dynamic Type holds.
+    static func font(_ style: UIFont.TextStyle, _ weight: UIFont.Weight) -> UIFont {
+        let base = UIFont.preferredFont(forTextStyle: style)
+        return UIFontMetrics(forTextStyle: style)
+            .scaledFont(for: .systemFont(ofSize: base.pointSize, weight: weight))
+    }
+
+    /// The app's segmented pickers: jade selection on the container grey.
+    static func style(_ c: UISegmentedControl) {
+        c.backgroundColor = surfaceContainerHighest
+        c.selectedSegmentTintColor = primary
+        c.setTitleTextAttributes([.foregroundColor: onSurface,
+                                  .font: font(.subheadline, .medium)], for: .normal)
+        c.setTitleTextAttributes([.foregroundColor: onPrimary,
+                                  .font: font(.subheadline, .bold)], for: .selected)
+    }
+
+    private static func dyn(_ light: UInt32, _ dark: UInt32) -> UIColor {
+        UIColor { $0.userInterfaceStyle == .dark ? rgb(dark) : rgb(light) }
+    }
+
+    private static func rgb(_ v: UInt32) -> UIColor {
+        UIColor(red: CGFloat((v >> 16) & 0xFF) / 255, green: CGFloat((v >> 8) & 0xFF) / 255,
+                blue: CGFloat(v & 0xFF) / 255, alpha: 1)
     }
 }

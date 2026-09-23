@@ -5,6 +5,9 @@ import Foundation
 struct FilterOps: Codable, Sendable, Equatable {
     var removeMusic: Bool = false
     var censor: Bool = true
+    /// Output policy selected by the user. Fast keeps analysis and audio
+    /// semantics unchanged, but caps rendered video to a 720-pixel short side.
+    var processingMode: ProcessingMode = .current
 
     /// Which gender's face tracks get censored.
     var who: Who = .women
@@ -69,8 +72,17 @@ struct FilterOps: Codable, Sendable, Equatable {
         }
     }
 
+    enum ProcessingMode: String, Codable, Sendable, CaseIterable {
+        case current, fast
+
+        var outputShortSideCap: Int? { self == .fast ? 720 : nil }
+    }
+
     /// At least one operation must be selected.
     var isValid: Bool { removeMusic || censor }
+    var visualEffectIsNoop: Bool {
+        solidColor == .blur && blurAmount == 0 && grayscale == false
+    }
 
     /// Drops what a source with no picture cannot do. Censoring has nothing to
     /// work on and the job would die at `Preflight` with `noVideoTrack`, so
@@ -111,6 +123,7 @@ extension FilterOps {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         removeMusic = try values.decode(Bool.self, forKey: .removeMusic)
         censor = try values.decode(Bool.self, forKey: .censor)
+        processingMode = try values.decodeIfPresent(ProcessingMode.self, forKey: .processingMode) ?? .current
         who = try values.decode(Who.self, forKey: .who)
         censorMode = try values.decode(CensorMode.self, forKey: .censorMode)
         censorNsfw = try values.decodeIfPresent(Bool.self, forKey: .censorNsfw) ?? true

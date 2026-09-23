@@ -31,6 +31,8 @@ struct ShareOptions: Codable, Sendable, Equatable {
     var removeMusic = false
     var censor = true
     var who = "women"
+    /// Nil is Current quality, preserving manifests written before Fast mode.
+    var processingMode: String? = nil
 
     static func loadLastUsed() -> ShareOptions {
         if let data = AppGroup.defaults?.data(forKey: key),
@@ -41,13 +43,15 @@ struct ShareOptions: Codable, Sendable, Equatable {
             var removeMusic: Bool?
             var censor: Bool?
             var who: String?
+            var processingMode: String?
         }
         guard let data = AppGroup.defaults?.data(forKey: "naqi.filterOps"),
               let stored = try? JSONDecoder().decode(Stored.self, from: data)
         else { return ShareOptions() }
         return ShareOptions(removeMusic: stored.removeMusic ?? false,
                             censor: stored.censor ?? true,
-                            who: stored.who ?? "women")
+                            who: stored.who ?? "women",
+                            processingMode: stored.processingMode)
     }
 
     func saveAsLastUsed() {

@@ -104,6 +104,9 @@ struct ExtensionTests {
             as? [String: Any])
         let rule = try #require(attrs["NSExtensionActivationRule"] as? String,
                                 "the rule is not a predicate string — the dictionary form has no audio key")
+        // NSPredicate accepts BETWEEN, the share sheet's matcher does not — it
+        // drops the whole rule, which the mock evaluation below cannot see.
+        #expect(!rule.contains("BETWEEN"))
         let predicate = NSPredicate(format: rule)
 
         func shares(_ ids: [String], count: Int = 1) -> Bool {

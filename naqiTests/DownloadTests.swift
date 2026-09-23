@@ -51,6 +51,11 @@ struct DownloadTests {
         #expect(best.contains(where: { $0.hasAudio }))
         // mp4 video outranks webm even when the webm is taller.
         #expect(best.contains(where: { $0.id == "v720" }))
+
+        let combo720 = fmt("c720", ext: "mp4", height: 720, v: "avc1", a: "mp4a")
+        #expect(DownloadQuality.p720.select([v720, audio, combo720]).map(\.id) == ["c720"])
+        #expect(DownloadQuality.best.resolved(fast: true) == .p720)
+        #expect(DownloadQuality.p480.resolved(fast: true) == .p480)
     }
 
     @Test("yt-dlp -J dump parses formats and skips HLS")
@@ -91,7 +96,8 @@ struct DownloadTests {
 
     @Test("a link manifest round-trips url, quality and options")
     func linkManifest() throws {
-        let options = ShareOptions(removeMusic: true, censor: false, who: "everyone")
+        let options = ShareOptions(removeMusic: true, censor: false, who: "everyone",
+                                   processingMode: "fast")
         let m = ShareManifest(id: UUID(), fileName: "youtu.be", receivedAt: .now,
                               options: options, url: "https://youtu.be/dQw4w9WgXcQ",
                               quality: DownloadQuality.p480.rawValue)
@@ -100,6 +106,7 @@ struct DownloadTests {
         #expect(decoded.url == m.url)
         #expect(decoded.quality == "P480")
         #expect(decoded.options == options)
+        #expect(decoded.options?.processingMode == "fast")
     }
 
     @Test("mux joins a video file and an audio file into one playable mp4")

@@ -24,7 +24,8 @@ struct OptionsScreen: View {
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
-                Group {
+                VStack(alignment: .leading, spacing: Naqi.S.s5) {
+                    ProcessingModeSection(selection: $flow.ops.processingMode)
                     if wide && flow.ops.censor && flow.ops.removeMusic {
                         VStack(alignment: .leading, spacing: Naqi.S.s5) {
                             HStack(alignment: .top, spacing: Naqi.S.s5) {
@@ -97,6 +98,26 @@ struct OptionsScreen: View {
     private func start() {
         startFeedback += 1
         Task { await flow.start() }
+    }
+}
+
+struct ProcessingModeSection: View {
+    @Binding var selection: FilterOps.ProcessingMode
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: Naqi.S.s2) {
+            SectionHeader(.optPerformanceTitle)
+            Picker(String(localized: .optPerformanceTitle), selection: $selection) {
+                Text(.optPerformanceCurrent).tag(FilterOps.ProcessingMode.current)
+                Text(.optPerformanceFast).tag(FilterOps.ProcessingMode.fast)
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("processing.mode")
+            Text(selection == .fast ? .optPerformanceFastDesc : .optPerformanceCurrentDesc)
+                .font(Naqi.F.bodySmall)
+                .foregroundStyle(Naqi.C.onSurfaceVariant)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }
 

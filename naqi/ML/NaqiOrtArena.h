@@ -8,7 +8,7 @@
 // This matters because htdemucs peaked at 1721-1881 MB against the PRD's
 // 1536 MB budget, and the two cheaper levers are both ruled out by
 // measurement: eviction is retention, not working set
-// (`JobRunner.separate` already does it), and thread count does not move the
+// (`AudioPipeline` already does it), and thread count does not move the
 // peak at all (`BenchTests.demucsThreadSweep` — 1838 MB at the *minimum* one
 // thread, spread ~3.5 % and non-monotonic). Android needed exactly these two
 // flags on this same graph; without them lmkd killed it at 5.6 GB RSS, and the

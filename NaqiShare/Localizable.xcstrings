@@ -111,6 +111,27 @@
         }
       }
     },
+    "share.performance" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "سرعة المعالجة" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Processing" } }
+      }
+    },
+    "share.performance_current" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "الجودة الحالية" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Current" } }
+      }
+    },
+    "share.performance_fast" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "سريع" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Fast" } }
+      }
+    },
     "share.quality_best" : {
       "extractionState" : "manual",
       "localizations" : {

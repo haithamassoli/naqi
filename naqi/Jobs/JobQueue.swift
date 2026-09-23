@@ -60,9 +60,10 @@ actor JobQueue {
     /// disabled button is the half that can be raced.
     @discardableResult
     func enqueue(_ job: Job) -> Job.ID {
-        let key = Checkpoint.key(source: job.source, ops: job.ops)
+        let key = Checkpoint.key(source: job.source, ops: job.ops, quality: job.quality)
         if let existing = jobs.first(where: {
-            !$0.state.isTerminal && Checkpoint.key(source: $0.source, ops: $0.ops) == key
+            !$0.state.isTerminal
+                && Checkpoint.key(source: $0.source, ops: $0.ops, quality: $0.quality) == key
         }) {
             Log.job.notice("enqueue ignored, already queued")
             // Still drain. `load()` resets a `.running` row to `.pending` on

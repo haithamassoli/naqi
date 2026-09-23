@@ -111,7 +111,8 @@ enum Checkpoint {
     ///   *means* — resuming a 5-minute plan's segments into a 5-second plan would
     ///   splice the wrong windows together silently. Appended only when set, so
     ///   every shipping key stays byte-identical to the ones already on disk.
-    static func key(source: URL, ops: FilterOps, forcedSegmentMs: Int64 = 0) -> String {
+    static func key(source: URL, ops: FilterOps, forcedSegmentMs: Int64 = 0,
+                    quality: String? = nil, sourceIdentity: String? = nil) -> String {
         var parts = [
             source.absoluteString,
             String(ops.removeMusic),
@@ -128,6 +129,9 @@ enum Checkpoint {
         // 1.0.2 can resume. Only non-default new choices extend the identity.
         if !ops.censorNsfw { parts.append("nsfw-off") }
         if ops.solidColor.isSolid { parts.append("solid-\(ops.solidColor.rawValue)") }
+        if ops.processingMode != .current { parts.append("mode-fast720-v1") }
+        if let quality { parts.append("quality-\(quality)") }
+        if let sourceIdentity { parts.append("source-\(sourceIdentity)") }
         if forcedSegmentMs > 0 { parts.append("seg\(forcedSegmentMs)") }
         return key(parts)
     }

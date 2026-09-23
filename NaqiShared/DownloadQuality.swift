@@ -47,6 +47,16 @@ enum DownloadQuality: String, Codable, Sendable, CaseIterable {
         }
     }
 
+    /// Fast mode avoids transferring pixels it will immediately discard.
+    /// Explicitly smaller and audio-only choices remain untouched.
+    func resolved(fast: Bool) -> DownloadQuality {
+        guard fast else { return self }
+        return switch self {
+        case .best, .p1080: .p720
+        case .p720, .p480, .audio: self
+        }
+    }
+
     static func of(_ name: String?) -> DownloadQuality {
         DownloadQuality(rawValue: name ?? "") ?? .best
     }

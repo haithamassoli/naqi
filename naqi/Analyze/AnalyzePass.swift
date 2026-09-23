@@ -1,6 +1,7 @@
 import AVFoundation
 import CoreMedia
 import Foundation
+import OnnxRuntimeBindings
 import os
 
 /// What one analyze pass produced, plus the counters the perf wall is read from.
@@ -75,7 +76,7 @@ enum AnalyzePass {
         let gateRunner: NsfwRunner?
         if ops.censorNsfw {
             let gate = try ModelRegistry.model(Models.Nsfw.file, compute: .coreMLNeuralNetwork)
-            gateRunner = NsfwRunner(model: gate, strictness: ops.strictness)
+            gateRunner = try NsfwRunner(model: gate, strictness: ops.strictness)
         } else {
             gateRunner = nil
         }
@@ -254,16 +255,23 @@ enum AnalyzePass {
 private final class NsfwRunner {
     private let model: OrtModel
     private let strictness: Int
+    private let inputData: NSMutableData
+    private let inputValue: ORTValue
     private(set) var firings: [Int64] = []
 
-    init(model: OrtModel, strictness: Int) {
+    init(model: OrtModel, strictness: Int) throws {
         self.model = model
         self.strictness = strictness
+        let side = Models.Nsfw.side
+        inputData = NSMutableData(length: 3 * side * side * MemoryLayout<Float>.size)!
+        inputValue = try ORTValue(tensorData: inputData, elementType: .float,
+                                  shape: [1, 3, side, side].map(NSNumber.init(value:)))
     }
 
     func add(ptsMs: Int64, tensor: [Float]) throws {
-        let side = Models.Nsfw.side
-        let out = try model.run([Models.Nsfw.input: .float(tensor, shape: [1, 3, side, side])])
+        tensor.withUnsafeBytes { inputData.mutableBytes.copyMemory(from: $0.baseAddress!,
+                                                                  byteCount: $0.count) }
+        let out = try model.run([Models.Nsfw.input: inputValue])
         guard let y = out[Models.Nsfw.output] else { throw OrtError.outputMissing(Models.Nsfw.output) }
         let probs = try y.floats()
         if NsfwGate.fires(probs, strictness: strictness) { firings.append(ptsMs) }

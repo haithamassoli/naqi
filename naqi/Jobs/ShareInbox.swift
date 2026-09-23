@@ -44,6 +44,7 @@ enum ShareInbox {
                     ops.removeMusic = shared.removeMusic
                     ops.censor = shared.censor
                     ops.who = FilterOps.Who(rawValue: shared.who) ?? ops.who
+                    ops.processingMode = FilterOps.ProcessingMode(rawValue: shared.processingMode ?? "") ?? .current
                 }
                 let quality = DownloadQuality.of(handoff.quality)
                 if quality == .audio { ops.fit(hasVideo: false) }
@@ -99,6 +100,7 @@ enum ShareInbox {
             ops.removeMusic = shared.removeMusic
             ops.censor = shared.censor
             ops.who = FilterOps.Who(rawValue: shared.who) ?? ops.who
+            ops.processingMode = FilterOps.ProcessingMode(rawValue: shared.processingMode ?? "") ?? .current
         }
         // Not `MediaSource.probe`: this runs for every shared item at launch,
         // and precise-duration loading would read far more of the file than

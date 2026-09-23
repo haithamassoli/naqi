@@ -55,30 +55,33 @@ extension DownloadQuality {
     func select(_ formats: [MediaFormat]) -> [MediaFormat] {
         let usable = formats.filter { $0.url.scheme == "http" || $0.url.scheme == "https" || $0.url.isFileURL }
         if self == .audio {
-            if let audio = Self.bestAudio(usable) { return [audio] }
+            if let audio = Self.bestAudioOnly(usable) { return [audio] }
             if let combined = Self.bestCombined(usable, cap: nil) { return [combined] }
             return []
         }
         let cap = heightCap
-        let video = Self.bestVideo(usable, cap: cap)
-        let audio = Self.bestAudio(usable)
-        if let video, let audio, video.id != audio.id { return [video, audio] }
-        if let combined = Self.bestCombined(usable, cap: cap) { return [combined] }
+        let video = Self.bestVideoOnly(usable, cap: cap)
+        let audio = Self.bestAudioOnly(usable)
+        let combined = Self.bestCombined(usable, cap: cap)
+        // A combined stream at the best available resolution avoids a second
+        // transfer and mux. Keep separate streams only when they buy pixels.
+        if let combined,
+           video == nil || (combined.height ?? 0) >= (video?.height ?? 0) { return [combined] }
+        if let video, let audio { return [video, audio] }
+        if let combined { return [combined] }
         if let video { return [video] }
         if let audio { return [audio] }
         return []
     }
 
-    private static func bestVideo(_ formats: [MediaFormat], cap: Int?) -> MediaFormat? {
+    private static func bestVideoOnly(_ formats: [MediaFormat], cap: Int?) -> MediaFormat? {
         formats
-            .filter { $0.hasVideo && (cap == nil || ($0.height ?? 0) <= cap!) }
+            .filter { $0.hasVideo && !$0.hasAudio && (cap == nil || ($0.height ?? 0) <= cap!) }
             .max(by: Self.videoRank)
     }
 
-    private static func bestAudio(_ formats: [MediaFormat]) -> MediaFormat? {
-        let only = formats.filter { $0.hasAudio && !$0.hasVideo }
-        if let best = only.max(by: Self.audioRank) { return best }
-        return formats.filter(\.hasAudio).max(by: Self.audioRank)
+    private static func bestAudioOnly(_ formats: [MediaFormat]) -> MediaFormat? {
+        formats.filter { $0.hasAudio && !$0.hasVideo }.max(by: Self.audioRank)
     }
 
     private static func bestCombined(_ formats: [MediaFormat], cap: Int?) -> MediaFormat? {

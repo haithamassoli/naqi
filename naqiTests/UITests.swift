@@ -60,6 +60,7 @@ struct UITests {
         let ops = try JSONDecoder().decode(FilterOps.self, from: data)
         #expect(ops.censorNsfw == true)
         #expect(ops.solidColor == .blur)
+        #expect(ops.processingMode == .current)
     }
 
     @Test("Last-used options round-trip through UserDefaults")
@@ -78,6 +79,7 @@ struct UITests {
         ops.grayscale = true
         ops.solidColor = .navy
         ops.keepStems = .vocalsAndOther
+        ops.processingMode = .fast
         ops.saveAsLastUsed()
 
         #expect(FilterOps.loadLastUsed() == ops)
@@ -623,6 +625,8 @@ struct UITests {
         .optTitle, .actionBack, .optSectionCensorFaces,
         .optWhoTitle, .optWhoDesc, .optWhoEveryone, .optWhoWomen, .optWhoMen,
         .optWholeFrameTitle, .optWholeFrameDesc,
+        .optPerformanceTitle, .optPerformanceCurrent, .optPerformanceFast,
+        .optPerformanceCurrentDesc, .optPerformanceFastDesc,
         .optNsfwTitle, .optNsfwDesc,
         .optStrictnessTitle, .optStrictnessDesc,
         .optCensorStyleTitle, .optCensorStyleDesc, .optStyleBlur, .optStyleSolid,

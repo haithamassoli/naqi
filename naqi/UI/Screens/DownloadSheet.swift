@@ -41,6 +41,8 @@ struct DownloadSheet: View {
                 qualityRow
                     .padding(.top, Naqi.S.s5)
             }
+            ProcessingModeSection(selection: $ops.processingMode)
+                .padding(.top, Naqi.S.s5)
             SectionHeader(.shareEyebrowFilters)
                 .padding(.top, Naqi.S.s5)
             filters
@@ -55,6 +57,7 @@ struct DownloadSheet: View {
                 ops.removeMusic = initialOps.removeMusic
                 ops.censor = initialOps.censor
                 ops.who = initialOps.who
+                ops.processingMode = initialOps.processingMode
             }
         }
     }

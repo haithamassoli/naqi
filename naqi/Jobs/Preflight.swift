@@ -43,10 +43,6 @@ enum Preflight {
         return status == .authorized || status == .limited ? nil : .photosDenied
     }
 
-    /// Separated audio is held as int16 stereo 44.1 kHz: 176 400 B per second
-    /// of source, ~1.6 GB on a 155-minute film. It scales with **duration**,
-    /// not file size, so it cannot be folded into `tempCopies`.
-    static let pcmBytesPerSecond: Int64 = 176_400
     /// AAC transcode scratch: 192 kbit/s stereo.
     static let aacBytesPerSecond: Int64 = 24_000
 
@@ -63,30 +59,18 @@ enum Preflight {
         return 1                           // one temp + the published copy
     }
 
-    /// The PCM scratch only exists when the separator is **resumable** — being
-    /// resumable is what makes it land `audio.pcm` on disk instead of streaming
-    /// straight into the encoder. That is why the spec's combined row is a bare
-    /// `3x source + 2 GiB`: a combined job is under 30 minutes by construction
-    /// (a longer one dispatches to `segmented`) and never writes the scratch.
-    ///
     /// Every `removeMusic` shape lands the separated track as a standalone
     /// `audio.m4a` **before** it is muxed in, so the encoded track is a real
     /// file that coexists with the output rather than bytes inside it. That is
     /// what makes music-only resumable (`JobRunner`), and it is a term the
     /// budget has to carry: 192 kbit/s over a 155-minute film is ~223 MB.
     ///
-    /// The AAC term used to have a second trigger, for a segmented route that
-    /// transcodes the source's own audio up front. No such route exists here —
-    /// the Apple one copies the track through `Remux.mux` untouched — so the
-    /// flag was charged by a unit test and by nothing else.
+    /// Separation streams directly to that AAC file. There is no duration-sized
+    /// PCM file, so preflight charges only bytes that can actually coexist.
     static func extraScratchBytes(for ops: FilterOps, durationSeconds: Int64,
                                   segmented: Bool) -> Int64 {
-        let resumableAudio = ops.removeMusic
-            && durationSeconds * 1000 >= Checkpoint.longSourceThresholdMs
-        let pcm = (resumableAudio || (segmented && ops.removeMusic))
-            ? durationSeconds * pcmBytesPerSecond : 0
         let aac = ops.removeMusic ? durationSeconds * aacBytesPerSecond : 0
-        return pcm + aac
+        return aac
     }
 
     static func requiredBytes(sourceBytes: Int64, tempCopies: Int64, extraScratch: Int64) -> Int64 {

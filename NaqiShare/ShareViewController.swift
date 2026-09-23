@@ -34,6 +34,10 @@ final class ShareViewController: UIViewController {
         String(localized: "share.quality_480", defaultValue: "480p"),
         String(localized: "share.quality_audio", defaultValue: "Audio only"),
     ])
+    private let processingControl = UISegmentedControl(items: [
+        String(localized: "share.performance_current", defaultValue: "Current"),
+        String(localized: "share.performance_fast", defaultValue: "Fast"),
+    ])
     private let addButton = UIButton(type: .system)
     private let optionsStack = UIStackView()
     private var accepting = false
@@ -54,6 +58,7 @@ final class ShareViewController: UIViewController {
         qualityControl.selectedSegmentIndex = qualityIndex(DownloadQuality.loadLastUsed())
         qualityControl.addTarget(self, action: #selector(qualityChanged), for: .valueChanged)
         qualityControl.isHidden = true
+        processingControl.selectedSegmentIndex = options.processingMode == "fast" ? 1 : 0
 
         label.text = String(localized: "share.options", defaultValue: "Add to Naqi")
         label.textAlignment = .center
@@ -64,6 +69,8 @@ final class ShareViewController: UIViewController {
         optionsStack.axis = .vertical
         optionsStack.spacing = 12
         optionsStack.addArrangedSubview(qualityControl)
+        optionsStack.addArrangedSubview(row(String(localized: "share.performance",
+                                                   defaultValue: "Processing"), processingControl))
         optionsStack.addArrangedSubview(row(String(localized: "share.remove_music",
                                                     defaultValue: "Remove music"), musicSwitch))
         optionsStack.addArrangedSubview(row(String(localized: "share.censor_faces",
@@ -139,7 +146,8 @@ final class ShareViewController: UIViewController {
         var censor = censorSwitch.isOn
         let quality = selectedQuality()
         if quality == .audio { censor = false; if !removeMusic { removeMusic = true } }
-        let options = ShareOptions(removeMusic: removeMusic, censor: censor, who: who)
+        let options = ShareOptions(removeMusic: removeMusic, censor: censor, who: who,
+                                   processingMode: processingControl.selectedSegmentIndex == 1 ? "fast" : "current")
         options.saveAsLastUsed()
         quality.saveAsLastUsed()
         Task { await accept(options: options, quality: quality) }

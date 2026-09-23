@@ -55,6 +55,10 @@ struct AboutScreen: View {
                         }
                     }
                     VStack(alignment: .leading, spacing: 0) {
+                        SectionHeader(.aboutEyebrowFeedback)
+                        FeedbackCard()
+                    }
+                    VStack(alignment: .leading, spacing: 0) {
                         SectionHeader(.aboutEyebrowLicenses)
                         NavigationLink(value: Flow.Step.licenses) {
                             NaqiCard {
@@ -115,6 +119,61 @@ struct AboutScreen: View {
     }
     static var build: Int32 {
         Int32(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "") ?? 0
+    }
+}
+
+/// Opens a pre-filled mail. With no mail account set up the system has nothing
+/// to hand a `mailto:` to and the tap would silently do nothing, so the address
+/// is copied instead and the card says so.
+private struct FeedbackCard: View {
+    static let address = "haitham.b.assoli@gmail.com"
+    @Environment(\.openURL) private var openURL
+    @State private var copied = false
+
+    var body: some View {
+        Button {
+            openURL(Self.url) { accepted in
+                guard !accepted else { return }
+                #if os(macOS)
+                NSPasteboard.general.clearContents()
+                NSPasteboard.general.setString(Self.address, forType: .string)
+                #else
+                UIPasteboard.general.string = Self.address
+                #endif
+                copied = true
+            }
+        } label: {
+            NaqiCard {
+                Text(.aboutFeedbackTitle)
+                    .font(Naqi.F.titleSmall)
+                    .foregroundStyle(Naqi.C.primary)
+                Text(copied ? .aboutFeedbackCopied(Self.address) : .aboutFeedbackDesc)
+                    .font(Naqi.F.bodySmall)
+                    .foregroundStyle(Naqi.C.onSurfaceVariant)
+                    .padding(.top, 2)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    /// Version and OS go in the body so a bug report arrives with the two
+    /// facts that are always asked for first. Nothing else is attached — the
+    /// privacy card promises the app collects nothing, and the user sees and
+    /// can delete this line before sending.
+    static var url: URL {
+        #if os(macOS)
+        let os = "macOS"
+        #else
+        let os = "iOS"
+        #endif
+        var c = URLComponents()
+        c.scheme = "mailto"
+        c.path = address
+        c.queryItems = [
+            URLQueryItem(name: "subject", value: String(localized: .aboutFeedbackSubject)),
+            URLQueryItem(name: "body", value: "\n\n—\nNaqi \(AboutScreen.shortVersion) (\(AboutScreen.build)) · \(os) \(ProcessInfo.processInfo.operatingSystemVersionString)"),
+        ]
+        return c.url!
     }
 }
 

@@ -177,11 +177,16 @@ final class TrackReader {
 
     /// Decoder-native 4:2:0 — no CPU format hop, IOSurface-backed so Core Image
     /// and VideoToolbox can share the buffer (`perf-plan-v4` analyze wall).
-    static func decodedVideo(track: AVAssetTrack) throws -> TrackReader {
-        try TrackReader(track: track, settings: [
+    static func decodedVideo(track: AVAssetTrack, size: CGSize? = nil) throws -> TrackReader {
+        var settings: [String: Any] = [
             kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange,
             kCVPixelBufferIOSurfacePropertiesKey as String: [:],
-        ])
+        ]
+        if let size {
+            settings[kCVPixelBufferWidthKey as String] = Int(size.width)
+            settings[kCVPixelBufferHeightKey as String] = Int(size.height)
+        }
+        return try TrackReader(track: track, settings: settings)
     }
 
     func start() throws {

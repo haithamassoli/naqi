@@ -39,6 +39,7 @@ enum JobRunner {
                     progress: @escaping @Sendable (JobProgress) -> Void = { _ in },
                     stop: @escaping @Sendable () -> Stop? = { nil },
                     forcedSegmentMs: Int64 = 0) async throws -> Completion {
+        let overallStarted = ContinuousClock.now
         // The head of a run is the only place that always executes, including
         // after a relaunch that went straight into a resumed job, so the
         // age-based sweep hangs off it.
@@ -47,8 +48,11 @@ enum JobRunner {
 
         var job = job
         var downloaded: URL?
+        var discardDownloaded = false
+        var resolvedQuality: DownloadQuality?
         if let remote = job.remoteURL {
-            let quality = DownloadQuality.of(job.quality)
+            let quality = DownloadQuality.of(job.quality).resolved(fast: job.ops.processingMode == .fast)
+            resolvedQuality = quality
             if quality == .audio { job.ops.fit(hasVideo: false) }
             let file: URL
             do {
@@ -61,6 +65,7 @@ enum JobRunner {
                     },
                     isCancelled: { stop() != nil })
             } catch DownloadError.cancelled {
+                if stop() == .userCancelled { Downloader.discard(remoteURL: remote) }
                 throw JobStopped(reason: stop() ?? .userCancelled, resumable: true)
             }
             downloaded = file
@@ -74,7 +79,7 @@ enum JobRunner {
                 let published = try await Publish.save(file, named: name, to: dest, folder: folder)
                 Downloader.discard(file)
                 return Completion(output: published, shape: quality == .audio ? .audioOnly : .censorOnly,
-                                  resumed: [], wallMs: 0)
+                                  resumed: [], wallMs: msSince(overallStarted))
             }
         }
 
@@ -89,7 +94,7 @@ enum JobRunner {
         let close = opened.close
         defer {
             close()
-            if let downloaded { Downloader.discard(downloaded) }
+            if discardDownloaded, let downloaded { Downloader.discard(downloaded) }
         }
 
         let src = try await MediaSource.probe(url)
@@ -139,7 +144,9 @@ enum JobRunner {
         // the same link must find the same work directory. File jobs keep the
         // opened URL, which is what a bookmark may have re-resolved to.
         let keyURL = job.remoteURL != nil ? job.source : url
-        let key = Checkpoint.key(source: keyURL, ops: job.ops, forcedSegmentMs: forcedSegmentMs)
+        let key = Checkpoint.key(source: keyURL, ops: job.ops, forcedSegmentMs: forcedSegmentMs,
+                                 quality: resolvedQuality?.rawValue,
+                                 sourceIdentity: downloaded.flatMap(Downloader.sourceIdentity))
         let dir = WorkDir.job(key)
         let ext = shape == .audioOnly ? "m4a" : "mp4"
         let out = dir.appendingPathComponent("out.\(ext)")
@@ -173,7 +180,10 @@ enum JobRunner {
         MemoryFootprint.resetPeak()
         Log.job.info("""
             start \(shape.rawValue, privacy: .public) key=\(key, privacy: .public) \
-            dur=\(durationMs)ms music=\(job.ops.removeMusic) censor=\(job.ops.censor)
+            dur=\(durationMs)ms music=\(job.ops.removeMusic) censor=\(job.ops.censor) \
+            mode=\(job.ops.processingMode.rawValue, privacy: .public) \
+            thermal=\(ProcessInfo.processInfo.thermalState.rawValue) \
+            lowPower=\(ProcessInfo.processInfo.isLowPowerModeEnabled)
             """)
 
         do {
@@ -181,9 +191,14 @@ enum JobRunner {
             case .censorOnly:
                 let edl = try await resolveEdl(src, ops: job.ops, dir: dir, resumed: resumed,
                                                post: post, isCancelled: stopping)
-                _ = try await RenderPass.run(source: src, edl: edl, ops: job.ops, output: out,
-                                             progress: { post(.render, $0) },
-                                             isCancelled: stopping)
+                if try await passthroughIfEligible(src, edl: edl, ops: job.ops,
+                                                   output: out, isCancelled: stopping) {
+                    post(.render, 1)
+                } else {
+                    _ = try await RenderPass.run(source: src, edl: edl, ops: job.ops, output: out,
+                                                 progress: { post(.render, $0) },
+                                                 isCancelled: stopping)
+                }
 
             case .musicOnly:
                 // Separate into the checkpoint and mux, rather than one
@@ -200,18 +215,17 @@ enum JobRunner {
                 // before a full-size passthrough copy runs to completion.
                 if stopping() { throw MediaError.cancelled }
                 post(.mux, 0)
-                try await Remux.mux(video: url, audio: audio, to: out)
+                try await Remux.mux(video: url, audio: audio, to: out, isCancelled: stopping)
                 post(.mux, 1)
 
             case .audioOnly:
-                // The separated track *is* the product here, so there is
-                // nothing to mux it into and no second file to checkpoint
-                // against — the output would be a byte-for-byte copy of it.
-                _ = try await AudioPipeline.removeMusic(src, to: out, keepStems: job.ops.keepStems,
-                                                        includeVideo: false,
-                                                        progress: { post(.separate, $0) },
-                                                        isCancelled: stopping)
-                post(.separate, 1)
+                let audio = dir.appendingPathComponent(Checkpoint.audioTrackName)
+                try await separateOnce(src, ops: job.ops, to: audio,
+                                       resumed: resumed, post: post, isCancelled: stopping)
+                // A hard link gives Publish its movable output name without a
+                // second physical audio copy. The checkpoint remains if
+                // publishing fails; filesystems without hard links fall back.
+                try linkOrCopy(audio, to: out)
 
             case .combined:
                 let audio = dir.appendingPathComponent(Checkpoint.audioTrackName)
@@ -220,10 +234,16 @@ enum JobRunner {
                 // Render *is* the mux here: the separated track is copied in
                 // compressed while the picture is encoded, so there is no
                 // second full-size pass the way Android's `mux.mp4` was.
-                _ = try await RenderPass.run(source: src, edl: edl, ops: job.ops, output: out,
-                                             replacedAudio: audio,
-                                             progress: { post(.render, $0) },
-                                             isCancelled: stopping)
+                if try await passthroughIfEligible(src, edl: edl, ops: job.ops,
+                                                   output: out, replacedAudio: audio,
+                                                   isCancelled: stopping) {
+                    post(.render, 1)
+                } else {
+                    _ = try await RenderPass.run(source: src, edl: edl, ops: job.ops, output: out,
+                                                 replacedAudio: audio,
+                                                 progress: { post(.render, $0) },
+                                                 isCancelled: stopping)
+                }
                 post(.mux, 1)
 
             case .segmented:
@@ -237,11 +257,19 @@ enum JobRunner {
                 // not concatenate — so the whole picture is joined first and
                 // given one continuous track: the separated one when music was
                 // removed, the source's own when it was not.
-                try await renderSegments(src, ops: job.ops, edl: edl, plan: plan,
-                                         dir: dir, output: out,
-                                         audio: job.ops.removeMusic ? audio
-                                             : (src.audio != nil ? url : nil),
-                                         resumed: resumed, post: post, isCancelled: stopping)
+                let replacement = job.ops.removeMusic ? audio : nil
+                if try await passthroughIfEligible(src, edl: edl, ops: job.ops,
+                                                   output: out, replacedAudio: replacement,
+                                                   isCancelled: stopping) {
+                    post(.render, 1)
+                    post(.concat, 1)
+                } else {
+                    try await renderSegments(src, ops: job.ops, edl: edl, plan: plan,
+                                             dir: dir, output: out,
+                                             audio: job.ops.removeMusic ? audio
+                                                 : (src.audio != nil ? url : nil),
+                                             resumed: resumed, post: post, isCancelled: stopping)
+                }
             }
 
             if stopping() { throw MediaError.cancelled }
@@ -258,10 +286,12 @@ enum JobRunner {
             // Success takes the whole directory: the checkpoints only exist to
             // survive an interruption, and this run had none.
             WorkDir.clear(key)
+            discardDownloaded = true
 
-            let wall = msSince(started)
+            let processingWall = msSince(started)
+            let wall = msSince(overallStarted)
             MemoryFootprint.logPeak(shape.rawValue)
-            stage.stop("\(shape.rawValue) \(Int(wall))ms resumed=\(resumed.withLock { $0.count })")
+            stage.stop("\(shape.rawValue) processing=\(Int(processingWall))ms overall=\(Int(wall))ms resumed=\(resumed.withLock { $0.count })")
             return Completion(output: published, shape: shape,
                               resumed: resumed.withLock { $0 }, wallMs: wall)
 
@@ -270,6 +300,7 @@ enum JobRunner {
             // user cancel.
             try? FileManager.default.removeItem(at: out)
             let reason = stop()
+            if reason == .userCancelled { discardDownloaded = true }
             let resumable = reason != .userCancelled && hasResumableWork(dir: dir)
             if !resumable { WorkDir.clear(key) }
             stage.stop("\(shape.rawValue) stopped")
@@ -301,6 +332,34 @@ enum JobRunner {
         for name in [Checkpoint.analysisName, Checkpoint.audioTrackName, Checkpoint.concatName]
         where fm.fileExists(atPath: dir.appendingPathComponent(name).path) { return true }
         return Checkpoint.hasRenderedSegments(dir: dir)
+    }
+
+    /// Empty finalized EDLs and explicit visual no-ops keep compressed video.
+    /// Fast may use this too when the source is already at or below its cap.
+    private static func passthroughIfEligible(_ src: MediaSource, edl: Edl, ops: FilterOps,
+                                              output: URL, replacedAudio: URL? = nil,
+                                              isCancelled: @escaping @Sendable () -> Bool) async throws -> Bool {
+        guard let video = src.video, video.isHDR == false,
+              edl.isEmpty || ops.visualEffectIsNoop,
+              video.capped(shortSide: ops.processingMode.outputShortSideCap).naturalSize == video.naturalSize
+        else { return false }
+        do {
+            if let replacedAudio {
+                try await Remux.mux(video: src.url, audio: replacedAudio, to: output,
+                                    isCancelled: isCancelled)
+            } else {
+                try await Remux.passthrough(source: src.url, to: output,
+                                            isCancelled: isCancelled)
+            }
+            Log.render.info("compressed video passthrough: finalized EDL has no visual effect")
+            return true
+        } catch MediaError.cancelled {
+            throw MediaError.cancelled
+        } catch {
+            Log.render.notice("passthrough unavailable; encoding instead: \(error.localizedDescription, privacy: .public)")
+            try? FileManager.default.removeItem(at: output)
+            return false
+        }
     }
 
     // MARK: - Branches
@@ -339,16 +398,15 @@ enum JobRunner {
                 }
             }
             if cached == nil {
-                // … and the video branch takes `.utility`, which biases it onto
-                // the E-cores so it *cannot* steal a P-core from ORT. Android
-                // measured 47 % of an expected saving eaten by exactly this
-                // contention, with no way to arbitrate it. The video branch
-                // getting slower is free.
+                // … and the video branch takes `.utility`. Priority is only a
+                // scheduling hint, so the combined workload still needs device
+                // traces; it does not promise a particular core assignment.
                 group.addTask(priority: .utility) {
                     post(.analyze, 0)
                     let r = try await AnalyzePass.run(src, ops: ops,
                                                       progress: { post(.analyze, $0) },
                                                       isCancelled: aborted).edl
+                    try Checkpoint.writeEdl(r, dir: dir)
                     edl.withLock { $0 = r }
                     post(.analyze, 1)
                 }
@@ -373,8 +431,13 @@ enum JobRunner {
         // share is closed here rather than left to arithmetic, and a fresh run's
         // bar matches a resumed one's exactly.
         post(.separate, 1)
-        try Checkpoint.writeEdl(result, dir: dir)
         return result
+    }
+
+    private static func linkOrCopy(_ source: URL, to output: URL) throws {
+        try? FileManager.default.removeItem(at: output)
+        do { try FileManager.default.linkItem(at: source, to: output) }
+        catch { try FileManager.default.copyItem(at: source, to: output) }
     }
 
     private static func resolveEdl(_ src: MediaSource, ops: FilterOps, dir: URL,
@@ -423,6 +486,7 @@ enum JobRunner {
         let fm = FileManager.default
         let joined = dir.appendingPathComponent(Checkpoint.concatName)
         let count = Double(plan.count)
+        let renderContext = try RenderPass.Context(source: src, ops: ops)
 
         if fm.fileExists(atPath: joined.path) {
             // The concat supersedes the segments it was built from, so finding
@@ -452,6 +516,7 @@ enum JobRunner {
                 _ = try await RenderPass.run(
                     source: src, edl: edl, ops: ops, output: part,
                     range: seg.startMs...seg.endMs,
+                    context: renderContext,
                     progress: { post(.render, (Double(seg.index) + $0) / count) },
                     isCancelled: isCancelled)
                 try? fm.removeItem(at: url)
@@ -464,7 +529,7 @@ enum JobRunner {
             let part = dir.appendingPathComponent(Checkpoint.concatPartName)
             try? fm.removeItem(at: part)
             try await Remux.concat(plan.map { Checkpoint.segmentURL(dir, segment: $0.index) },
-                                   to: part)
+                                   to: part, isCancelled: isCancelled)
             try? fm.removeItem(at: joined)
             try fm.moveItem(at: part, to: joined)
             // Dead weight the moment the concat exists, and dropping them is
@@ -474,13 +539,12 @@ enum JobRunner {
         }
 
         post(.concat, 0.5)
-        // `Remux` has no cancel hook and this mux is a full-size passthrough
-        // copy of a film, so without a stop point here a cancel pressed during
-        // the concat is not acted on until minutes later — the same check, for
-        // the same reason, as the one before `.musicOnly`'s mux.
+        // Keep the checkpoint boundary explicit even though Remux now observes
+        // cancellation while exporting.
         if isCancelled() { throw MediaError.cancelled }
         if let audio {
-            try await Remux.mux(video: joined, audio: audio, to: output)
+            try await Remux.mux(video: joined, audio: audio, to: output,
+                                isCancelled: isCancelled)
             // `joined` is deliberately left in place: it is the checkpoint a
             // failed publish resumes from, and it and `output` are the same two
             // temps the mux just had open.
@@ -525,21 +589,6 @@ enum JobRunner {
                                  isCancelled: @escaping @Sendable () -> Bool) async throws {
         let part = url.appendingPathExtension("part")
         try? FileManager.default.removeItem(at: part)
-        // htdemucs is the whole memory budget and then some: a music-only job
-        // on a 12.8 s clip measured a **1629 MB** peak against the PRD's
-        // 1536 MB, sampled at `mux` and `publish` — i.e. *after* separation
-        // finished, so that is retention, not working set. ORT's CPU arena
-        // cannot be disabled through the ObjC API (hazard 9), so dropping the
-        // session is the only way to give the pages back.
-        //
-        // `m0-results.md` already claimed "`evict(_:)` exists so the arena is
-        // released once a job ends" — it was never wired up, and the doc read
-        // as if it had been.
-        //
-        // On `defer`, so a cancelled or failed music job does not strand
-        // 1.6 GB either. Safe in the both-ops path where analyze runs
-        // concurrently: that pass holds nsfw and genderage, not this graph.
-        defer { ModelRegistry.evict(Models.Demucs.file) }
         _ = try await AudioPipeline.removeMusic(src, to: part, keepStems: ops.keepStems,
                                                 includeVideo: includeVideo,
                                                 progress: progress, isCancelled: isCancelled)

@@ -12,6 +12,19 @@ import os
 /// become the pacer itself.
 enum RenderPass {
 
+    /// Job-scoped render state. Segmented jobs reuse this so Core Image keeps
+    /// its compiled kernels and Fast mode resolves geometry exactly once.
+    final class Context: @unchecked Sendable {
+        let video: MediaSource.VideoInfo
+        let effect: CensorEffect
+
+        init(source: MediaSource, ops: FilterOps) throws {
+            guard let input = source.video else { throw MediaError.noVideoTrack }
+            video = input.capped(shortSide: ops.processingMode.outputShortSideCap)
+            effect = CensorEffect(ops: ops, transform: video.transform, tonemapHDR: input.isHDR)
+        }
+    }
+
     struct Result: Sendable {
         let frames: Int
         /// Frames that actually went through Core Image. The rest went to the
@@ -54,9 +67,11 @@ enum RenderPass {
                     output: URL,
                     replacedAudio: URL? = nil,
                     range: ClosedRange<Int64>? = nil,
+                    context suppliedContext: Context? = nil,
                     progress: (@Sendable (Double) -> Void)? = nil,
                     isCancelled: @escaping @Sendable () -> Bool = { false }) async throws -> Result {
-        guard let v = source.video else { throw MediaError.noVideoTrack }
+        let context = try suppliedContext ?? Context(source: source, ops: ops)
+        let v = context.video
         let asset = AVURLAsset(url: source.url, options: [
             AVURLAssetPreferPreciseDurationAndTimingKey: true,
         ])
@@ -98,7 +113,7 @@ enum RenderPass {
         }
         try writer.start()
 
-        let effect = CensorEffect(ops: ops, transform: v.transform, tonemapHDR: v.isHDR)
+        let effect = context.effect
         Log.render.info("""
             render \(Int(v.naturalSize.width))x\(Int(v.naturalSize.height)) \
             rot=\(v.transform.rotationDegrees) hdr=\(v.isHDR) \
@@ -174,7 +189,7 @@ enum RenderPass {
         guard let input = writer.videoInput, let adaptor = writer.pixelAdaptor else {
             throw MediaError.writerFailed("video input not configured")
         }
-        let reader = try TrackReader.decodedVideo(track: track)
+        let reader = try TrackReader.decodedVideo(track: track, size: effect.outputSize)
         if let range {
             let from = max(0, range.lowerBound - readerGuardMs)
             reader.reader.timeRange = CMTimeRange(

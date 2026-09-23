@@ -33,6 +33,20 @@ struct VideoTransform: Sendable, Equatable {
         VideoTransform(preferredTransform: .identity, naturalSize: size)
     }
 
+    /// Same orientation at a different stored size. Normalizing the linear
+    /// transform's bounds recalculates the translation used by 90/180/270°
+    /// tracks instead of carrying the source dimensions into the output.
+    func resized(to size: CGSize) -> VideoTransform {
+        let linear = CGAffineTransform(a: toUpright.a, b: toUpright.b,
+                                       c: toUpright.c, d: toUpright.d,
+                                       tx: 0, ty: 0)
+        let bounds = CGRect(origin: .zero, size: size).applying(linear).standardized
+        let normalized = CGAffineTransform(a: linear.a, b: linear.b,
+                                           c: linear.c, d: linear.d,
+                                           tx: -bounds.minX, ty: -bounds.minY)
+        return VideoTransform(preferredTransform: normalized, naturalSize: size)
+    }
+
     /// Rotation the source declares, normalised to 0/90/180/270 degrees.
     var rotationDegrees: Int {
         let deg = atan2(toUpright.b, toUpright.a) * 180 / .pi

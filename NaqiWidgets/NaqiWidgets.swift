@@ -32,8 +32,7 @@ struct NaqiJobActivity: Widget {
                 }
                 DynamicIslandExpandedRegion(.trailing) {
                     Text(look.percent)
-                        .font(.title2.weight(.semibold).monospacedDigit())
-                        .fontDesign(.rounded)
+                        .font(.custom("thmanyahsans-Bold", size: 22, relativeTo: .title2))
                         .foregroundStyle(look.tint)
                         .contentTransition(.numericText(value: look.fraction))
                         .frame(maxHeight: .infinity)
@@ -42,7 +41,7 @@ struct NaqiJobActivity: Widget {
                 DynamicIslandExpandedRegion(.bottom) {
                     VStack(alignment: .leading, spacing: 6) {
                         Text(look.title)
-                            .font(.headline)
+                            .font(.custom("thmanyahsans-Bold", size: 17, relativeTo: .headline))
                             .lineLimit(1)
                         Captions(look: look)
                         Bar(look: look).padding(.top, 2)
@@ -54,8 +53,7 @@ struct NaqiJobActivity: Widget {
                 Ring(look: look, size: 22)
             } compactTrailing: {
                 Text(look.percent)
-                    .font(.caption.weight(.semibold).monospacedDigit())
-                    .fontDesign(.rounded)
+                    .font(.custom("thmanyahsans-Bold", size: 12, relativeTo: .caption))
                     .foregroundStyle(look.tint)
                     .contentTransition(.numericText(value: look.fraction))
             } minimal: {
@@ -121,15 +119,14 @@ private struct LockScreenView: View {
                 Ring(look: look, size: 44)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(look.title)
-                        .font(.headline)
+                        .font(.custom("thmanyahsans-Bold", size: 17, relativeTo: .headline))
                         .lineLimit(1)
                     Captions(look: look, stacked: true)
                 }
                 Spacer(minLength: 8)
                 if look.phase != .done {
                     Text(look.percent)
-                        .font(.title2.weight(.semibold).monospacedDigit())
-                        .fontDesign(.rounded)
+                        .font(.custom("thmanyahsans-Bold", size: 22, relativeTo: .title2))
                         .foregroundStyle(look.tint)
                         .contentTransition(.numericText(value: look.fraction))
                 }
@@ -157,14 +154,15 @@ private struct Captions: View {
             if !look.caption.isEmpty {
                 Text(look.caption)
                     .foregroundStyle(look.phase == .running ? Brand.paper.opacity(0.7) : look.tint)
-                    .fontWeight(look.phase == .running ? .regular : .semibold)
+                    .font(.custom(look.phase == .running ? "thmanyahsans-Regular" : "thmanyahsans-Bold",
+                                  size: 13, relativeTo: .footnote))
             }
             if look.phase == .running && !stacked { Spacer(minLength: 0) }
             if !look.detail.isEmpty {
                 Text(look.detail).foregroundStyle(Brand.paper.opacity(0.7))
             }
         }
-        .font(.footnote)
+        .font(.custom("thmanyahsans-Regular", size: 13, relativeTo: .footnote))
         .lineLimit(look.phase == .failed ? 2 : 1)
     }
 }

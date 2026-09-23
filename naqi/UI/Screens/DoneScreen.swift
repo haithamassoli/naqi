@@ -147,7 +147,6 @@ struct DoneScreen: View {
             if let name = outputName {
                 Text(name)
                     .font(Naqi.F.bodySmall)
-                    .monospaced()
                     .foregroundStyle(Naqi.C.onSurfaceVariant)
                     .lineLimit(1)
                     .truncationMode(.middle)

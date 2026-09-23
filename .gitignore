@@ -23,5 +23,5 @@ naqi/Resources/Models/
 naqiTests/Fixtures/
 
 # Thmanyah Sans: the licence allows embedding in the app but forbids hosting the
-# font files, and this repo is public. Copy regular/medium/bold .otf here locally.
-naqi/Resources/Fonts/
+# font files, and this repo is public. Copy regular/medium/bold .otf into NaqiShared/Fonts locally.
+NaqiShared/Fonts/

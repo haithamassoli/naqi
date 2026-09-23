@@ -398,11 +398,13 @@ private enum Brand {
     static let surfaceContainerHighest = dyn(0xE0E7E2, 0x2D3935)
     static let outlineVariant = dyn(0xBFC9C3, 0x3F4A45)
 
-    /// `Naqi.F` slots: a system text style at a weight, so Dynamic Type holds.
+    /// `Naqi.F` slots: Thmanyah Sans at a system text style's size, so Dynamic Type holds.
     static func font(_ style: UIFont.TextStyle, _ weight: UIFont.Weight) -> UIFont {
         let base = UIFont.preferredFont(forTextStyle: style)
-        return UIFontMetrics(forTextStyle: style)
-            .scaledFont(for: .systemFont(ofSize: base.pointSize, weight: weight))
+        let name = weight == .bold ? "Bold" : weight == .medium ? "Medium" : "Regular"
+        let font = UIFont(name: "thmanyahsans-\(name)", size: base.pointSize)
+            ?? .systemFont(ofSize: base.pointSize, weight: weight)
+        return UIFontMetrics(forTextStyle: style).scaledFont(for: font)
     }
 
     /// The app's segmented pickers: jade selection on the container grey.

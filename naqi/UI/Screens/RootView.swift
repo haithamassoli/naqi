@@ -46,6 +46,7 @@ struct RootView: View {
             Task { await Downloader.updateIfDue() }
             await JobQueue.shared.continueInForeground()
             if !loadedResumable {
+                await JobQueue.shared.sweepStorage()
                 await flow.loadResumable()
                 loadedResumable = true
             }

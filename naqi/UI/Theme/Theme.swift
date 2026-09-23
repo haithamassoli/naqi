@@ -1,3 +1,4 @@
+import CoreText
 import SwiftUI
 
 /// The Naqi design language, ported from Android `ui/theme/`.
@@ -54,31 +55,43 @@ enum Naqi {
 
     // MARK: Typography
 
-    /// Android's type scale (`ui/theme/Type.kt`) mapped onto the nearest system
-    /// text style, so every slot scales with Dynamic Type — the `sp` units the
-    /// Android scale is written in have no Apple equivalent that does not.
-    ///
-    /// Thmanyah Sans is deliberately not bundled: SF Pro / SF Arabic already
-    /// covers both scripts and both digit sets, and a bundled family would cost
-    /// binary size to lose optical sizing on Arabic. The Android scale has no
-    /// 600 weight, so every "SemiBold" slot resolves to `.bold`.
+    /// Android's type scale (`ui/theme/Type.kt`) set in Thmanyah Sans, the
+    /// website's face, at the default size of the nearest system text style so
+    /// every slot scales with Dynamic Type. Title slots carry the site's
+    /// `h1…h6 { font-feature-settings: "salt" 1 }`. The Android scale has no
+    /// 600 weight, so every "SemiBold" slot resolves to Bold.
     enum F {
         /// displaySmall 36 — the Arabic wordmark only.
-        static let display = Font.system(.largeTitle, weight: .bold)
+        static let display = heading("Bold", 34)
         /// titleLarge 22 — top-bar / screen titles.
-        static let titleLarge = Font.system(.title2, weight: .bold)
+        static let titleLarge = heading("Bold", 22)
         /// titleMedium 16 — section header, pick-card title, progress stage.
-        static let titleMedium = Font.system(.body, weight: .medium)
+        static let titleMedium = heading("Medium", 17)
         /// titleSmall 14 — every card row title.
-        static let titleSmall = Font.system(.subheadline, weight: .medium)
+        static let titleSmall = heading("Medium", 15)
         /// bodyMedium 14 — failure sentence, dialog body.
-        static let bodyMedium = Font.system(.subheadline)
+        static let bodyMedium = Font.custom("thmanyahsans-Regular", size: 15, relativeTo: .subheadline)
         /// bodySmall 12 — every row description, ETA lines, note lines.
-        static let bodySmall = Font.system(.footnote)
+        static let bodySmall = Font.custom("thmanyahsans-Regular", size: 13, relativeTo: .footnote)
         /// labelLarge 14 — primary button label.
-        static let labelLarge = Font.system(.subheadline, weight: .bold)
+        static let labelLarge = Font.custom("thmanyahsans-Bold", size: 15, relativeTo: .subheadline)
         /// labelMedium 12 — trust-seal text, slider value pill.
-        static let labelMedium = Font.system(.caption, weight: .medium)
+        static let labelMedium = Font.custom("thmanyahsans-Medium", size: 12, relativeTo: .caption)
+
+        /// SwiftUI has no OpenType-feature API, so `salt` goes in through CoreText.
+        // ponytail: Dynamic Type is read once at launch (body-relative), so a text-size
+        // change applies on next launch; move to a view modifier reading dynamicTypeSize if that matters.
+        private static func heading(_ weight: String, _ size: CGFloat) -> Font {
+            #if os(iOS)
+            let size = UIFontMetrics.default.scaledValue(for: size)
+            #endif
+            let salt = [kCTFontOpenTypeFeatureTag: "salt", kCTFontOpenTypeFeatureValue: 1] as [CFString: Any]
+            let desc = CTFontDescriptorCreateWithAttributes([
+                kCTFontNameAttribute: "thmanyahsans-\(weight)",
+                kCTFontFeatureSettingsAttribute: [salt],
+            ] as CFDictionary)
+            return Font(CTFontCreateWithFontDescriptor(desc, size, nil))
+        }
         /// The two label slots carry a wide 0.8 tracking override.
         static let labelTracking: CGFloat = 0.8
     }

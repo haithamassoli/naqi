@@ -961,6 +961,40 @@
         }
       }
     },
+    "done_copy_delete" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "احذف النسخة الآن"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Delete copy now"
+          }
+        }
+      }
+    },
+    "done_copy_note" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "توجد نسخة من هذا الفيديو داخل نقي أيضًا (%@). تُحذف تلقائيًا بعد 7 أيام، ويبقى الفيديو في الصور."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A copy of this video is also kept in Naqi (%@). It's deleted automatically after 7 days; the video stays in Photos."
+          }
+        }
+      }
+    },
     "done_title" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3406,6 +3440,125 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "These are the defaults for new videos, including ones shared into Naqi."
+          }
+        }
+      }
+    },
+    "settings_storage_copies" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "نسخ من فيديوهات محفوظة في الصور"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Copies of videos in Photos"
+          }
+        }
+      }
+    },
+    "settings_storage_copies_desc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "تبقى الفيديوهات في الصور، وتُحذف النسخ تلقائيًا بعد 7 أيام."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The videos stay in Photos. Copies are deleted automatically after 7 days."
+          }
+        }
+      }
+    },
+    "settings_storage_only" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ملفات موجودة في نقي فقط"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Files only in Naqi"
+          }
+        }
+      }
+    },
+    "settings_storage_only_desc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "لا توجد نسخة أخرى منها. احذفها من مجلد نقي إذا لم تعد تحتاجها."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No other copy exists. Delete them from Naqi's folder when you no longer need them."
+          }
+        }
+      }
+    },
+    "settings_storage_temp" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ملفات مؤقتة"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Temporary files"
+          }
+        }
+      }
+    },
+    "settings_storage_temp_desc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "أعمال غير مكتملة وتنزيلات. يمكن حذفها عندما لا يُفلتر أي فيديو."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Unfinished work and downloads. Can be deleted when no video is being filtered."
+          }
+        }
+      }
+    },
+    "settings_storage_title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "التخزين"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Storage"
           }
         }
       }

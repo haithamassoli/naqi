@@ -206,6 +206,119 @@ actor JobQueue {
         remove(id)
     }
 
+    // MARK: Storage
+
+    /// How long a finished video's in-app copy outlives its twin in Photos.
+    static let copyLifetime: TimeInterval = 7 * 24 * 60 * 60
+
+    /// What Settings › Storage shows.
+    struct StorageUse: Sendable, Equatable {
+        /// In-app copies of videos that are also in Photos. Safe to delete.
+        var copies: Int64 = 0
+        /// Checkpoints, downloads and shared-in inputs.
+        var temporary: Int64 = 0
+        /// Everything else in `OutputLibrary`: audio, Photos refusals, files
+        /// from before this existed. The user's only copy, so never swept.
+        var onlyCopies: Int64 = 0
+    }
+
+    /// In-app files that are a second copy of a video already in Photos.
+    private var spareCopies: [URL] {
+        jobs.compactMap {
+            guard case .done(let p) = $0.state, p.assetID != nil, let url = p.url,
+                  OutputLibrary.owns(url) else { return nil }
+            return url
+        }
+    }
+
+    /// Inputs a row may still run on. Cancelled and failed rows count, since
+    /// both can be retried.
+    private var neededInputs: Set<String> {
+        Set(jobs.filter { if case .done = $0.state { false } else { true } }
+            .map { $0.source.resolvingSymlinksInPath().path })
+    }
+
+    /// A shared-in file or a Photos pick's transfer copy: bytes the app made
+    /// for itself. A file picked in place is the user's and never matches.
+    private static func isOwnCopy(_ url: URL) -> Bool {
+        let path = url.resolvingSymlinksInPath().path
+        return [ShareInbox.adoptedRoot, FileManager.default.temporaryDirectory].contains {
+            path.hasPrefix($0.resolvingSymlinksInPath().path + "/")
+        }
+    }
+
+    private func discardInput(_ url: URL) {
+        guard Self.isOwnCopy(url), !neededInputs.contains(url.resolvingSymlinksInPath().path) else { return }
+        try? FileManager.default.removeItem(at: url)
+    }
+
+    /// Once per launch, before the first share drain. Drops Photos twins past
+    /// `copyLifetime`, and shared-in inputs no row needs — which also collects
+    /// the ones builds before `discardInput` left behind. Never mid-drain: an
+    /// adopted share is on disk a moment before its row is enqueued.
+    func sweepStorage() {
+        dropExpiredCopies()
+        let needed = neededInputs
+        for f in (try? FileManager.default.contentsOfDirectory(
+            at: ShareInbox.adoptedRoot, includingPropertiesForKeys: nil)) ?? []
+        where !needed.contains(f.resolvingSymlinksInPath().path) {
+            try? FileManager.default.removeItem(at: f)
+        }
+    }
+
+    func dropExpiredCopies(now: Date = .now) {
+        for url in spareCopies {
+            let age = (try? url.resourceValues(forKeys: [.contentModificationDateKey]))?
+                .contentModificationDate.map { now.timeIntervalSince($0) } ?? 0
+            if age > Self.copyLifetime { OutputLibrary.remove(url) }
+        }
+    }
+
+    func storageUse() -> StorageUse {
+        let copies = spareCopies.reduce(0) { $0 + Self.bytes($1) }
+        return StorageUse(
+            copies: copies,
+            temporary: [WorkDir.root, Downloader.root, ShareInbox.adoptedRoot].reduce(0) { $0 + Self.bytes($1) },
+            onlyCopies: max(0, Self.bytes(OutputLibrary.root) - copies))
+    }
+
+    func clearCopies() {
+        spareCopies.forEach(OutputLibrary.remove)
+    }
+
+    /// Refused while a job is queued or running: its checkpoints are in here.
+    /// A failed row restarts from zero.
+    var canClearTemporary: Bool { !jobs.contains { !$0.state.isTerminal } }
+
+    /// Checkpoints and downloads only. Shared-in inputs are left to
+    /// `sweepStorage`, which cannot race a drain.
+    func clearTemporary() {
+        guard canClearTemporary else { return }
+        for root in [WorkDir.root, Downloader.root] {
+            for f in (try? FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: nil)) ?? [] {
+                try? FileManager.default.removeItem(at: f)
+            }
+        }
+    }
+
+    /// Allocated bytes, file or tree.
+    private static func bytes(_ url: URL) -> Int64 {
+        let keys: Set<URLResourceKey> = [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey]
+        func size(_ u: URL) -> Int64 {
+            // A row's URL is the same instance every call, and URL caches
+            // resource values: without this a deleted copy still weighs in.
+            var u = u
+            u.removeAllCachedResourceValues()
+            let v = try? u.resourceValues(forKeys: keys)
+            return Int64(v?.totalFileAllocatedSize ?? v?.fileAllocatedSize ?? 0)
+        }
+        guard let walker = FileManager.default.enumerator(at: url, includingPropertiesForKeys: Array(keys))
+        else { return size(url) }
+        var total = size(url)
+        while let f = walker.nextObject() as? URL { total += size(f) }
+        return total
+    }
+
     // MARK: Observation
 
     func observe() -> AsyncStream<Snapshot> {
@@ -261,6 +374,7 @@ actor JobQueue {
                 progress: { [weak self] p in Task { await self?.report(job.id, p) } },
                 stop: { flag.withLock { $0 } ?? (Lifecycle.shared.isInterrupted ? .interrupted : nil) })
             update(job.id) { $0.state = .done(done.output) }
+            discardInput(job.source)
             Log.job.info("""
                 done \(done.shape.rawValue, privacy: .public) in \(Int(done.wallMs))ms \
                 resumed=\(done.resumed.map(\.rawValue).sorted().joined(separator: ","), privacy: .public)

@@ -47,6 +47,7 @@ struct SettingsScreen: View {
                     // would grey Photos out for every future video because the
                     // last pick happened to be an MP3.
                     DestinationSection(flow: flow)
+                    StorageSection(monitor: flow.monitor)
                 }
             }
             .padding(.horizontal, Naqi.S.gutter)
@@ -89,5 +90,73 @@ struct SettingsScreen: View {
                            isOn: $flow.ops.censor)
             }
         }
+    }
+}
+
+/// What the app is holding on disk, so the space it takes is never a surprise.
+/// Re-measured on appear and after every delete.
+private struct StorageSection: View {
+    let monitor: JobMonitor
+
+    @State private var use: JobQueue.StorageUse?
+    @State private var canClearTemporary = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            SectionHeader(.settingsStorageTitle)
+            NaqiCard(padding: 0) {
+                row(.settingsStorageCopies, .settingsStorageCopiesDesc, bytes: use?.copies,
+                    enabled: true) { await monitor.clearCopies() }
+                NaqiRowDivider()
+                row(.settingsStorageTemp, .settingsStorageTempDesc, bytes: use?.temporary,
+                    enabled: canClearTemporary) { await monitor.clearTemporary() }
+                NaqiRowDivider()
+                row(.settingsStorageOnly, .settingsStorageOnlyDesc, bytes: use?.onlyCopies, clear: nil)
+            }
+        }
+        .task { await refresh() }
+    }
+
+    private func refresh() async {
+        use = await monitor.storageUse()
+        canClearTemporary = await monitor.canClearTemporary()
+    }
+
+    private func row(_ title: LocalizedStringResource, _ desc: LocalizedStringResource,
+                     bytes: Int64?, enabled: Bool = false,
+                     clear: (() async -> Void)?) -> some View {
+        HStack(spacing: Naqi.S.s3) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(Naqi.F.titleSmall)
+                    .foregroundStyle(Naqi.C.onSurface)
+                Text(desc)
+                    .font(Naqi.F.bodySmall)
+                    .foregroundStyle(Naqi.C.onSurfaceVariant)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let bytes {
+                    Text(fileSizeText(bytes: bytes))
+                        .font(Naqi.F.bodySmall)
+                        .monospacedDigit()
+                        .foregroundStyle(Naqi.C.primary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            if let clear, let bytes, bytes > 0 {
+                Button {
+                    Task {
+                        await clear()
+                        await refresh()
+                    }
+                } label: {
+                    Text(.actionDelete).font(Naqi.F.labelLarge).padding(.horizontal, Naqi.S.s3)
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(NaqiOutlineButtonStyle())
+                .disabled(!enabled)
+                .opacity(enabled ? 1 : 0.4)
+            }
+        }
+        .padding(Naqi.S.s4)
     }
 }

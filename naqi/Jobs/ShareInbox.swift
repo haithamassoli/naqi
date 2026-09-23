@@ -138,11 +138,16 @@ enum ShareInbox {
             .map { dir.appendingPathComponent($0) }
     }
 
+    /// Where adopted shares wait for their job. `JobQueue` deletes each one
+    /// once no row needs it.
+    static var adoptedRoot: URL {
+        WorkDir.root.deletingLastPathComponent().appendingPathComponent("naqi-shared", isDirectory: true)
+    }
+
     /// Shared container → app-owned scratch. Falls back to the shared copy if
     /// the move fails, so a share never silently disappears.
     private static func adopt(_ media: URL, named name: String) -> URL {
-        var dir = WorkDir.root.deletingLastPathComponent()
-            .appendingPathComponent("naqi-shared", isDirectory: true)
+        var dir = adoptedRoot
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         // A shared-in film is gigabytes of someone else's video sitting in our
         // container; it has no business in a cloud backup. Sibling of the work

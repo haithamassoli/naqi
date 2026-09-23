@@ -21,6 +21,8 @@ struct DoneScreen: View {
     /// refused, or an identifier that no longer resolves. Play is withdrawn
     /// rather than left as a button that opens an empty sheet.
     @State private var libraryRefused = false
+    /// Flips once the in-app copy is gone, so the screen re-reads the disk.
+    @State private var copyDropped = false
 
     /// The check tile tracks the title beside it: a 36 pt circle left at 36 pt
     /// next to a 50 pt title crushes the two lines it is there to introduce.
@@ -40,6 +42,15 @@ struct DoneScreen: View {
     /// asset the library has not already refused.
     private var canOpen: Bool {
         flow.monitor.output != nil || (assetID != nil && !libraryRefused)
+    }
+
+    /// The in-app twin of a video that also went into Photos, while it is
+    /// still on disk. Deleting it costs Share and Save; Play falls back to
+    /// the library.
+    private var spareCopy: URL? {
+        guard assetID != nil, !copyDropped, let url = flow.monitor.output,
+              OutputLibrary.owns(url) else { return nil }
+        return url
     }
 
     /// Only offered when there is something we can actually delete: a photo
@@ -73,6 +84,7 @@ struct DoneScreen: View {
                 ReadableColumn {
                     VStack(alignment: .leading, spacing: Naqi.S.s5) {
                         savedCard
+                        if let spareCopy { copyCard(spareCopy) }
                         if canDeleteOriginal { deleteRow }
                         if let deleteResult {
                             Text(deleteResult)
@@ -187,6 +199,28 @@ struct DoneScreen: View {
                 }
                 .padding(.top, Naqi.S.s4)
             }
+        }
+    }
+
+    private func copyCard(_ url: URL) -> some View {
+        let bytes = Int64((try? url.resourceValues(forKeys: [.fileSizeKey]))?.fileSize ?? 0)
+        return NaqiCard {
+            Text(.doneCopyNote(String(localized: fileSizeText(bytes: bytes))))
+                .font(Naqi.F.bodySmall)
+                .foregroundStyle(Naqi.C.onSurfaceVariant)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button {
+                OutputLibrary.remove(url)
+                copyDropped = true
+            } label: {
+                Text(.doneCopyDelete)
+                    .font(Naqi.F.labelLarge)
+                    .frame(maxWidth: .infinity, minHeight: 48)
+            }
+            .buttonStyle(NaqiOutlineButtonStyle())
+            .padding(.top, Naqi.S.s3)
+            .accessibilityIdentifier("action.deleteCopy")
         }
     }
 

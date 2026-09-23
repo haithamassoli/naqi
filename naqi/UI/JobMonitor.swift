@@ -162,6 +162,11 @@ import os
 
     func clearFinished() async { await queue.clearFinished() }
 
+    func storageUse() async -> JobQueue.StorageUse { await queue.storageUse() }
+    func canClearTemporary() async -> Bool { await queue.canClearTemporary }
+    func clearCopies() async { await queue.clearCopies() }
+    func clearTemporary() async { await queue.clearTemporary() }
+
     func discard(_ id: Job.ID) async { await queue.discard(id) }
 
     /// Not a special code path: the same (source, options) lands on the same job

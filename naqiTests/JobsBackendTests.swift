@@ -208,6 +208,33 @@ struct JobsBackendTests {
         #expect(!FileManager.default.fileExists(atPath: dir.path))
     }
 
+    @Test("a Photos twin expires after 7 days; the user's only copy never does")
+    func expiredCopiesAreSwept() async throws {
+        let store = Fixtures.scratch("jobs-expire-copies.json")
+        defer { try? FileManager.default.removeItem(at: store) }
+        func owned() throws -> URL {
+            let temp = FileManager.default.temporaryDirectory
+                .appendingPathComponent("naqi-owned-\(UUID().uuidString).mp4")
+            FileManager.default.createFile(atPath: temp.path, contents: Data([1]))
+            return try OutputLibrary.adopt(temp, named: temp.lastPathComponent)
+        }
+        let twin = try owned(), only = try owned()
+        defer { OutputLibrary.remove(twin); OutputLibrary.remove(only) }
+        try JSONEncoder().encode([
+            Self.row(.done(Published(name: "twin.mp4", url: twin, assetID: "x"))),
+            Self.row(.done(Published(name: "only.mp4", url: only, assetID: nil))),
+        ]).write(to: store)
+
+        let queue = JobQueue(storeURL: store)
+        #expect(await queue.storageUse().copies > 0)
+        await queue.dropExpiredCopies(now: .now.addingTimeInterval(JobQueue.copyLifetime - 60))
+        #expect(FileManager.default.fileExists(atPath: twin.path))
+        await queue.dropExpiredCopies(now: .now.addingTimeInterval(JobQueue.copyLifetime + 60))
+        #expect(!FileManager.default.fileExists(atPath: twin.path))
+        #expect(FileManager.default.fileExists(atPath: only.path))
+        #expect(await queue.storageUse().copies == 0)
+    }
+
     /// A queue row in a given state, with a unique source so no two share a
     /// `Checkpoint.key`.
     private static func row(_ state: Job.State) -> Job {

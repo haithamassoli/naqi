@@ -120,7 +120,14 @@ private struct JobRow: View {
         return job.title
     }
 
-    private var status: LocalizedStringResource {
+    private var status: String {
+        if case .running = job.state, progress?.stage == .download, let stats = progress?.download {
+            return downloadStatsText(stats)
+        }
+        return String(localized: statusResource)
+    }
+
+    private var statusResource: LocalizedStringResource {
         switch job.state {
         case .pending: .jobsStatusQueued
         case .running: progress.map { .jobsProgressPercent(Int32($0.pct.rounded())) } ?? .jobsStageStarting
@@ -151,7 +158,7 @@ private struct JobRow: View {
                         .font(Naqi.F.titleSmall)
                         .foregroundStyle(Naqi.C.onSurface)
                         .lineLimit(1)
-                    Text(status)
+                    Text(verbatim: status)
                         .font(Naqi.F.bodySmall)
                         .foregroundStyle(Naqi.C.onSurfaceVariant)
                         .lineLimit(1)
@@ -162,7 +169,7 @@ private struct JobRow: View {
             .buttonStyle(.plain)
             .disabled({ if case .done = job.state { false } else { true } }())
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(Text(.jobsRowA11Y(title, String(localized: status))))
+            .accessibilityLabel(Text(.jobsRowA11Y(title, status)))
 
             switch job.state {
             case .pending, .running:

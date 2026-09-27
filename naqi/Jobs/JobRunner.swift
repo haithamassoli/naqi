@@ -57,10 +57,10 @@ enum JobRunner {
             let file: URL
             do {
                 file = try await Downloader.download(
-                    url: remote, quality: quality,
-                    onProgress: { pct in
+                    url: remote, quality: quality, processing: processing(job.ops),
+                    onProgress: { stats in
                         var b = JobProgress(shape: .censorOnly, removeMusic: false)
-                        b.postDownload(Double(pct) / 100)
+                        b.postDownload(stats)
                         progress(b)
                     },
                     isCancelled: { stop() != nil })
@@ -319,6 +319,15 @@ enum JobRunner {
                 """)
             throw JobFailure.of(error)
         }
+    }
+
+    /// The format policy's view of the job: any visual filter wins, since it
+    /// re-encodes and caps what is worth fetching; music-only keeps the
+    /// picture untouched. No filter at all is a plain download.
+    static func processing(_ ops: FilterOps) -> Processing {
+        guard ops.isValid else { return .none }
+        if ops.censor { return .visual }
+        return ops.removeMusic ? .music : .none
     }
 
     /// Anything short of a user cancel keeps the work directory when it holds

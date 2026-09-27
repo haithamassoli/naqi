@@ -185,16 +185,25 @@ struct ExtensionTests {
     @MainActor
     func liveActivityStates() {
         var progress = JobProgress(shape: .musicOnly, removeMusic: true)
-        progress.postDownload(0.4)
+        let stats = DownloadStats(done: 40_000_000, total: 100_000_000, bytesPerSec: 8_000_000, etaSec: 90)
+        progress.postDownload(stats)
 
         let running = LiveActivity.state(progress, etaMs: 12 * 60_000, queued: 2)
         #expect(running.phase == .running && running.symbol == "arrow.down")
         #expect(running.caption == String(localized: .stageDownloading))
-        #expect(running.detail == String(localized: .jobsEtaRemaining(String(localized: .durMin(12))))
-                + " · " + String(localized: .progressMoreQueued(2)))
+        // A download has real numbers; they replace the percent-based guess.
+        #expect(running.detail == downloadStatsText(stats) + " · " + String(localized: .progressMoreQueued(2)))
+        #expect(running.detail.contains(String(localized: .jobsEtaRemaining(String(localized: .durMin(1))))))
         #expect(abs(running.fraction - 0.4) < 0.001)
+
+        var filtering = JobProgress(shape: .musicOnly, removeMusic: true)
+        filtering.post(.separate, 0.5)
+        #expect(filtering.download == nil)
+        #expect(LiveActivity.state(filtering, etaMs: 12 * 60_000, queued: 2).detail
+                == String(localized: .jobsEtaRemaining(String(localized: .durMin(12))))
+                + " · " + String(localized: .progressMoreQueued(2)))
         // Too early for an ETA and nothing queued: no secondary line at all.
-        #expect(LiveActivity.state(progress, etaMs: 0, queued: 0).detail.isEmpty)
+        #expect(LiveActivity.state(filtering, etaMs: 0, queued: 0).detail.isEmpty)
 
         let now = Date()
         #expect(LiveActivity.staleDate(background: true, now: now).timeIntervalSince(now) <= 30)

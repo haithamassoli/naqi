@@ -33,6 +33,14 @@
         "en" : { "stringUnit" : { "state" : "translated", "value" : "Men" } }
       }
     },
+    "share.no_space" : {
+      "comment" : "Share sheet refusal for a link larger than the free space; %@ is the space the job needs, e.g. 3.4 GB.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : { "stringUnit" : { "state" : "translated", "value" : "لا توجد مساحة كافية · يلزم %@" } },
+        "en" : { "stringUnit" : { "state" : "translated", "value" : "Not enough space · needs %@" } }
+      }
+    },
     "share.options" : {
       "comment" : "Share extension heading above the compact filtering options.",
       "extractionState" : "manual",

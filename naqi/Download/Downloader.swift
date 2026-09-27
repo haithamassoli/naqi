@@ -145,7 +145,7 @@ enum Downloader {
         // A 403 means the URL expired or the IP rotated: extract again and take
         // the same format id, so the resumed stream keeps its identity.
         let reextract: @Sendable (MediaFormat) async throws -> MediaFormat = { old in
-            guard let fresh = try await extract(url).formats.first(where: { $0.id == old.id })
+            guard let fresh = try await extract(url, fresh: true).formats.first(where: { $0.id == old.id })
             else { throw DownloadError.forbidden }
             return fresh
         }
@@ -238,14 +238,16 @@ enum Downloader {
         }
     }
 
-    static func extract(_ url: String) async throws -> ExtractedMedia {
+    /// `fresh` skips the share sheet's cached extraction, whose URLs a 403 has
+    /// just shown to be stale.
+    static func extract(_ url: String, fresh: Bool = false) async throws -> ExtractedMedia {
         #if os(macOS)
         do { return try await YtDlp.shared.extract(url) }
         catch {
             Log.download.warning("yt-dlp extract failed, trying native: \(error.localizedDescription, privacy: .public)")
         }
         #endif
-        return try await NativeExtract.extract(url)
+        return try await NativeExtract.extract(url, fresh: fresh)
     }
 
     static func version() async -> String? { await YtDlp.shared.version() }

@@ -19,8 +19,8 @@ enum PreflightFailure: Error, Equatable, Sendable {
 /// opaque crypto error (Android `work/Preflight.kt:91-93`).
 enum Preflight {
 
-    /// 2 GiB of headroom on top of the computed requirement.
-    static let slackBytes: Int64 = 2 * 1024 * 1024 * 1024
+    /// 2 GiB of headroom; the rule lives in `SpaceBudget` so the share sheet applies it too.
+    static let slackBytes = SpaceBudget.slackBytes
 
     /// The numbers behind the most recent `.lowSpace` verdict.
     ///
@@ -44,7 +44,7 @@ enum Preflight {
     }
 
     /// AAC transcode scratch: 192 kbit/s stereo.
-    static let aacBytesPerSecond: Int64 = 24_000
+    static let aacBytesPerSecond = SpaceBudget.aacBytesPerSecond
 
     /// Full-size temporary copies that coexist with the published output.
     /// Measured: the mux temp is a full-size copy of the source, so a 2 h movie
@@ -74,7 +74,8 @@ enum Preflight {
     }
 
     static func requiredBytes(sourceBytes: Int64, tempCopies: Int64, extraScratch: Int64) -> Int64 {
-        (tempCopies + 1) * sourceBytes + extraScratch + slackBytes
+        SpaceBudget.requiredBytes(sourceBytes: sourceBytes, tempCopies: tempCopies,
+                                  extraScratch: extraScratch)
     }
 
     /// Runs every guard. Returns nil when the job may proceed.
@@ -121,16 +122,8 @@ enum Preflight {
         return nil
     }
 
-    /// Space the app may actually use, which on iOS is the "important" volume
-    /// capacity, not the raw free-space number.
     static func availableBytes() -> Int64 {
-        let dir = WorkDir.root
-        if let v = try? dir.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]),
-           let c = v.volumeAvailableCapacityForImportantUsage {
-            return Int64(c)
-        }
-        let attrs = try? FileManager.default.attributesOfFileSystem(forPath: dir.path)
-        return (attrs?[.systemFreeSize] as? NSNumber)?.int64Value ?? 0
+        SpaceBudget.availableBytes(at: WorkDir.root)
     }
 }
 

@@ -39,14 +39,45 @@ actor JobQueue {
     /// a lock rather than in actor state.
     private let stopFlag = OSAllocatedUnfairLock<JobRunner.Stop?>(initialState: nil)
 
+    typealias Runner = @Sendable (Job, _ progress: @escaping @Sendable (JobProgress) -> Void,
+                                  _ stop: @escaping @Sendable () -> JobRunner.Stop?) async throws -> JobRunner.Completion
+    typealias Prefetch = @Sendable (_ url: String, DownloadQuality, Processing,
+                                    _ isCancelled: @escaping @Sendable () -> Bool) async throws -> Void
+
+    private let run: Runner
+    private let prefetch: Prefetch
+    /// Low Power Mode and a hot device: a download nobody is waiting for yet
+    /// is the first thing to give up.
+    private let mayPrefetch: @Sendable () -> Bool
+    /// The queued job being downloaded ahead, and the flag that stops it.
+    ///
+    /// ponytail: one look-ahead only. Filtering is the long pole, so one link
+    /// ahead already hides every download but the first; two would only split
+    /// the bandwidth with nothing more to hide.
+    private var lookAhead: (id: Job.ID, stop: OSAllocatedUnfairLock<Bool>)?
+    /// Every look-ahead and quarantine discard, chained. A job waits for it
+    /// before its own download, so two writers never share a `.part`.
+    private var lookAheadTail: Task<Void, Never>?
+
     static var defaultStore: URL {
         let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         try? FileManager.default.createDirectory(at: base, withIntermediateDirectories: true)
         return base.appendingPathComponent("naqi-queue.json")
     }
 
-    init(storeURL: URL = JobQueue.defaultStore) {
+    init(storeURL: URL = JobQueue.defaultStore,
+         run: @escaping Runner = { try await JobRunner.run($0, progress: $1, stop: $2) },
+         prefetch: @escaping Prefetch = {
+             _ = try await Downloader.download(url: $0, quality: $1, processing: $2, isCancelled: $3)
+         },
+         mayPrefetch: @escaping @Sendable () -> Bool = {
+             !ProcessInfo.processInfo.isLowPowerModeEnabled
+                 && ![.serious, .critical].contains(ProcessInfo.processInfo.thermalState)
+         }) {
         self.storeURL = storeURL
+        self.run = run
+        self.prefetch = prefetch
+        self.mayPrefetch = mayPrefetch
         jobs = Self.load(storeURL)
     }
 
@@ -91,6 +122,7 @@ actor JobQueue {
             return
         }
         update(id) { $0.state = .cancelled }
+        if let job = jobs.first(where: { $0.id == id }) { dropDownload(of: job) }
     }
 
     /// Not a special code path: the same (source, options) lands on the same
@@ -101,7 +133,11 @@ actor JobQueue {
     }
 
     func remove(_ id: Job.ID) {
-        if id == runningID { cancel(id) }
+        if id == runningID {
+            cancel(id)
+        } else if let job = jobs.first(where: { $0.id == id }) {
+            dropDownload(of: job)
+        }
         jobs.removeAll { $0.id == id }
         commit()
     }
@@ -348,13 +384,26 @@ actor JobQueue {
     private func drain() {
         guard running == nil,
               let next = jobs.first(where: { if case .pending = $0.state { true } else { false } })
-        else { return }
+        else {
+            // A link queued behind a job that is already filtering.
+            startLookAhead()
+            return
+        }
         runningID = next.id
         runningSince = .now
         progress = nil
         stopFlag.withLock { $0 = nil }
         update(next.id) { $0.state = .running }
-        running = Task { await self.execute(next) }
+        // Starting a job ends any look-ahead, its own included. Stopped, it
+        // lets go of the `.part`, and the job's own download resumes from that
+        // length with the job's progress on screen instead of a silent wait.
+        stopLookAhead()
+        let settled = lookAheadTail
+        running = Task {
+            await settled?.value
+            await self.execute(next)
+        }
+        startLookAhead()
     }
 
     private func execute(_ job: Job) async {
@@ -369,10 +418,10 @@ actor JobQueue {
         var outcome = LiveActivity.Outcome.cancelled
 
         do {
-            let done = try await JobRunner.run(
+            let done = try await run(
                 job,
-                progress: { [weak self] p in Task { await self?.report(job.id, p) } },
-                stop: { flag.withLock { $0 } ?? (Lifecycle.shared.isInterrupted ? .interrupted : nil) })
+                { [weak self] p in Task { await self?.report(job.id, p) } },
+                { flag.withLock { $0 } ?? (Lifecycle.shared.isInterrupted ? .interrupted : nil) })
             update(job.id) { $0.state = .done(done.output) }
             discardInput(job.source)
             Log.job.info("""
@@ -434,6 +483,7 @@ actor JobQueue {
         guard id == runningID else { return }
         progress = p
         notify()
+        startLookAhead()
         // The same straight-line extrapolation the Progress screen shows, off
         // the same clock — the lock screen is where a 90-minute job actually
         // lives, and `Eta.liveMs` returning 0 early on is what hides the line
@@ -442,6 +492,61 @@ actor JobQueue {
                              pct: p.pct)
         let queued = jobs.count { if case .pending = $0.state { true } else { false } }
         Task { await LiveActivity.update(p, etaMs: eta, queued: queued) }
+    }
+
+    // MARK: Look-ahead
+
+    /// Downloads the next queued link while the running job filters, so that
+    /// job's own `Downloader.download` finds a completed record and goes
+    /// straight to processing. Space is `Downloader`'s per-chunk check, as for
+    /// any download. A failure is only logged: the job's own run meets it
+    /// again and reports it properly.
+    private func startLookAhead() {
+        guard lookAhead == nil, !stopAfterCurrent,
+              let current = jobs.first(where: { $0.id == runningID }),
+              current.remoteURL == nil || (progress?.stage).map({ $0 != .download }) == true,
+              let next = jobs.first(where: { $0.state == .pending }),
+              let url = next.remoteURL, url != current.remoteURL,
+              mayPrefetch()
+        else { return }
+        let (quality, processing) = JobRunner.downloadPlan(for: next)
+        let stop = OSAllocatedUnfairLock(initialState: false)
+        lookAhead = (next.id, stop)
+        let flag = stopFlag, prior = lookAheadTail, prefetch = prefetch
+        lookAheadTail = Task {
+            await prior?.value
+            do {
+                // Backgrounding stops it with the running job. A user cancel
+                // of the running job does not: it is not this job's cancel.
+                try await prefetch(url, quality, processing) {
+                    stop.withLock { $0 } || flag.withLock { $0 } == .interrupted || Lifecycle.shared.isInterrupted
+                }
+                Log.job.info("look-ahead download done")
+            } catch {
+                Log.job.notice("look-ahead download stopped: \(String(describing: error), privacy: .public)")
+            }
+        }
+    }
+
+    /// Resumable: the `.part` stays for whoever downloads that link next.
+    private func stopLookAhead() {
+        lookAhead?.stop.withLock { $0 = true }
+        lookAheadTail?.cancel()
+        lookAhead = nil
+    }
+
+    /// A queued link the user dropped takes its quarantine with it, once any
+    /// look-ahead on it has let go. Kept while another live row shares the URL.
+    private func dropDownload(of job: Job) {
+        if lookAhead?.id == job.id { stopLookAhead() }
+        guard let url = job.remoteURL,
+              !jobs.contains(where: { $0.id != job.id && !$0.state.isTerminal && $0.remoteURL == url })
+        else { return }
+        let prior = lookAheadTail
+        lookAheadTail = Task {
+            await prior?.value
+            Downloader.discard(remoteURL: url)
+        }
     }
 
     private func update(_ id: Job.ID, _ transform: (inout Job) -> Void) {

@@ -541,7 +541,9 @@ struct UITests {
         let all: [JobFailure] = [.nothingSelected, .drmProtected, .noVideoTrack, .noAudioTrack,
                                  .unsupportedContainer, .unsupportedCodec, .lowSpace,
                                  .outOfSpace, .sourceUnreadable, .publishFailed, .generic,
-                                 .downloadUnsupported, .downloadNetwork, .downloadGeneric]
+                                 .downloadUnsupported, .downloadNetwork, .downloadGeneric,
+                                 .downloadUnavailable, .downloadGeo, .downloadRateLimited,
+                                 .downloadForbidden, .downloadExtractor]
         for failure in all {
             var r = failure.sentence
             r.locale = Locale(identifier: language)

@@ -351,6 +351,13 @@ enum JobFailure: String, Error, Codable, Sendable, Equatable {
     case interrupted
     case downloadUnsupported
     case downloadNetwork
+    /// Removed, private, members-only, age-gated: nothing a retry changes.
+    case downloadUnavailable
+    case downloadGeo
+    case downloadRateLimited
+    case downloadForbidden
+    /// The site changed under the extractor; only a newer app or yt-dlp helps.
+    case downloadExtractor
     case downloadGeneric
     case generic
 
@@ -364,8 +371,12 @@ enum JobFailure: String, Error, Codable, Sendable, Equatable {
             case .network: return .downloadNetwork
             case .noSpace: return .lowSpace
             case .cancelled: return .generic
-            case .noFile, .generic, .unavailable, .geo, .rateLimited, .forbidden, .extractor:
-                return .downloadGeneric
+            case .unavailable: return .downloadUnavailable
+            case .geo: return .downloadGeo
+            case .rateLimited: return .downloadRateLimited
+            case .forbidden: return .downloadForbidden
+            case .extractor: return .downloadExtractor
+            case .noFile, .generic: return .downloadGeneric
             }
         }
         if let p = error as? PreflightFailure {

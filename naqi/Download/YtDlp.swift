@@ -103,12 +103,43 @@ actor YtDlp {
         }
     }
 
-    /// Runs `op`; if it fails, runs `update` and then `op` exactly once more.
-    /// Cancellation is not retried, and a failed update surfaces the original
-    /// error — there is no second update and no loop.
+    /// Minimum gap between recovery updates, as on Android: a burst of
+    /// failures must not hammer GitHub's 60/h anonymous API limit, and a
+    /// yt-dlp fetched minutes ago is not fixed by fetching it again.
+    static let recoveryUpdateInterval: TimeInterval = 6 * 60 * 60
+
+    /// When yt-dlp was last fetched. `update()` stamps it, so the weekly
+    /// check and a recovery both restart the 6 h window.
+    nonisolated static func lastUpdate() -> Date {
+        UserDefaults.standard.object(forKey: updateKey) as? Date ?? .distantPast
+    }
+
+    /// Whether a newer yt-dlp can fix `error`. Only a stale extractor (or a
+    /// failure nobody recognised, Android's UNKNOWN) qualifies; a removed or
+    /// geo-blocked video, a rate limit or a dead network fails the same way
+    /// on any version.
+    nonisolated static func updateHelps(_ error: any Error) -> Bool {
+        switch error {
+        case let d as DownloadError:
+            switch d {
+            case .extractor, .generic, .unsupported, .noFile: true
+            case .network, .noSpace, .cancelled, .unavailable, .geo, .rateLimited, .forbidden: false
+            }
+        case is URLError: false
+        default: true
+        }
+    }
+
+    /// Runs `op`; if it fails with an error an update can fix (`updateHelps`)
+    /// and yt-dlp was not fetched in the last 6 h, runs `update` and then `op`
+    /// exactly once more. Anything else surfaces at once. Cancellation is not
+    /// retried, and a failed update surfaces the original error — there is no
+    /// second update and no loop.
     nonisolated static func retryingAfterUpdate<T>(
         _ op: () async throws -> T,
         update: () async throws -> Void,
+        lastUpdate: () -> Date = { YtDlp.lastUpdate() },
+        now: Date = .now,
     ) async throws -> T {
         do {
             return try await op()
@@ -117,6 +148,8 @@ actor YtDlp {
         } catch let error as CancellationError {
             throw error
         } catch {
+            guard updateHelps(error),
+                  now.timeIntervalSince(lastUpdate()) > recoveryUpdateInterval else { throw error }
             Log.download.warning("yt-dlp path failed; retrying once after an update: \(error.localizedDescription, privacy: .public)")
             let original = error
             do { try await update() } catch { throw original }
@@ -218,17 +251,44 @@ actor YtDlp {
     }
     #endif
 
+    /// Android's `Downloader.classify`, ported as-is: it was tested against
+    /// real yt-dlp messages. Only the `ERROR:` lines are read when there are
+    /// any — warnings mention "unable to download" for fragments yt-dlp then
+    /// retried fine. First match wins, most specific first. One deviation:
+    /// "unsupported url" stays `.unsupported` (no extractor for the page),
+    /// where Android folds it into UNAVAILABLE.
     nonisolated static func classify(_ text: String) -> DownloadError {
-        let t = text.lowercased()
-        if t.contains("unsupported url") || t.contains("unable to extract")
-            || t.contains("no video formats") || t.contains("requested format is not available") {
-            return .unsupported
+        let errors = text.split(whereSeparator: \.isNewline).filter { $0.contains("ERROR:") }
+        let t = (errors.isEmpty ? text : errors.joined(separator: "\n")).lowercased()
+        func has(_ needles: String...) -> Bool { needles.contains { t.contains($0) } }
+        if has("no space left", "errno 28", "enospc") { return .noSpace }
+        // YouTube's anti-bot wall: a newer yt-dlp is the fix, not a login the
+        // user could provide.
+        if has("not a bot") { return .extractor(text) }
+        if has("unsupported url") { return .unsupported }
+        if has("private video", "video unavailable", "is unavailable", "has been removed", "no longer available",
+               "members-only", "join this channel", "confirm your age", "age-restricted", "sign in",
+               "logged-in", "log in", "login", "--cookies", "is not a valid url",
+               "does not exist", "http error 404", "http error 410") {
+            return .unavailable(text)
         }
-        if t.contains("timed out") || t.contains("connection") || t.contains("network")
-            || t.contains("unable to download") || t.contains("http error") {
+        if has("in your country", "geo restrict", "geo-restrict", "in your location", "geo-blocked") {
+            return .geo(text)
+        }
+        if has("http error 429", "too many requests", "try again later", "rate-limit", "rate limit") {
+            return .rateLimited
+        }
+        if has("http error 403", "forbidden") { return .forbidden }
+        if has("requested format is not available", "unable to extract", "nsig", "signature",
+               "challenge", "no video formats", "unable to decrypt", "player response") {
+            return .extractor(text)
+        }
+        if has("timed out", "connection reset", "connection refused", "connection aborted",
+               "network is unreachable", "name resolution", "failed to resolve", "no address associated",
+               "unable to download", "incompleteread", "http error 5", "remote end closed", "ssl",
+               "errno 7", "errno 101", "errno 104", "errno 110", "errno 111") {
             return .network(text)
         }
-        if t.contains("no space") || t.contains("enospc") { return .noSpace }
         return .generic(text)
     }
 

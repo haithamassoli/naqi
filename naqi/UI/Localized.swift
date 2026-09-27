@@ -94,6 +94,11 @@ extension JobFailure {
         // disabled without an operation.
         case .downloadUnsupported: .errDownloadUnsupported
         case .downloadNetwork: .errDownloadNetwork
+        case .downloadUnavailable: .errDownloadUnavailable
+        case .downloadGeo: .errDownloadGeo
+        case .downloadRateLimited: .errDownloadRateLimited
+        case .downloadForbidden: .errDownloadForbidden
+        case .downloadExtractor: .errDownloadExtractor
         case .downloadGeneric: .errDownloadGeneric
         case .nothingSelected, .publishFailed, .generic: .errGeneric
         }

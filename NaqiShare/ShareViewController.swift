@@ -40,8 +40,14 @@ final class ShareViewController: UIViewController {
     ])
     private let addButton = UIButton(type: .system)
     private let optionsStack = UIStackView()
+    /// `title · duration · size`, once the prefetch lands.
+    private let detailLabel = UILabel()
+    private let spaceLabel = UILabel()
     private var accepting = false
     private var sharedURL: String?
+    /// Formats only; the player JSON stays on disk for the app.
+    private var media: ExtractedMedia?
+    private var lowSpace = false
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -55,8 +61,8 @@ final class ShareViewController: UIViewController {
         let options = ShareOptions.loadLastUsed()
         musicSwitch.isOn = options.removeMusic
         censorSwitch.isOn = options.censor
-        musicSwitch.addTarget(self, action: #selector(optionsChanged), for: .valueChanged)
-        censorSwitch.addTarget(self, action: #selector(optionsChanged), for: .valueChanged)
+        musicSwitch.addTarget(self, action: #selector(choicesChanged), for: .valueChanged)
+        censorSwitch.addTarget(self, action: #selector(choicesChanged), for: .valueChanged)
         whoControl.selectedSegmentIndex = ["women", "men", "everyone"].firstIndex(of: options.who) ?? 0
         // Visual order matches the Android RTL screenshot (Audio…Best) and
         // flips with the system layout direction via UISegmentedControl.
@@ -64,6 +70,7 @@ final class ShareViewController: UIViewController {
         qualityControl.addTarget(self, action: #selector(qualityChanged), for: .valueChanged)
         qualityControl.isHidden = true
         processingControl.selectedSegmentIndex = options.processingMode == "fast" ? 1 : 0
+        processingControl.addTarget(self, action: #selector(choicesChanged), for: .valueChanged)
 
         label.text = String(localized: "share.options", defaultValue: "Add to Naqi")
         label.textAlignment = .center
@@ -71,6 +78,14 @@ final class ShareViewController: UIViewController {
         label.textColor = Brand.onSurface
         label.adjustsFontForContentSizeCategory = true
         label.numberOfLines = 0
+        for (l, color) in [(detailLabel, Brand.onSurfaceVariant), (spaceLabel, Brand.error)] {
+            l.textAlignment = .center
+            l.font = Brand.font(.subheadline, l === spaceLabel ? .medium : .regular)
+            l.textColor = color
+            l.adjustsFontForContentSizeCategory = true
+            l.numberOfLines = 0
+            l.isHidden = true
+        }
 
         optionsStack.axis = .vertical
         optionsStack.spacing = 16
@@ -101,9 +116,11 @@ final class ShareViewController: UIViewController {
         addButton.addTarget(self, action: #selector(addTapped), for: .touchUpInside)
         addButton.isEnabled = musicSwitch.isOn || censorSwitch.isOn
 
-        let stack = UIStackView(arrangedSubviews: [label, optionsStack, addButton, spinner])
+        let stack = UIStackView(arrangedSubviews: [label, detailLabel, optionsStack, spaceLabel,
+                                                   addButton, spinner])
         stack.axis = .vertical
         stack.spacing = 16
+        stack.setCustomSpacing(4, after: label)
         stack.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(stack)
         NSLayoutConstraint.activate([
@@ -124,6 +141,14 @@ final class ShareViewController: UIViewController {
         if providers.contains(where: isMedia) { return }
         if let url = await firstURL(in: providers) {
             sharedURL = url
+            // Prefetch: the sheet never waits on it, a failure shows nothing
+            // (the app reports errors), and a YouTube answer lands in the
+            // App Group cache for the app's own extract.
+            Task { [weak self] in
+                guard let media = try? await NativeExtract.extract(url) else { return }
+                self?.media = media
+                self?.refreshDetail()
+            }
             await MainActor.run {
                 qualityControl.isHidden = false
                 addButton.configuration?.title = String(localized: "share.download",
@@ -188,28 +213,74 @@ final class ShareViewController: UIViewController {
         addButton.isHidden = true
         label.text = String(localized: "share.adding", defaultValue: "Adding to Naqi…")
         spinner.startAnimating()
-        let who = ["women", "men", "everyone"][max(0, whoControl.selectedSegmentIndex)]
-        var removeMusic = musicSwitch.isOn
-        var censor = censorSwitch.isOn
+        detailLabel.isHidden = true
+        spaceLabel.isHidden = true
+        let options = currentOptions()
         let quality = selectedQuality()
-        if quality == .audio { censor = false; if !removeMusic { removeMusic = true } }
-        let options = ShareOptions(removeMusic: removeMusic, censor: censor, who: who,
-                                   processingMode: processingControl.selectedSegmentIndex == 1 ? "fast" : "current")
         options.saveAsLastUsed()
         quality.saveAsLastUsed()
         Task { await accept(options: options, quality: quality) }
     }
 
+    /// What the job will run: audio only cannot censor and always removes music.
+    private func currentOptions() -> ShareOptions {
+        let who = ["women", "men", "everyone"][max(0, whoControl.selectedSegmentIndex)]
+        var removeMusic = musicSwitch.isOn
+        var censor = censorSwitch.isOn
+        if selectedQuality() == .audio { censor = false; removeMusic = true }
+        return ShareOptions(removeMusic: removeMusic, censor: censor, who: who,
+                            processingMode: processingControl.selectedSegmentIndex == 1 ? "fast" : "current")
+    }
+
     @objc private func optionsChanged() {
         let link = sharedURL != nil
-        addButton.isEnabled = link || musicSwitch.isOn || censorSwitch.isOn
+        addButton.isEnabled = !lowSpace && (link || musicSwitch.isOn || censorSwitch.isOn)
+    }
+
+    @objc private func choicesChanged() {
+        refreshDetail()
+        optionsChanged()
+    }
+
+    /// Recomputed locally on every choice; the formats are already here.
+    private func refreshDetail() {
+        guard let media, !accepting else { return }
+        let options = currentOptions()
+        let bytes = media.downloadBytes(selectedQuality(), options: options)
+        let duration = media.durationSec.flatMap { sec in
+            let f = DateComponentsFormatter()
+            f.unitsStyle = .positional
+            f.allowedUnits = sec >= 3600 ? [.hour, .minute, .second] : [.minute, .second]
+            // Unpadded, a 5 s clip reads "5"; padded, 5 min reads "05:03".
+            if sec < 60 { f.zeroFormattingBehavior = .pad }
+            return f.string(from: sec)
+        }
+        detailLabel.text = [media.title, duration, bytes.map(Self.size)]
+            .compactMap { $0 }.joined(separator: " · ")
+        detailLabel.isHidden = false
+
+        let required = bytes.map {
+            SpaceBudget.requiredBytes(downloadBytes: $0, options: options, durationSec: media.durationSec)
+        }
+        let volume = AppGroup.container ?? URL(fileURLWithPath: NSHomeDirectory())
+        lowSpace = required.map { $0 > SpaceBudget.availableBytes(at: volume) } ?? false
+        if lowSpace, let required {
+            spaceLabel.text = String(localized: "share.no_space",
+                                     defaultValue: "Not enough space · needs \(Self.size(required))")
+        }
+        spaceLabel.isHidden = !lowSpace
+        optionsChanged()
+    }
+
+    private static func size(_ bytes: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file)
     }
 
     @objc private func qualityChanged() {
         let audio = selectedQuality() == .audio
         censorSwitch.isEnabled = !audio
         whoControl.isEnabled = !audio
-        optionsChanged()
+        choicesChanged()
     }
 
     private func selectedQuality() -> DownloadQuality {
@@ -397,6 +468,7 @@ private enum Brand {
     static let surfaceContainer = dyn(0xECF1ED, 0x182420)
     static let surfaceContainerHighest = dyn(0xE0E7E2, 0x2D3935)
     static let outlineVariant = dyn(0xBFC9C3, 0x3F4A45)
+    static let error = dyn(0xBA1A1A, 0xFFB4AB)
 
     /// `Naqi.F` slots: Thmanyah Sans at a system text style's size, so Dynamic Type holds.
     static func font(_ style: UIFont.TextStyle, _ weight: UIFont.Weight) -> UIFont {

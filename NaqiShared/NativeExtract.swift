@@ -1,3 +1,4 @@
+import CryptoKit
 import Foundation
 
 /// Extractor that does not spawn yt-dlp. Used on iOS (no `Process`) and as the
@@ -12,11 +13,18 @@ enum NativeExtract {
     private static let userAgent = "Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1"
     static let maxPageBytes = 2 * 1024 * 1024
 
-    static func extract(_ url: String) async throws -> ExtractedMedia {
+    /// A YouTube answer younger than an hour comes from `cacheDir`: that is
+    /// how the share sheet's prefetch reaches the app. `fresh` (after a 403,
+    /// whose URLs are stale) drops it and asks again.
+    static func extract(_ url: String, fresh: Bool = false,
+                        cacheDir: URL? = Cache.dir) async throws -> ExtractedMedia {
         guard let page = URL(string: url), page.scheme == "http" || page.scheme == "https"
         else { throw DownloadError.unsupported }
         if let id = youtubeID(url) {
-            return try await youtube(id: id, webpage: url)
+            if let cacheDir, let hit = Cache.lookup(url, id: id, fresh: fresh, dir: cacheDir) {
+                return hit
+            }
+            return try await youtube(id: id, webpage: url, cacheDir: cacheDir)
         }
         return try await pageExtract(page)
     }
@@ -229,14 +237,16 @@ enum NativeExtract {
     /// Clients in order. A bot check refetches visitorData once and retries
     /// the same client. Unavailable, geo, rate limit and network errors are the
     /// same on every client, so they fail fast; anything else moves on.
-    private static func youtube(id: String, webpage: String) async throws -> ExtractedMedia {
+    private static func youtube(id: String, webpage: String,
+                                cacheDir: URL?) async throws -> ExtractedMedia {
         var visitor = await visitorData()
         var refreshed = false
         var last = DownloadError.extractor("no YouTube client configured")
         for client in clients {
             while true {
                 do {
-                    return try await innertube(id: id, webpage: webpage, client: client, visitor: visitor)
+                    return try await innertube(id: id, webpage: webpage, client: client,
+                                               visitor: visitor, cacheDir: cacheDir)
                 } catch DownloadError.extractor(let why) {
                     last = .extractor(why)
                     guard isBotCheck(why), !refreshed else { break }
@@ -249,7 +259,7 @@ enum NativeExtract {
     }
 
     private static func innertube(id: String, webpage: String, client: YouTubeClient,
-                                  visitor: String?) async throws -> ExtractedMedia {
+                                  visitor: String?, cacheDir: URL?) async throws -> ExtractedMedia {
         let endpoint = URL(string: "https://www.youtube.com/youtubei/v1/player?prettyPrint=false")!
         var req = URLRequest(url: endpoint, timeoutInterval: 20)
         req.httpMethod = "POST"
@@ -288,7 +298,9 @@ enum NativeExtract {
         guard let root = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw DownloadError.extractor("\(client.name) returned no JSON")
         }
-        return try parsePlayer(root, id: id, webpage: webpage, client: client)
+        let media = try parsePlayer(root, id: id, webpage: webpage, client: client)
+        if let cacheDir { Cache.store(root, url: webpage, client: client.name, dir: cacheDir) }
+        return media
     }
 
     /// A `/player` response to formats. Separate from the request so the
@@ -462,6 +474,65 @@ enum NativeExtract {
     private static func looksLikeMedia(_ s: String) -> Bool {
         let l = s.lowercased()
         return l.contains(".mp4") || l.contains(".m4a") || l.contains(".mp3") || l.contains(".webm") || l.contains(".mov")
+    }
+}
+
+extension NativeExtract {
+    /// Player responses in the App Group, one file per shared URL. The raw
+    /// JSON rather than the parse, so a parser fix also covers entries
+    /// already on disk.
+    enum Cache {
+        static let maxAge: TimeInterval = 3600
+
+        /// `Library/Caches` inside the App Group: never backed up, purgeable.
+        static var dir: URL? {
+            AppGroup.container?.appendingPathComponent("Library/Caches/extract-cache", isDirectory: true)
+        }
+
+        static func file(_ url: String, dir: URL) -> URL {
+            let digest = SHA256.hash(data: Data(url.utf8)).map { String(format: "%02x", $0) }.joined()
+            return dir.appendingPathComponent("\(digest).json")
+        }
+
+        /// Keeps only what `parsePlayer` reads: the full response also carries
+        /// storyboards, captions and the description.
+        static func store(_ root: [String: Any], url: String, client: String, dir: URL,
+                          now: Date = .now) {
+            let fm = FileManager.default
+            try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
+            let key = URLResourceKey.contentModificationDateKey
+            for f in (try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: [key])) ?? [] {
+                let at = (try? f.resourceValues(forKeys: [key]))?.contentModificationDate
+                if now.timeIntervalSince(at ?? .distantPast) > maxAge { try? fm.removeItem(at: f) }
+            }
+            let details = root["videoDetails"] as? [String: Any] ?? [:]
+            let player: [String: Any] = [
+                "playabilityStatus": root["playabilityStatus"] ?? [String: Any](),
+                "streamingData": root["streamingData"] ?? [String: Any](),
+                "videoDetails": details.filter { $0.key == "title" || $0.key == "lengthSeconds" },
+            ]
+            let entry: [String: Any] = ["client": client, "fetchedAt": now.timeIntervalSince1970,
+                                        "player": player]
+            guard let data = try? JSONSerialization.data(withJSONObject: entry) else { return }
+            try? data.write(to: file(url, dir: dir), options: .atomic)
+        }
+
+        /// The cached parse when younger than `maxAge`. `fresh` deletes the
+        /// entry instead, so a failed re-extract cannot fall back to it.
+        static func lookup(_ url: String, id: String, fresh: Bool, dir: URL,
+                           now: Date = .now) -> ExtractedMedia? {
+            let path = file(url, dir: dir)
+            if fresh { try? FileManager.default.removeItem(at: path); return nil }
+            guard let data = try? Data(contentsOf: path),
+                  let entry = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+                  let at = entry["fetchedAt"] as? Double,
+                  now.timeIntervalSince1970 - at < maxAge,
+                  let player = entry["player"] as? [String: Any],
+                  let name = entry["client"] as? String,
+                  let client = (clients + defaultClients).first(where: { $0.name == name })
+            else { return nil }
+            return try? parsePlayer(player, id: id, webpage: url, client: client)
+        }
     }
 }
 

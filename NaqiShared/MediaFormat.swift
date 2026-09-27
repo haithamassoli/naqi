@@ -1,4 +1,5 @@
 import Foundation
+import VideoToolbox
 
 /// One stream yt-dlp (or the native extractor) can fetch. `url` is a direct
 /// HTTP(S) media URL, not the page the user pasted.
@@ -12,6 +13,10 @@ struct MediaFormat: Sendable, Equatable {
     var filesize: Int64?
     var tbr: Double?
     var httpHeaders: [String: String]
+    var fps: Int? = nil
+    /// InnerTube `lastModified`: with `filesize`, the identity a resumed
+    /// `.part` must still match.
+    var lastModified: String? = nil
 
     var hasVideo: Bool {
         guard let vcodec, !vcodec.isEmpty, vcodec != "none" else { return false }
@@ -27,6 +32,36 @@ struct ExtractedMedia: Sendable {
     var title: String
     var webpageURL: String
     var formats: [MediaFormat]
+    var durationSec: Double? = nil
+    /// Kept for the deferred HLS path; nothing reads it yet.
+    var hlsManifestURL: URL? = nil
+    /// InnerTube client that answered (`VISIONOS`, …), nil off YouTube.
+    var client: String? = nil
+}
+
+/// Live transfer numbers, summed over every stream of one download.
+struct DownloadStats: Sendable, Equatable, Codable {
+    var done: Int64
+    var total: Int64?
+    var bytesPerSec: Double
+    var etaSec: Double?
+
+    var fraction: Double? {
+        guard let total, total > 0 else { return nil }
+        return min(1, Double(done) / Double(total))
+    }
+}
+
+/// What the job will do to the file, which decides the format policy.
+enum Processing: Sendable, Equatable {
+    case none, music, visual
+}
+
+/// Hardware decoders the format policy may rely on. A value, not a probe, so
+/// tests can pass any device.
+struct DeviceCodecs: Sendable, Equatable {
+    var av1: Bool
+    var hevc: Bool
 }
 
 enum DownloadError: Error, Sendable {
@@ -36,6 +71,14 @@ enum DownloadError: Error, Sendable {
     case noSpace
     case cancelled
     case generic(String)
+    /// Removed, private, members-only, age-gated: retrying cannot help.
+    case unavailable(String)
+    case geo(String)
+    case rateLimited
+    /// A format URL answered 403 even after one re-extraction.
+    case forbidden
+    /// Every client returned nothing usable: YouTube changed.
+    case extractor(String)
 
     var localizedDescription: String {
         switch self {
@@ -45,11 +88,27 @@ enum DownloadError: Error, Sendable {
         case .noSpace: "no space left"
         case .cancelled: "cancelled"
         case .generic(let s): s
+        case .unavailable(let s): "unavailable: \(s)"
+        case .geo(let s): "geo: \(s)"
+        case .rateLimited: "rate limited"
+        case .forbidden: "forbidden"
+        case .extractor(let s): "extractor: \(s)"
         }
     }
 }
 
+extension DeviceCodecs {
+    static let current = DeviceCodecs(av1: VTIsHardwareDecodeSupported(kCMVideoCodecType_AV1),
+                                      hevc: VTIsHardwareDecodeSupported(kCMVideoCodecType_HEVC))
+}
+
 extension DownloadQuality {
+    // CONTRACT STUB (Phase 4 replaces the body): filter- and hardware-aware policy.
+    func select(_ formats: [MediaFormat], processing: Processing,
+                hw: DeviceCodecs = .current) -> [MediaFormat] {
+        select(formats)
+    }
+
     /// Pick 1–2 formats matching this quality. Combined (audio+video) wins so
     /// we skip a mux; otherwise best video under the cap plus best audio.
     func select(_ formats: [MediaFormat]) -> [MediaFormat] {

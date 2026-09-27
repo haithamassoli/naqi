@@ -364,7 +364,8 @@ enum JobFailure: String, Error, Codable, Sendable, Equatable {
             case .network: return .downloadNetwork
             case .noSpace: return .lowSpace
             case .cancelled: return .generic
-            case .noFile, .generic: return .downloadGeneric
+            case .noFile, .generic, .unavailable, .geo, .rateLimited, .forbidden, .extractor:
+                return .downloadGeneric
             }
         }
         if let p = error as? PreflightFailure {

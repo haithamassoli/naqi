@@ -117,6 +117,11 @@ enum Downloader {
             return output
         } catch {
             summary.log(meter, outcome: outcome(of: error))
+            // Every client came back empty: YouTube moved. Pull the client
+            // config now instead of waiting out the week.
+            if case DownloadError.extractor = error {
+                Task { await NativeExtract.refreshClientConfigIfDue(force: true) }
+            }
             throw error
         }
     }
@@ -247,7 +252,10 @@ enum Downloader {
 
     static func update() async throws -> String { try await YtDlp.shared.update() }
 
-    static func updateIfDue() async { await YtDlp.shared.updateIfDue() }
+    static func updateIfDue() async {
+        await NativeExtract.refreshClientConfigIfDue()
+        await YtDlp.shared.updateIfDue()
+    }
 
     /// Digest of the validated private artifact used to bind processing
     /// checkpoints to downloaded bytes rather than only to the page URL.

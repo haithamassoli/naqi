@@ -128,7 +128,12 @@ struct ProgressScreen: View {
             .accessibilityIdentifier("progress.wavy")
 
             HStack {
-                if flow.monitor.etaMs > 0 {
+                if let stats = flow.monitor.progress?.download {
+                    Text(downloadStatsText(stats))
+                        .font(Naqi.F.bodySmall)
+                        .foregroundStyle(Naqi.C.onSurfaceVariant)
+                        .monospacedDigit()
+                } else if flow.monitor.etaMs > 0 {
                     Text(.jobsEtaRemaining(String(localized: durationText(ms: flow.monitor.etaMs))))
                         .font(Naqi.F.bodySmall)
                         .foregroundStyle(Naqi.C.onSurfaceVariant)

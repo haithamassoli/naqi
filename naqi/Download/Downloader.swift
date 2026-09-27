@@ -145,7 +145,10 @@ enum Downloader {
         // A 403 means the URL expired or the IP rotated: extract again and take
         // the same format id, so the resumed stream keeps its identity.
         let reextract: @Sendable (MediaFormat) async throws -> MediaFormat = { old in
-            guard let fresh = try await extract(url, fresh: true).formats.first(where: { $0.id == old.id })
+            // Same bytes or nothing: appending a re-encoded file to the `.part`
+            // would stitch two different streams together.
+            guard let fresh = try await extract(url, fresh: true).formats.first(where: { $0.id == old.id }),
+                  fresh.filesize == old.filesize, fresh.lastModified == old.lastModified
             else { throw DownloadError.forbidden }
             return fresh
         }

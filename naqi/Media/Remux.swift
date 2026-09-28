@@ -157,17 +157,29 @@ enum Remux {
         try await export(composition, to: output, isCancelled: isCancelled)
     }
 
+    /// `range` of `source`, compressed passthrough — one part of a split.
+    /// `range` must start on a keyframe: a mid-GOP start copies back to the
+    /// previous keyframe and hides the extra behind an edit list, which some
+    /// receivers ignore (`docs/publish-presets-plan-ios.md` §3.2).
+    static func copy(_ source: URL, range: CMTimeRange, to output: URL,
+                     isCancelled: @escaping @Sendable () -> Bool = { false }) async throws {
+        let asset = AVURLAsset(url: source)
+        defer { withExtendedLifetime(asset) {} }
+        try await export(asset, timeRange: range, to: output, isCancelled: isCancelled)
+    }
+
     // MARK: - Export
 
     private enum ExportOutcome: Sendable { case exported, cancelled }
 
-    private static func export(_ composition: AVMutableComposition, to output: URL,
+    private static func export(_ asset: AVAsset, timeRange: CMTimeRange? = nil, to output: URL,
                                isCancelled: @escaping @Sendable () -> Bool) async throws {
         try? FileManager.default.removeItem(at: output)
-        guard let session = AVAssetExportSession(asset: composition,
+        guard let session = AVAssetExportSession(asset: asset,
                                                  presetName: AVAssetExportPresetPassthrough) else {
             throw MediaError.writerFailed("no passthrough export session")
         }
+        if let timeRange { session.timeRange = timeRange }
         nonisolated(unsafe) let exportSession = session
         let outcome = try await withThrowingTaskGroup(of: ExportOutcome.self) { group in
             group.addTask {
@@ -193,7 +205,8 @@ enum Remux {
 
         // The expensive silent failure is a short output — one segment written,
         // the rest dropped — because the export reports success either way.
-        let expected = composition.duration.seconds
+        let expected = if let timeRange { timeRange.duration.seconds }
+                       else { try await asset.load(.duration).seconds }
         let got = try await AVURLAsset(url: output).load(.duration).seconds
         guard got >= expected - durationSlackSeconds else {
             try? FileManager.default.removeItem(at: output)

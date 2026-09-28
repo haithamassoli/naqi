@@ -21,6 +21,19 @@
 	<true/>
 	<key>UIFileSharingEnabled</key>
 	<true/>
+	<!-- PublishPreset.schemes: which platforms the saved card offers. Only
+	     canOpenURL is asked; nothing here is ever opened. -->
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>whatsapp</string>
+		<string>twitter</string>
+		<string>instagram</string>
+		<string>snapchat</string>
+		<string>tg</string>
+		<string>fb-messenger</string>
+		<string>tiktok</string>
+		<string>snssdk1233</string>
+	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>processing</string>

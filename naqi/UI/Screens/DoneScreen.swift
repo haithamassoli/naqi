@@ -23,11 +23,7 @@ struct DoneScreen: View {
     @State private var libraryRefused = false
     /// Flips once the in-app copy is gone, so the screen re-reads the disk.
     @State private var copyDropped = false
-
-    /// The check tile tracks the title beside it: a 36 pt circle left at 36 pt
-    /// next to a 50 pt title crushes the two lines it is there to introduce.
-    @ScaledMetric(relativeTo: .subheadline) private var tile: CGFloat = 36
-    @ScaledMetric(relativeTo: .subheadline) private var glyph: CGFloat = 20
+    @State private var publishing: PublishTarget?
 
     /// The name the publish actually used — not the job's `title`, which is the
     /// **source** name and would read as the filtered copy's. Available on both
@@ -85,7 +81,6 @@ struct DoneScreen: View {
                     VStack(alignment: .leading, spacing: Naqi.S.s5) {
                         savedCard
                         if let spareCopy { copyCard(spareCopy) }
-                        if canDeleteOriginal { deleteRow }
                         if let deleteResult {
                             Text(deleteResult)
                                 .font(Naqi.F.bodySmall)
@@ -110,6 +105,7 @@ struct DoneScreen: View {
         #endif
         .navigationBarBackButtonHidden(true)
         .sheet(item: $playback) { MediaPlayerSheet(item: $0) }
+        .sheet(item: $publishing) { PublishSheet(target: $0) }
         .mediaFileExporter(isPresented: $saving, url: flow.monitor.output,
                            name: outputName ?? "naqi")
         .confirmationDialog(Text(.dlgDeleteOriginalTitle),
@@ -123,81 +119,62 @@ struct DoneScreen: View {
         }
     }
 
+    /// Play is the thumbnail, sharing is the platform row, and Save rides at
+    /// the end of that row. The one destructive action sits under a divider
+    /// with the sentence that says why you would use it.
     private var savedCard: some View {
-        NaqiCard {
-            HStack(spacing: Naqi.S.s3) {
-                ZStack {
-                    Circle().fill(Naqi.C.primary)
-                    NaqiIcon(.check).fill(Naqi.C.onPrimary).frame(width: glyph, height: glyph)
-                        .accessibilityHidden(true)
-                }
-                .frame(width: tile, height: tile)
+        SavedCard(url: flow.monitor.output,
+                  name: outputName ?? String(localized: .dlgDeleteOriginalFallbackName),
+                  detail: savedWhere,
+                  play: canOpen ? { openTapped() } : nil,
+                  publish: { publishing = $0 }) {
+            extraTiles
+        } footer: {
+            deleteFooter
+        }
+    }
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(.jobsSavedLabel)
-                        .font(Naqi.F.titleMedium)
-                        .foregroundStyle(Naqi.C.onSurface)
-                    Text(savedWhere)
-                        .font(Naqi.F.bodySmall)
-                        .foregroundStyle(Naqi.C.onSurfaceVariant)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+    @ViewBuilder
+    private var extraTiles: some View {
+        Button { saving = true } label: {
+            ShareTile(label: .actionSave) { SymbolTile(systemName: "square.and.arrow.down") }
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier("action.save")
+        #if os(macOS)
+        // The sandbox container's Documents is not somewhere a Mac user
+        // would look on their own.
+        if let url = flow.monitor.output {
+            Button { NSWorkspace.shared.activateFileViewerSelecting([url]) } label: {
+                ShareTile(label: .actionShowInFinder) { SymbolTile(systemName: "folder") }
             }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("action.showInFinder")
+        }
+        #endif
+    }
 
-            if let name = outputName {
-                Text(name)
+    @ViewBuilder
+    private var deleteFooter: some View {
+        if canDeleteOriginal && deleteResult == nil {
+            NaqiRowDivider()
+                .padding(.horizontal, -Naqi.S.s4)
+                .padding(.top, Naqi.S.s3)
+            HStack {
+                Text(.jobsOriginalStillHere)
                     .font(Naqi.F.bodySmall)
                     .foregroundStyle(Naqi.C.onSurfaceVariant)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .padding(.top, Naqi.S.s3)
-            }
-
-            if canOpen {
-                VStack(spacing: Naqi.S.s3) {
-                    Button { openTapped() } label: {
-                        Text(.actionPlay)
-                            .font(Naqi.F.labelLarge)
-                            .frame(maxWidth: .infinity, minHeight: 48)
-                    }
-                    .buttonStyle(NaqiPrimaryButtonStyle())
-                    .accessibilityIdentifier("action.play")
-
-                    if let url = flow.monitor.output {
-                        HStack(spacing: Naqi.S.s3) {
-                            ShareLink(item: url) {
-                                Text(.actionShare)
-                                    .font(Naqi.F.labelLarge)
-                                    .frame(maxWidth: .infinity, minHeight: 48)
-                            }
-                            .buttonStyle(NaqiOutlineButtonStyle())
-                            .accessibilityIdentifier("action.share")
-
-                            Button { saving = true } label: {
-                                Text(.actionSave)
-                                    .font(Naqi.F.labelLarge)
-                                    .frame(maxWidth: .infinity, minHeight: 48)
-                            }
-                            .buttonStyle(NaqiOutlineButtonStyle())
-                            .accessibilityIdentifier("action.save")
-                        }
-                        #if os(macOS)
-                        // The sandbox container's Documents is not somewhere a
-                        // Mac user would look on their own.
-                        Button {
-                            NSWorkspace.shared.activateFileViewerSelecting([url])
-                        } label: {
-                            Text(.actionShowInFinder)
-                                .font(Naqi.F.labelLarge)
-                                .frame(maxWidth: .infinity, minHeight: 48)
-                        }
-                        .buttonStyle(NaqiOutlineButtonStyle())
-                        .accessibilityIdentifier("action.showInFinder")
-                        #endif
-                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Button { showDeleteConfirm = true } label: {
+                    Text(.actionDelete)
+                        .font(Naqi.F.labelLarge)
+                        .foregroundStyle(Naqi.C.error)
+                        .frame(minHeight: 44)
                 }
-                .padding(.top, Naqi.S.s4)
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("action.deleteOriginal")
             }
+            .padding(.top, Naqi.S.s2)
         }
     }
 
@@ -221,18 +198,6 @@ struct DoneScreen: View {
             .padding(.top, Naqi.S.s3)
             .accessibilityIdentifier("action.deleteCopy")
         }
-    }
-
-    private var deleteRow: some View {
-        Button { showDeleteConfirm = true } label: {
-            Text(.actionDeleteOriginal)
-                .font(Naqi.F.labelLarge)
-                .foregroundStyle(Naqi.C.error)
-                .frame(maxWidth: .infinity, minHeight: 48)
-        }
-        .buttonStyle(.plain)
-        .overlay(RoundedRectangle(cornerRadius: Naqi.R.button)
-            .strokeBorder(Naqi.C.outlineVariant, lineWidth: Naqi.Border.hairline))
     }
 
     /// A file on disk plays straight away. A Photos publish from before the

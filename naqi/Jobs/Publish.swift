@@ -38,6 +38,16 @@ struct Published: Codable, Sendable, Equatable {
     let url: URL?
     /// `PHAsset` local identifier, for a Photos publish.
     let assetID: String?
+
+    /// `url` if the file is still there. The queue stores absolute paths and
+    /// the app container's path can change under them (a reinstall does it
+    /// every time), so an in-app copy is also looked for by name.
+    var existingURL: URL? {
+        guard let url else { return nil }
+        if FileManager.default.fileExists(atPath: url.path) { return url }
+        let moved = OutputLibrary.root.appendingPathComponent(url.lastPathComponent)
+        return FileManager.default.fileExists(atPath: moved.path) ? moved : nil
+    }
 }
 
 /// Moves the finished temp file to its destination.

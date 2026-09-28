@@ -212,15 +212,15 @@ struct DownloadTests {
             calls += 1
             if calls == 1 { throw DownloadError.unsupported }
             return "ok"
-        } update: { updates += 1 }
+        } update: { updates += 1 } lastUpdate: { .distantPast }
         #expect(ok == "ok" && calls == 2 && updates == 1)
 
         calls = 0; updates = 0
         await #expect(throws: DownloadError.self) {
             try await YtDlp.retryingAfterUpdate {
                 calls += 1
-                throw DownloadError.network("still broken")
-            } update: { updates += 1 }
+                throw DownloadError.extractor("still broken")
+            } update: { updates += 1 } lastUpdate: { .distantPast }
         }
         #expect(calls == 2 && updates == 1)
 
@@ -229,7 +229,7 @@ struct DownloadTests {
             try await YtDlp.retryingAfterUpdate {
                 calls += 1
                 throw DownloadError.cancelled
-            } update: { updates += 1 }
+            } update: { updates += 1 } lastUpdate: { .distantPast }
         }
         #expect(calls == 1 && updates == 0)
     }
@@ -248,6 +248,7 @@ struct DownloadTests {
         #expect(JobFailure.of(DownloadError.network("timed out")) == .downloadNetwork)
         #expect(JobFailure.of(DownloadError.noSpace) == .lowSpace)
         #expect(JobFailure.of(DownloadError.generic("boom")) == .downloadGeneric)
+        #expect(JobFailure.of(DownloadError.extractor("nsig")) == .downloadExtractor)
     }
 
     #if os(macOS)

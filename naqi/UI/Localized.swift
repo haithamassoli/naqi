@@ -22,6 +22,22 @@ func lowSpaceText(_ shortfall: Job.Shortfall?) -> LocalizedStringResource {
                           Float(shortfall.availableBytes) / 1e9)
 }
 
+/// `66 MB of 331 MB · 8.1 MB/s · ~under a minute remaining`, dropping each
+/// part that is not known yet. `ByteCountFormatter` brings the digits and
+/// unit words; only the two joins need keys of their own.
+func downloadStatsText(_ stats: DownloadStats) -> String {
+    let bytes = { ByteCountFormatter.string(fromByteCount: $0, countStyle: .file) }
+    let done = bytes(stats.done)
+    let amount = stats.total.map { total in
+        String(localized: "jobs_download_of", defaultValue: "\(done) of \(bytes(total))")
+    } ?? done
+    let speed = stats.bytesPerSec > 0
+        ? String(localized: "jobs_download_speed", defaultValue: "\(bytes(Int64(stats.bytesPerSec)))/s")
+        : nil
+    let eta = stats.etaSec.flatMap { $0 <= 0 ? nil : String(localized: .jobsEtaRemaining(String(localized: durationText(ms: Int64($0 * 1000))))) }
+    return [amount, speed, eta].compactMap(\.self).joined(separator: " · ")
+}
+
 /// Decimal, not binary — the same rule the Android library rows use.
 func fileSizeText(bytes: Int64) -> LocalizedStringResource {
     bytes >= 1_000_000_000
@@ -94,6 +110,11 @@ extension JobFailure {
         // disabled without an operation.
         case .downloadUnsupported: .errDownloadUnsupported
         case .downloadNetwork: .errDownloadNetwork
+        case .downloadUnavailable: .errDownloadUnavailable
+        case .downloadGeo: .errDownloadGeo
+        case .downloadRateLimited: .errDownloadRateLimited
+        case .downloadForbidden: .errDownloadForbidden
+        case .downloadExtractor: .errDownloadExtractor
         case .downloadGeneric: .errDownloadGeneric
         case .nothingSelected, .publishFailed, .generic: .errGeneric
         }

@@ -192,6 +192,9 @@ struct JobProgress: Sendable, Equatable, Codable {
     private(set) var pct: Double = 0
     private var videoPct: Double = 0
     private var audioPct: Double = 0
+    /// Bytes, speed and ETA, only while `stage == .download`. Optional, so a
+    /// progress encoded before it existed still decodes.
+    private(set) var download: DownloadStats?
 
     init(shape: Job.Shape, removeMusic: Bool) {
         self.shape = shape
@@ -214,15 +217,18 @@ struct JobProgress: Sendable, Equatable, Codable {
     /// Exclusive download bar. Filter progress starts after this returns to 0
     /// via a fresh `JobProgress` — mixing them on one scale would make
     /// "Downloading 80 %" jump to "Pass 1 5 %".
-    mutating func postDownload(_ sub: Double) {
+    /// An unknown total leaves the bar where it is; the stats still move.
+    mutating func postDownload(_ stats: DownloadStats) {
         stage = .download
-        pct = min(max(sub, 0), 1) * 100
+        download = stats
+        if let f = stats.fraction { pct = f * 100 }
     }
 
     /// - Parameter sub: 0…1 within `stage`.
     mutating func post(_ stage: Job.Stage, _ sub: Double) {
         let s = min(max(sub, 0), 1)
         self.stage = stage
+        if stage != .download { download = nil }
         if stage == .download {
             pct = max(pct, s * 100)
             return
@@ -351,6 +357,13 @@ enum JobFailure: String, Error, Codable, Sendable, Equatable {
     case interrupted
     case downloadUnsupported
     case downloadNetwork
+    /// Removed, private, members-only, age-gated: nothing a retry changes.
+    case downloadUnavailable
+    case downloadGeo
+    case downloadRateLimited
+    case downloadForbidden
+    /// The site changed under the extractor; only a newer app or yt-dlp helps.
+    case downloadExtractor
     case downloadGeneric
     case generic
 
@@ -364,6 +377,11 @@ enum JobFailure: String, Error, Codable, Sendable, Equatable {
             case .network: return .downloadNetwork
             case .noSpace: return .lowSpace
             case .cancelled: return .generic
+            case .unavailable: return .downloadUnavailable
+            case .geo: return .downloadGeo
+            case .rateLimited: return .downloadRateLimited
+            case .forbidden: return .downloadForbidden
+            case .extractor: return .downloadExtractor
             case .noFile, .generic: return .downloadGeneric
             }
         }

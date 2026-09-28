@@ -51,16 +51,16 @@ enum JobRunner {
         var discardDownloaded = false
         var resolvedQuality: DownloadQuality?
         if let remote = job.remoteURL {
-            let quality = DownloadQuality.of(job.quality).resolved(fast: job.ops.processingMode == .fast)
+            let (quality, processing) = downloadPlan(for: job)
             resolvedQuality = quality
             if quality == .audio { job.ops.fit(hasVideo: false) }
             let file: URL
             do {
                 file = try await Downloader.download(
-                    url: remote, quality: quality,
-                    onProgress: { pct in
+                    url: remote, quality: quality, processing: processing,
+                    onProgress: { stats in
                         var b = JobProgress(shape: .censorOnly, removeMusic: false)
-                        b.postDownload(Double(pct) / 100)
+                        b.postDownload(stats)
                         progress(b)
                     },
                     isCancelled: { stop() != nil })
@@ -319,6 +319,25 @@ enum JobRunner {
                 """)
             throw JobFailure.of(error)
         }
+    }
+
+    /// What a link job asks `Downloader.download` for. `JobQueue`'s look-ahead
+    /// asks the same, so the job finds that download already complete; a plan
+    /// that drifted would fetch one file and then download another.
+    static func downloadPlan(for job: Job) -> (DownloadQuality, Processing) {
+        let quality = DownloadQuality.of(job.quality).resolved(fast: job.ops.processingMode == .fast)
+        var ops = job.ops
+        if quality == .audio { ops.fit(hasVideo: false) }
+        return (quality, processing(ops))
+    }
+
+    /// The format policy's view of the job: any visual filter wins, since it
+    /// re-encodes and caps what is worth fetching; music-only keeps the
+    /// picture untouched. No filter at all is a plain download.
+    static func processing(_ ops: FilterOps) -> Processing {
+        guard ops.isValid else { return .none }
+        if ops.censor { return .visual }
+        return ops.removeMusic ? .music : .none
     }
 
     /// Anything short of a user cancel keeps the work directory when it holds

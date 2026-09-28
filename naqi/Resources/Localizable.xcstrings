@@ -1284,6 +1284,40 @@
         }
       }
     },
+    "jobs_download_of" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ من %2$@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ of %2$@"
+          }
+        }
+      }
+    },
+    "jobs_download_speed" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/ث"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@/s"
+          }
+        }
+      }
+    },
     "jobs_eta_remaining" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -4004,6 +4038,91 @@
               "stringUnit" : {
                 "state" : "translated",
                 "value" : "Download failed."
+              }
+            }
+      }
+    },
+    "err_download_unavailable" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "هذا الفيديو غير متاح. قد يكون محذوفًا أو خاصًا أو للأعضاء فقط أو مقيّدًا بالعمر."
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "This video is unavailable. It may be removed, private, members-only or age-restricted."
+              }
+            }
+      }
+    },
+    "err_download_geo" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "هذا الفيديو غير متاح في بلدك."
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "This video isn't available in your country."
+              }
+            }
+      }
+    },
+    "err_download_rate_limited" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "الموقع يحدّ من التنزيلات حاليًا. أعد المحاولة بعد بضع دقائق."
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "The site is limiting downloads right now. Try again in a few minutes."
+              }
+            }
+      }
+    },
+    "err_download_forbidden" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "رفض الموقع التنزيل. أعد المحاولة بعد بضع دقائق."
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "The site refused the download. Try again in a few minutes."
+              }
+            }
+      }
+    },
+    "err_download_extractor" : {
+      "extractionState" : "manual",
+      "localizations" : {
+            "ar" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "غيّر هذا الموقع طريقة تقديم الفيديوهات. حدّث نقي أو أعد المحاولة لاحقًا."
+              }
+            },
+            "en" : {
+              "stringUnit" : {
+                "state" : "translated",
+                "value" : "This site changed how it serves videos. Update Naqi or try again later."
               }
             }
       }

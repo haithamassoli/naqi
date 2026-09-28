@@ -94,9 +94,16 @@ enum LiveActivity {
     #if canImport(ActivityKit) && os(iOS)
     static func state(_ progress: JobProgress, etaMs: Int64, queued: Int) -> NaqiJobAttributes.ContentState {
         // `Eta.liveMs` returns 0 early on; print nothing rather than a number
-        // that will be wrong.
-        let detail = [etaMs > 0 ? String(localized: .jobsEtaRemaining(String(localized: durationText(ms: etaMs)))) : nil,
-                      queued > 0 ? String(localized: .progressMoreQueued(Int32(queued))) : nil]
+        // that will be wrong. A download has real numbers instead: bytes,
+        // speed and its own ETA replace the percent-based guess.
+        let head: String? = if progress.stage == .download, let stats = progress.download {
+            downloadStatsText(stats)
+        } else if etaMs > 0 {
+            String(localized: .jobsEtaRemaining(String(localized: durationText(ms: etaMs))))
+        } else {
+            nil
+        }
+        let detail = [head, queued > 0 ? String(localized: .progressMoreQueued(Int32(queued))) : nil]
             .compactMap(\.self).joined(separator: " · ")
         return .init(caption: progress.stage.map { String(localized: $0.label) } ?? "",
                      detail: detail,

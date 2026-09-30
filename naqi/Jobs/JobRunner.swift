@@ -97,7 +97,14 @@ enum JobRunner {
             if discardDownloaded, let downloaded { Downloader.discard(downloaded) }
         }
 
-        let src = try await MediaSource.probe(url)
+        // A file AVFoundation cannot parse (WebM, a half-written download) used
+        // to surface as `.generic` — "Filtering failed." — when the truth is
+        // that the file was never readable. Both cases share `errUnreadable`.
+        let src: MediaSource
+        do { src = try await MediaSource.probe(url) } catch {
+            Log.job.error("probe failed: \(String(describing: error), privacy: .public)")
+            throw JobFailure.unsupportedContainer
+        }
         let durationMs = src.duration.isNumeric ? Int64(src.duration.seconds * 1000) : 0
 
         // **Only the render is segmented.** `Checkpoint.plan` carries the

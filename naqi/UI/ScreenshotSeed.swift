@@ -63,6 +63,8 @@ extension Flow {
                          progress: nil)
         case "about":
             path = [.about]
+        case "settings":
+            path = [.settings]
         case "run", "runQueue":
             // Censor-only: the same four screens, real work behind them, and
             // no 88 MB htdemucs graph to load on a simulator.

@@ -13,6 +13,8 @@ import SwiftUI
 /// `RootView` observer that already watches `flow.ops`.
 struct SettingsScreen: View {
     @Bindable var flow: Flow
+    @Binding var language: String
+    @AppStorage(AppTheme.key) private var theme = AppTheme.system
 
     var body: some View {
         ScrollView {
@@ -48,6 +50,11 @@ struct SettingsScreen: View {
                     // last pick happened to be an MP3.
                     DestinationSection(flow: flow)
                     StorageSection(monitor: flow.monitor)
+                    VStack(alignment: .leading, spacing: 0) {
+                        SectionHeader(.settingsLanguageTitle)
+                        LanguagePicker(language: $language)
+                    }
+                    appearanceSection
                 }
             }
             .padding(.horizontal, Naqi.S.gutter)
@@ -60,6 +67,20 @@ struct SettingsScreen: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(Naqi.C.background, for: .navigationBar)
         #endif
+    }
+
+    private var appearanceSection: some View {
+        VStack(alignment: .leading, spacing: Naqi.S.s2) {
+            SectionHeader(.settingsAppearanceTitle)
+            Picker(String(localized: .settingsAppearanceTitle), selection: Binding(
+                get: { theme },
+                set: { new in crossfade { theme = new; new.apply() } }
+            )) {
+                ForEach(AppTheme.allCases, id: \.self) { Text($0.label).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .accessibilityIdentifier("settings.theme")
+        }
     }
 
     /// The pair the Pick screen shows, because they are defaults too — a

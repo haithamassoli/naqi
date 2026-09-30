@@ -133,6 +133,64 @@ enum Naqi {
     static let spring = Animation.spring(response: 0.32, dampingFraction: 0.5)
 }
 
+// MARK: - Theme choice
+
+/// Set on the window, not through `.preferredColorScheme`: every `Naqi.C` token
+/// is a dynamic UIColor that resolves off the window's trait, sheets included,
+/// and `.preferredColorScheme(nil)` is known not to hand control back to the system.
+enum AppTheme: String, CaseIterable {
+    case system, light, dark
+
+    static let key = "naqi.theme"
+
+    var label: LocalizedStringResource {
+        switch self {
+        case .system: .themeSystem
+        case .light: .themeLight
+        case .dark: .themeDark
+        }
+    }
+
+    @MainActor func apply() {
+        #if os(iOS)
+        let style: UIUserInterfaceStyle = switch self {
+        case .system: .unspecified
+        case .light: .light
+        case .dark: .dark
+        }
+        for window in allWindows() { window.overrideUserInterfaceStyle = style }
+        #else
+        NSApp.appearance = switch self {
+        case .system: nil
+        case .light: NSAppearance(named: .aqua)
+        case .dark: NSAppearance(named: .darkAqua)
+        }
+        #endif
+    }
+}
+
+/// Runs `change` under a fade on every window, so a theme or language switch
+/// dissolves into the new look instead of cutting to it. The CATransition picks
+/// up whatever the change commits in this run-loop turn, SwiftUI's re-render included.
+// ponytail: macOS cuts; an NSView layer transition would fade it too.
+@MainActor func crossfade(_ change: () -> Void) {
+    #if os(iOS)
+    for window in allWindows() {
+        let fade = CATransition()
+        fade.type = .fade
+        fade.duration = 0.35
+        window.layer.add(fade, forKey: "naqi.crossfade")
+    }
+    #endif
+    change()
+}
+
+#if os(iOS)
+@MainActor private func allWindows() -> [UIWindow] {
+    UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap(\.windows)
+}
+#endif
+
 // MARK: - Hex helpers
 
 extension Color {

@@ -127,16 +127,27 @@ struct OnboardingScreen: View {
                     .foregroundStyle(Naqi.C.onSurfaceVariant)
             }
             .multilineTextAlignment(.center)
-            NaqiCard(padding: 0) {
-                ForEach(Array(AppLanguage.all.enumerated()), id: \.element.code) { i, lang in
-                    if i > 0 { NaqiRowDivider() }
-                    // ponytail: the name is its own key; the catalog has no
-                    // entry, so it resolves to itself in every language.
-                    SelectRow(title: LocalizedStringResource(stringLiteral: lang.name),
-                              isSelected: language == lang.code, id: "onb.lang.\(lang.code)") {
-                        withAnimation(Naqi.spring) { language = lang.code }
-                        AppLanguage.save(lang.code)
-                    }
+            LanguagePicker(language: $language)
+        }
+    }
+}
+
+/// Both names in their own script, on onboarding and in Settings. A pick
+/// re-renders this session through the environment and fades into it.
+struct LanguagePicker: View {
+    @Binding var language: String
+
+    var body: some View {
+        NaqiCard(padding: 0) {
+            ForEach(Array(AppLanguage.all.enumerated()), id: \.element.code) { i, lang in
+                if i > 0 { NaqiRowDivider() }
+                // ponytail: the name is its own key; the catalog has no
+                // entry, so it resolves to itself in every language.
+                SelectRow(title: LocalizedStringResource(stringLiteral: lang.name),
+                          isSelected: language == lang.code, id: "onb.lang.\(lang.code)") {
+                    guard language != lang.code else { return }
+                    crossfade { language = lang.code }
+                    AppLanguage.save(lang.code)
                 }
             }
         }

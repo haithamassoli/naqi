@@ -12,6 +12,7 @@ struct RootView: View {
     /// only takes effect at the next launch, so this session applies it
     /// through the environment instead of asking for a relaunch.
     @State private var language = AppLanguage.current
+    @AppStorage(AppTheme.key) private var theme = AppTheme.system
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some View {
@@ -25,6 +26,7 @@ struct RootView: View {
         .environment(\.locale, Locale(identifier: language))
         .environment(\.layoutDirection, language == "ar" ? .rightToLeft : .leftToRight)
         .tint(Naqi.C.primary)
+        .onAppear { theme.apply() }
         // The share extension leaves manifests in the App Group container; the
         // app is the only thing that can enqueue them. Draining on every
         // activation and not only at launch is what makes a share that arrives
@@ -72,7 +74,7 @@ struct RootView: View {
                     case .progress: ProgressScreen(flow: flow)
                     case .done: DoneScreen(flow: flow)
                     case .jobs: JobsScreen(flow: flow)
-                    case .settings: SettingsScreen(flow: flow)
+                    case .settings: SettingsScreen(flow: flow, language: $language)
                     case .about: AboutScreen()
                     case .licenses: ThirdPartyLicensesScreen()
                     case .diagnostics: DeviceRuntimeView()

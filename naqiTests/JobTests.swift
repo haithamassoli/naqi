@@ -198,6 +198,18 @@ struct JobTests {
 
     // MARK: - Job key
 
+    @Test("an enabled legacy off selection shares the women's checkpoint identity")
+    func legacyFaceSelectionKey() {
+        let source = URL(fileURLWithPath: "/tmp/legacy-face.mp4")
+        var legacy = FilterOps()
+        legacy.who = .none
+        #expect(legacy.resolvedWho == .women)
+        #expect(Checkpoint.key(source: source, ops: legacy)
+                == Checkpoint.key(source: source, ops: FilterOps()))
+        legacy.censor = false
+        #expect(legacy.resolvedWho == .none)
+    }
+
     @Test("the job key is stable for identical inputs and moves when any option does")
     func jobKeyIdentity() {
         let url = URL(fileURLWithPath: "/tmp/a movie.mp4")

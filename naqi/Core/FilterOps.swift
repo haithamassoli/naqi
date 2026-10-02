@@ -9,12 +9,13 @@ struct FilterOps: Codable, Sendable, Equatable {
     /// semantics unchanged, but caps rendered video to a 720-pixel short side.
     var processingMode: ProcessingMode = .current
 
-    /// Which gender's face tracks get censored.
+    /// Which people's regions get censored.
     var who: Who = .women
     /// The face toggle wins over a legacy off selection that the picker no
     /// longer offers. Keep the stored value so censor-off jobs retain it.
     var resolvedWho: Who { censor && who == .none ? .women : who }
     var censorMode: CensorMode = .regions
+    var censorTarget: CensorTarget = .person
     /// Whether the NSFW model may add whole-frame censor spans. Face tracks
     /// remain independent, so turning this off also removes the gate's model
     /// session and tensor lane from analyze.
@@ -46,6 +47,7 @@ struct FilterOps: Codable, Sendable, Equatable {
         var skipsGenderVote: Bool { self == .everyone || self == .none }
     }
     enum CensorMode: String, Codable, Sendable, CaseIterable { case regions, wholeFrame }
+    enum CensorTarget: String, Codable, Sendable, CaseIterable { case face, person }
     enum SolidColor: UInt32, Codable, Sendable, CaseIterable {
         case blur = 0
         case gray = 0xFF9E9E9E
@@ -129,6 +131,8 @@ extension FilterOps {
         processingMode = try values.decodeIfPresent(ProcessingMode.self, forKey: .processingMode) ?? .current
         who = try values.decode(Who.self, forKey: .who)
         censorMode = try values.decode(CensorMode.self, forKey: .censorMode)
+        // A queued job or saved setting keeps its original face-only policy.
+        censorTarget = try values.decodeIfPresent(CensorTarget.self, forKey: .censorTarget) ?? .face
         censorNsfw = try values.decodeIfPresent(Bool.self, forKey: .censorNsfw) ?? true
         strictness = try values.decode(Int.self, forKey: .strictness)
         blurAmount = try values.decode(Int.self, forKey: .blurAmount)

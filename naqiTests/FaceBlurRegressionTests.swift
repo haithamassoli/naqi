@@ -16,6 +16,7 @@ struct FaceBlurRegressionTests {
     func legacyOffSelection() async throws {
         let source = try #require(Self.clip)
         var ops = FilterOps()
+        ops.censorTarget = .face
         ops.censor = true
         ops.who = .none
         ops.censorNsfw = false
@@ -38,6 +39,7 @@ struct FaceBlurRegressionTests {
     func portraitClip(who: FilterOps.Who) async throws {
         let source = try await MediaSource.probe(try #require(Self.clip))
         var ops = FilterOps()
+        ops.censorTarget = .face
         ops.who = who
         ops.censorNsfw = false
         let analyzed = try await AnalyzePass.run(source, ops: ops)

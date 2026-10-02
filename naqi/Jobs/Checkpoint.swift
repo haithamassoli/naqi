@@ -103,7 +103,7 @@ enum Checkpoint {
     /// a film censored under the old semantics) and `plan3 → plan4` when the
     /// music guard changed which chunks a resumed audio checkpoint claimed.
     /// Bumping orphans stale directories and the 7-day sweep collects them.
-    static let planGeneration = "apple-plan1"
+    static let planGeneration = "apple-plan2-person-ungated"
 
     /// - Parameter forcedSegmentMs: the debug segment-length override (Android's
     ///   `segment_ms` Data key). It changes how many `seg-NNN.mp4` there are and
@@ -119,6 +119,7 @@ enum Checkpoint {
             ops.resolvedWho.rawValue,
             String(ops.censor),
             ops.censorMode.rawValue,
+            ops.censorTarget.rawValue,
             String(ops.strictness),
             String(ops.blurAmount),
             String(ops.grayscale),

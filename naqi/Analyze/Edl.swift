@@ -1,8 +1,8 @@
 import CoreGraphics
 import Foundation
 
-/// A rect in **upright-normalised** `[0,1]` space, already 25 %-padded and
-/// clamped. Matches Android `analysis/Contracts.kt:11` `NRect`.
+/// A rect in upright-normalised `[0,1]` space. Render geometry is clamped;
+/// faces receive 25 % padding and bodies 12 %. Classifier crops use raw boxes.
 struct NRect: Codable, Sendable, Equatable {
     var left: Float, top: Float, right: Float, bottom: Float
 
@@ -50,21 +50,60 @@ struct FaceTrackEdl: Codable, Sendable, Equatable {
         else { return nil }
         if t <= first.timeMs { return first.rect }
         if t >= last.timeMs { return last.rect }
-        // Keyframes are ascending; a linear scan is cheaper than a binary
-        // search at the few-dozen keyframes a real track carries, and this runs
-        // once per rendered frame.
-        var prev = first
-        for k in keyframes.dropFirst() {
-            if k.timeMs >= t {
-                let span = Float(k.timeMs - prev.timeMs)
-                // Degenerate span (duplicate keyframe times) resolves to the
-                // *earlier* rect, as Android's `rectAt` does (§4.5 step 4).
-                guard span > 0 else { return prev.rect }
-                return NRect.lerp(prev.rect, k.rect, Float(t - prev.timeMs) / span)
-            }
-            prev = k
+        let i = upperKeyframeIndex(at: t)
+        let prev = keyframes[i - 1], next = keyframes[i]
+        let span = Float(next.timeMs - prev.timeMs)
+        guard span > 0 else { return prev.rect }
+        return NRect.lerp(prev.rect, next.rect, Float(t - prev.timeMs) / span)
+    }
+
+    /// Body tracks can contain thousands of frames, so render lookup is logarithmic.
+    func upperKeyframeIndex(at t: Int64) -> Int {
+        var lo = 0, hi = keyframes.count - 1
+        while lo < hi {
+            let mid = (lo + hi) / 2
+            if keyframes[mid].timeMs < t { lo = mid + 1 } else { hi = mid }
         }
-        return last.rect
+        return lo
+    }
+}
+
+/// Evidence is kept even for people spared by the current policy. IDs belong
+/// only to this shot; classification is an appearance estimate, with ties unknown.
+struct PersonTrackEdl: Codable, Sendable, Equatable {
+    var id: Int
+    var shot: Int
+    var faceOnly: Bool
+    var geometry: FaceTrackEdl
+    var faces: [FaceTrackEdl.Keyframe]
+    var femaleVotes: Int
+    var maleVotes: Int
+
+    enum Classification: String, Codable, Sendable { case female, male, unknown }
+    var classification: Classification {
+        // One occluded face crop produced a contradictory gender in the video
+        // review. Require repeated evidence before a person can be spared.
+        guard max(femaleVotes, maleVotes) >= 2 else { return .unknown }
+        return femaleVotes > maleVotes ? .female : maleVotes > femaleVotes ? .male : .unknown
+    }
+
+    func shouldCensor(_ who: FilterOps.Who) -> Bool {
+        if classification == .unknown {
+            return GenderVote.shouldCensor(female: 0, male: 0, who: who)
+        }
+        return GenderVote.shouldCensor(female: femaleVotes, male: maleVotes, who: who)
+    }
+
+    func rect(at t: Int64) -> NRect? {
+        guard let r = geometry.rect(at: t) else { return nil }
+        guard !faceOnly, let first = geometry.keyframes.first, let last = geometry.keyframes.last,
+              t > first.timeMs, t < last.timeMs else { return r }
+        let i = geometry.upperKeyframeIndex(at: t)
+        // Keep an exact observation exact; across a detector gap cover both edges.
+        if geometry.keyframes[i].timeMs == t { return geometry.keyframes[i].rect }
+        let a = geometry.keyframes[i - 1].rect, b = geometry.keyframes[i].rect
+        return NRect(left: min(a.left, b.left), top: min(a.top, b.top),
+                     right: max(a.right, b.right), bottom: max(a.bottom, b.bottom))
     }
 }
 
@@ -78,12 +117,26 @@ struct Edl: Codable, Sendable, Equatable {
     var censorIntervalsMs: [ClosedRange<Int64>] = []
     /// Sorted by `startMs` at build time.
     var faceTracks: [FaceTrackEdl] = []
+    var personTracks: [PersonTrackEdl] = []
+    var personWho: FilterOps.Who = .none
+    var personWholeFrame: Bool = false
 
-    var isEmpty: Bool { censorIntervalsMs.isEmpty && faceTracks.isEmpty }
+    var isEmpty: Bool {
+        censorIntervalsMs.isEmpty && faceTracks.isEmpty
+            && !personTracks.contains { $0.shouldCensor(personWho) }
+    }
 
     /// Inclusive at both ends.
     func fullFrame(at t: Int64) -> Bool {
-        censorIntervalsMs.contains { $0.contains(t) }
+        if censorIntervalsMs.contains(where: { $0.contains(t) }) { return true }
+        var count = 0
+        for tr in personTracks where tr.shouldCensor(personWho)
+            && t >= tr.geometry.startMs && t <= tr.geometry.endMs {
+            // In person mode an unmatched face supplies no safe body bounds.
+            if tr.faceOnly { return true }
+            count += 1
+        }
+        return count > Self.maxRegionsPerFrame || (personWholeFrame && count > 0)
     }
 
     /// **The precedence rule**: a whole-frame interval blanks the frame and
@@ -94,6 +147,9 @@ struct Edl: Codable, Sendable, Equatable {
         var out: [NRect] = []
         out.reserveCapacity(2)
         for tr in faceTracks where t >= tr.startMs && t <= tr.endMs {
+            if let r = tr.rect(at: t) { out.append(r) }
+        }
+        for tr in personTracks where tr.shouldCensor(personWho) {
             if let r = tr.rect(at: t) { out.append(r) }
         }
         return out
@@ -113,7 +169,7 @@ struct Edl: Codable, Sendable, Equatable {
 /// runs meaningful, which is how the parity suite is scored.
 extension Edl {
     func toJSONData() throws -> Data {
-        let obj: [String: Any] = [
+        var obj: [String: Any] = [
             "censorIntervalsMs": censorIntervalsMs.map { [$0.lowerBound, $0.upperBound] },
             "faceTracks": faceTracks.map { tr -> [String: Any] in
                 [
@@ -126,6 +182,12 @@ extension Edl {
                 ]
             },
         ]
+        if !personTracks.isEmpty || personWho != .none {
+            obj["schemaVersion"] = 2
+            obj["personTracks"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(personTracks))
+            obj["personWho"] = personWho.rawValue
+            obj["personWholeFrame"] = personWholeFrame
+        }
         return try JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys])
     }
 
@@ -134,6 +196,28 @@ extension Edl {
             throw EdlError.malformed("root is not an object")
         }
         var edl = Edl()
+        if let people = root["personTracks"] {
+            guard (root["schemaVersion"] as? NSNumber)?.intValue == 2,
+                  let policy = root["personWho"] as? String,
+                  let who = FilterOps.Who(rawValue: policy) else {
+                throw EdlError.malformed("unsupported person analysis or missing policy")
+            }
+            edl.personTracks = try JSONDecoder().decode([PersonTrackEdl].self,
+                from: JSONSerialization.data(withJSONObject: people))
+            edl.personWho = who
+            edl.personWholeFrame = root["personWholeFrame"] as? Bool ?? false
+            for tr in edl.personTracks {
+                let ks = tr.geometry.keyframes
+                guard tr.geometry.startMs <= tr.geometry.endMs, !ks.isEmpty,
+                      tr.femaleVotes >= 0, tr.maleVotes >= 0,
+                      ks == ks.sorted(by: { $0.timeMs < $1.timeMs }),
+                      ks.allSatisfy({ k in
+                          let r = k.rect
+                          return [r.left, r.top, r.right, r.bottom].allSatisfy(\.isFinite)
+                              && !r.isEmpty && r.left >= 0 && r.top >= 0 && r.right <= 1 && r.bottom <= 1
+                      }) else { throw EdlError.malformed("invalid person geometry or evidence") }
+            }
+        }
         for p in root["censorIntervalsMs"] as? [[NSNumber]] ?? [] where p.count == 2 {
             let lo = p[0].int64Value, hi = p[1].int64Value
             guard lo <= hi else { throw EdlError.malformed("interval \(lo)..\(hi) is inverted") }

@@ -243,6 +243,7 @@ struct AnalyzeTests {
         let url = try requireQAVideo()
         let source = try await MediaSource.probe(url)
         var ops = FilterOps()
+        ops.censorTarget = .face
         ops.censor = true
         ops.strictness = 40
 
@@ -283,6 +284,7 @@ struct AnalyzeTests {
         let url = try requireQAVideo()
         let source = try await MediaSource.probe(url)
         var ops = FilterOps()
+        ops.censorTarget = .face
         ops.censorMode = .wholeFrame
 
         let r = try await AnalyzePass.run(source, ops: ops)
@@ -320,7 +322,9 @@ struct AnalyzeTests {
         let source = try await MediaSource.probe(url)
         let seen = OSAllocatedUnfairLock<[Double]>(initialState: [])
 
-        let result = try await AnalyzePass.run(source, ops: FilterOps(),
+        var ops = FilterOps()
+        ops.censorTarget = .face
+        let result = try await AnalyzePass.run(source, ops: ops,
                                                progress: { p in seen.withLock { $0.append(p) } })
 
         let reports = seen.withLock { $0 }

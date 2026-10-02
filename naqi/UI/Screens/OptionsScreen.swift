@@ -144,6 +144,13 @@ struct CensorSection: View {
             NaqiCard(padding: 0) {
                 WhoRow(flow: flow)
                 NaqiRowDivider()
+                ToggleTile(icon: nil,
+                           title: .optPersonTitle,
+                           desc: .optPersonDesc,
+                           isOn: Binding(get: { flow.ops.censorTarget == .person },
+                                         set: { flow.ops.censorTarget = $0 ? .person : .face }))
+                .accessibilityIdentifier("censor.person")
+                NaqiRowDivider()
                 // Directly under Who: the other "how much gets covered"
                 // decision. `regions` is off, `wholeFrame` is on.
                 ToggleTile(icon: nil,

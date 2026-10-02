@@ -72,6 +72,16 @@ enum Models {
         static let classes = 521
     }
 
+    enum Person {
+        static let file = "yolo11n_seg"
+        static let side = 640
+    }
+
+    static var personURL: URL? {
+        Bundle.main.url(forResource: Person.file, withExtension: "mlmodelc", subdirectory: "Models")
+            ?? Bundle.main.url(forResource: Person.file, withExtension: "mlmodelc")
+    }
+
     /// Every model the app ships, for the smoke test and the preflight check.
     static let bundled = [Nsfw.file, GenderAge.file, Demucs.file, YamNet.file]
 

@@ -3053,19 +3053,53 @@
         }
       }
     },
+    "opt_face_title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "الوجه فقط"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Face only"
+          }
+        }
+      }
+    },
+    "opt_face_desc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "معالجة أسرع. يحجب الوجوه ويُبقي الأجسام ظاهرة."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Faster processing. Covers faces and leaves bodies visible."
+          }
+        }
+      }
+    },
     "opt_person_title" : {
       "extractionState" : "manual",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "حجب الجسم كاملًا"
+            "value" : "الجسم كاملًا"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Cover the whole person"
+            "value" : "Whole body"
           }
         }
       }
@@ -3076,13 +3110,13 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "يتتبّع الفئة المختارة ويحجب الجسم بصندوق موسع. يُحجب من لم يتضح تصنيفه؛ وقد تُحجب الصورة كاملة عند تعذّر ربط الوجه بالجسم."
+            "value" : "يحجب الوجه والجسم ويستغرق وقتًا أطول. يُحجب من لم يتضح تصنيفه؛ وقد تُحجب الصورة كاملة عند تعذّر تحديد الجسم."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tracks selected people using expanded body rectangles. Unknown people are covered; the whole picture may be covered when a face cannot be linked to a body."
+            "value" : "Covers faces and bodies and takes longer to process. Unknown people are covered; the whole picture may be covered when a body cannot be identified."
           }
         }
       }

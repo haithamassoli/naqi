@@ -8,6 +8,7 @@
 
 /* Begin PBXBuildFile section */
 		AB0000000000000000000003 /* FFmpeg-Kit in Frameworks */ = {isa = PBXBuildFile; productRef = AB0000000000000000000002 /* FFmpeg-Kit */; };
+		AB0000000000000000000004 /* FFmpeg-Kit in Embed Frameworks */ = {isa = PBXBuildFile; productRef = AB0000000000000000000002 /* FFmpeg-Kit */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		AA0000000000000000000003 /* onnxruntime in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000002 /* onnxruntime */; };
 		AA000000000000000000002E /* NaqiShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000020 /* NaqiShare.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		AA000000000000000000002F /* NaqiWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000021 /* NaqiWidgets.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -38,6 +39,17 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
+		AB0000000000000000000005 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				AB0000000000000000000004 /* FFmpeg-Kit in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		AA000000000000000000002D /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -256,6 +268,7 @@
 				BE4718ED3021E434001C874F /* Sources */,
 				BE4718EE3021E434001C874F /* Frameworks */,
 				BE4718EF3021E434001C874F /* Resources */,
+				AB0000000000000000000005 /* Embed Frameworks */,
 				AA000000000000000000002D /* Embed Foundation Extensions */,
 				AA0000000000000000000040 /* Prepare embedded frameworks */,
 			);
@@ -492,7 +505,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = Entitlements/NaqiShare.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 18;
+				CURRENT_PROJECT_VERSION = 19;
 				DEVELOPMENT_TEAM = U3C6DM4QX4;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = NaqiShare/Info.plist;
@@ -519,7 +532,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = Entitlements/NaqiShare.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 18;
+				CURRENT_PROJECT_VERSION = 19;
 				DEVELOPMENT_TEAM = U3C6DM4QX4;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = NaqiShare/Info.plist;
@@ -547,7 +560,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Entitlements/NaqiWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 18;
+				CURRENT_PROJECT_VERSION = 19;
 				DEVELOPMENT_TEAM = U3C6DM4QX4;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = NaqiWidgets/Info.plist;
@@ -575,7 +588,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Entitlements/NaqiWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 18;
+				CURRENT_PROJECT_VERSION = 19;
 				DEVELOPMENT_TEAM = U3C6DM4QX4;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = NaqiWidgets/Info.plist;
@@ -721,7 +734,7 @@
 				"CODE_SIGN_ENTITLEMENTS[sdk=iphone*]" = Entitlements/naqi.entitlements;
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "Entitlements/naqi-macos.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 18;
+				CURRENT_PROJECT_VERSION = 19;
 				DEVELOPMENT_TEAM = U3C6DM4QX4;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -777,7 +790,7 @@
 				"CODE_SIGN_ENTITLEMENTS[sdk=iphone*]" = Entitlements/naqi.entitlements;
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "Entitlements/naqi-macos.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 18;
+				CURRENT_PROJECT_VERSION = 19;
 				DEVELOPMENT_TEAM = U3C6DM4QX4;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;

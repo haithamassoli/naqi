@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
-"""Check the real pinned FFmpeg artifacts: pass DerivedData/SourcePackages/artifacts/ffmpeg-kit-spm."""
+"""Pass DerivedData/SourcePackages/artifacts/ffmpeg-kit-spm and optionally an archived .app."""
 import hashlib
 import os
 from pathlib import Path
+import plistlib
 import shutil
 import subprocess
 import sys
@@ -47,3 +48,18 @@ with tempfile.TemporaryDirectory(prefix="naqi-framework-check-") as directory:
     assert all(digest(embedded / f.name / f.stem) == after[f.name] for f in frameworks)
 assert all(digest(f / f.stem) == originals[f] for f in frameworks), "Dependency cache changed"
 print("All 8 frameworks: arm64 preserved, arm64e removed, signatures valid, simulator untouched, repeat run unchanged.")
+
+if len(sys.argv) > 2:
+    app = Path(sys.argv[2]).resolve()
+    content = app / "Contents" if (app / "Contents").is_dir() else app
+    info = plistlib.loads((content / "Info.plist").read_bytes())
+    executable = content / "MacOS" / info["CFBundleExecutable"] if content != app else app / info["CFBundleExecutable"]
+    embedded = content / "Frameworks"
+    assert (embedded / "FFmpeg-Kit.framework/FFmpeg-Kit").is_file(), "Missing dynamic Swift package wrapper"
+    binaries = [executable] + [f / f.stem for f in embedded.glob("*.framework")]
+    for binary in binaries:
+        for line in run("xcrun", "otool", "-L", str(binary)).splitlines()[1:]:
+            dependency = line.strip().split(" (", 1)[0]
+            if dependency.startswith("@rpath/"):
+                assert (embedded / dependency.removeprefix("@rpath/")).is_file(), (binary, dependency)
+    print("App packaging: dynamic FFmpeg-Kit wrapper present; all embedded runtime dependencies resolve.")

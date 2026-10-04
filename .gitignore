@@ -12,6 +12,9 @@ xcuserdata/
 # macOS
 .DS_Store
 
+# Python model preparation tools
+__pycache__/
+
 # Vendored agent skills — restore from skills-lock.json
 .agents/
 

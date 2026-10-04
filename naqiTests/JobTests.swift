@@ -225,6 +225,7 @@ struct JobTests {
         v = base; v.censor = !base.censor; variants.append(v)
         v = base; v.who = .men; variants.append(v)
         v = base; v.censorMode = .wholeFrame; variants.append(v)
+        v = base; v.censorTarget = .face; variants.append(v)
         v = base; v.censorNsfw = false; variants.append(v)
         v = base; v.strictness += 1; variants.append(v)
         v = base; v.blurAmount += 1; variants.append(v)

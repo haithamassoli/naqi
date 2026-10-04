@@ -65,6 +65,7 @@ final class FrameSampler: @unchecked Sendable {
     private let gateEnabled: Bool
     private let gateStride: Int
     private let slotIntervalUs: Int64
+    private let everyFrame: Bool
     private let endUs: Int64
     private var nextSlotUs: Int64
     private var stats = Stats()
@@ -94,6 +95,7 @@ final class FrameSampler: @unchecked Sendable {
     init(track: AVAssetTrack,
          transform: VideoTransform,
          fps: Double = AnalyzeConstants.sampleFPS,
+         everyFrame: Bool = false,
          gateEvery: Int = AnalyzeConstants.gateStride,
          gateEnabled: Bool = true,
          startMs: Int64 = 0,
@@ -101,6 +103,7 @@ final class FrameSampler: @unchecked Sendable {
         reader = try TrackReader.decodedVideo(track: track)
         sourceTransform = transform.toUpright
         self.gateEnabled = gateEnabled
+        self.everyFrame = everyFrame
         gateStride = max(1, gateEvery)
         slotIntervalUs = max(1, Int64(1_000_000 / fps))
         endUs = endMs == .max ? .max : endMs * 1000
@@ -170,7 +173,7 @@ final class FrameSampler: @unchecked Sendable {
             if nextSlotUs == .min { nextSlotUs = ptsUs }
             // Trust the sample's own pts, not EOS: decode order != display order.
             if ptsUs >= endUs { return nil }
-            guard ptsUs >= nextSlotUs else { continue }
+            guard everyFrame || ptsUs >= nextSlotUs else { continue }
             // Advance before the image guard, and resync after a decode gap —
             // both exactly as Android (§1.2 step 9).
             nextSlotUs += slotIntervalUs
@@ -266,6 +269,7 @@ final class FrameSampler: @unchecked Sendable {
     /// measured ~8.6 ms/frame at 640 px and handing over native 1080p traded the
     /// whole saving for a slower detector (§10.4).
     private func scale(_ src: CVPixelBuffer, into dst: CVPixelBuffer) throws {
+        CVBufferPropagateAttachments(src, dst)
         CVPixelBufferLockBaseAddress(dst, [])
         defer { CVPixelBufferUnlockBaseAddress(dst, []) }
         for plane in 0..<2 {

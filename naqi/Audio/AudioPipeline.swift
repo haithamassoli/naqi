@@ -41,6 +41,7 @@ enum AudioPipeline {
                             to output: URL,
                             keepStems: FilterOps.KeepStems = .vocals,
                             includeVideo: Bool = true,
+                            useMusicGate: Bool = false,
                             progress: @escaping @Sendable (Double) -> Void = { _ in },
                             isCancelled: @escaping @Sendable () -> Bool = { false }) async throws -> Result {
         // Shared lifetime boundary: every caller and every exit path releases
@@ -93,7 +94,8 @@ enum AudioPipeline {
                 group.addTask {
                     sep.v = try await separate(track: aTrack, into: aIn, stats: stats,
                                                keepStems: keepStems.stems, estimatedFrames: frames,
-                                               anchor: anchor, progress: progress, isCancelled: aborted)
+                                               anchor: anchor, useMusicGate: useMusicGate,
+                                               progress: progress, isCancelled: aborted)
                 }
                 // The other branch's pump loop does not observe task
                 // cancellation, so the flag has to be raised before waiting on
@@ -146,11 +148,14 @@ enum AudioPipeline {
     private static func separate(track: AVAssetTrack, into input: AVAssetWriterInput,
                                  stats: AudioStats, keepStems: [Models.Demucs.Stem],
                                  estimatedFrames: Int, anchor: CMTime,
+                                 useMusicGate: Bool,
                                  progress: @escaping @Sendable (Double) -> Void,
                                  isCancelled: @escaping @Sendable () -> Bool) async throws -> Sep {
         nonisolated(unsafe) let decoder = try AudioDecoder(track: track)
         try decoder.start()
-        let gate = MusicGate.open()
+        // Generic music classification can miss instruments beneath voices.
+        // Process every window by default; the gate remains available for A/B diagnostics.
+        let gate = useMusicGate ? MusicGate.open() : nil
         defer { if gate != nil { ModelRegistry.evict(Models.YamNet.file) } }
         let session = Confined<DemucsSession?>(nil)
         let format = try lpcmFormat()

@@ -2288,6 +2288,40 @@
         }
       }
     },
+    "licenses_person_title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ultralytics YOLO11n-seg"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ultralytics YOLO11n-seg"
+          }
+        }
+      }
+    },
+    "licenses_person_terms" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "نموذج كشف الأشخاص بترخيص AGPL-3.0. راجع ترخيص Ultralytics المرتبط وإشعارات المستودع لهذه الأوزان المحددة."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Person detection model: AGPL-3.0. See the linked Ultralytics licence and the repository notices for this pinned checkpoint."
+          }
+        }
+      }
+    },
     "licenses_personal_only" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -2430,13 +2464,13 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "اختر وجوه مَن تُحجب وكيف."
+            "value" : "اختر مَن تحجب وأسلوب الحجب."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Choose whose faces to cover and how."
+            "value" : "Choose whom to cover and how."
           }
         }
       }
@@ -2464,13 +2498,13 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "تمويه الوجوه تلقائيًا"
+            "value" : "حجب الوجوه أو الأجسام تلقائيًا"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Blur faces automatically"
+            "value" : "Cover faces or bodies automatically"
           }
         }
       }
@@ -2532,13 +2566,13 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "يستطيع نقي إزالة الموسيقى وإبقاء الحوار."
+            "value" : "يقلّل نقي أصوات الآلات ويُبقي الصوت البشري، بما فيه الكلام والغناء."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Naqi can take the music out and leave the dialogue."
+            "value" : "Naqi suppresses instruments while preserving human voices, including speech and singing."
           }
         }
       }
@@ -2889,13 +2923,13 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "يُبقي الحوار والغناء؛ ويحذف الموسيقى والمؤثرات الصوتية."
+            "value" : "يُبقي الكلام والغناء والتلاوة مع تقليل الآلات. قد تتغيّر بعض تفاصيل الصوت."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Keeps dialogue and singing; drops music and sound effects."
+            "value" : "Preserves speech, singing and recitation while suppressing instruments. Some vocal details may change."
           }
         }
       }
@@ -2906,13 +2940,13 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "يُبقي أيضًا المؤثرات الصوتية وأصوات المحيط؛ وقد يتسرّب شيء من الموسيقى."
+            "value" : "يُبقي مزيدًا من أصوات المحيط والمؤثرات، وقد يُبقي أصوات آلات موسيقية."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Also keeps sound effects and ambience; some music may leak."
+            "value" : "Keeps more ambience and sound effects, and may also retain musical instruments."
           }
         }
       }
@@ -3019,19 +3053,87 @@
         }
       }
     },
+    "opt_face_title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "الوجه فقط"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Face only"
+          }
+        }
+      }
+    },
+    "opt_face_desc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "معالجة أسرع. يحجب الوجوه ويُبقي الأجسام ظاهرة."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Faster processing. Covers faces and leaves bodies visible."
+          }
+        }
+      }
+    },
+    "opt_person_title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "الجسم كاملًا"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Whole body"
+          }
+        }
+      }
+    },
+    "opt_person_desc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يحجب الوجه والجسم ويستغرق وقتًا أطول. يُحجب من لم يتضح تصنيفه؛ وقد تُحجب الصورة كاملة عند تعذّر تحديد الجسم."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Covers faces and bodies and takes longer to process. Unknown people are covered; the whole picture may be covered when a body cannot be identified."
+          }
+        }
+      }
+    },
     "opt_section_censor_faces" : {
       "extractionState" : "manual",
       "localizations" : {
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "حجب الوجوه"
+            "value" : "حجب الأشخاص"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Censor faces"
+            "value" : "Censor people"
           }
         }
       }
@@ -3178,13 +3280,13 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "مدى سهولة حجب المشهد كاملًا. لا يتأثّر تمويه الوجوه بهذا الإعداد."
+            "value" : "مدى سهولة حجب المشهد كاملًا. حجب الوجوه والأجسام مستقل عن هذا الإعداد."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "How eagerly whole scenes are censored. Face blurring is never affected."
+            "value" : "How eagerly whole scenes are censored. Face and body coverage are independent."
           }
         }
       }
@@ -3280,13 +3382,13 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "أيّ الوجوه تُحجب. حجب المشاهد خيار مستقل."
+            "value" : "أيّ الأشخاص يُحجبون. حجب المشاهد خيار مستقل."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Which faces get covered. Scene censoring is controlled separately."
+            "value" : "Which people get covered. Scene censoring is controlled separately."
           }
         }
       }
@@ -3365,13 +3467,13 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "يحجب الصورة كاملة طوال ظهور وجه محجوب، لا الوجه وحده. غالبًا ما يُحجب معظم الفيديو بهذه الطريقة."
+            "value" : "يحجب الصورة كاملة طوال ظهور شخص من الفئة المختارة."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Covers the entire picture while a censored face is on screen, not just the face. Most of the video usually ends up covered."
+            "value" : "Covers the entire picture while a selected person is on screen."
           }
         }
       }
@@ -3518,13 +3620,13 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "تُموّه الوجوه والمشاهد المُخالفة."
+            "value" : "يحجب الوجوه أو الأجسام والمشاهد المُخالفة."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Blur faces and flagged scenes."
+            "value" : "Cover faces or bodies and flagged scenes."
           }
         }
       }
@@ -3535,13 +3637,13 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "حجب الوجوه"
+            "value" : "حجب الأشخاص"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Censor faces"
+            "value" : "Censor people"
           }
         }
       }

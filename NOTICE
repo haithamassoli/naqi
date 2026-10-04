@@ -51,6 +51,20 @@ TensorFlow Models / YAMNet
   Code license: https://github.com/tensorflow/models/blob/master/LICENSE
   Weight source: https://storage.googleapis.com/audioset/yamnet.h5
 
+Ultralytics YOLO11n-seg / Core ML export
+  Bundled artifact: naqi/Resources/Models/yolo11n_seg.mlmodelc
+  Origin: yolo11n-seg.pt from Ultralytics assets v8.4.0, exported with
+  Ultralytics 8.4.29, PyTorch 2.7.0 and coremltools 9.0 as MLProgram FP16,
+  RGB 640x640, half=True, nms=False, dynamic=False; compiled for iOS 18.
+  The generated model and upstream export code state AGPL-3.0 terms.
+  Ultralytics also offers a separate enterprise license. Naqi's license does
+  not replace these terms. The Python export runtime is not shipped in the app.
+  Weight source: https://github.com/ultralytics/assets/releases/download/v8.4.0/yolo11n-seg.pt
+  Weight SHA-256: 55ed65c56c91713d23e8402371c6c49a6fd84f257f7dce452e8d70e41dcbe152
+  Code source: https://github.com/ultralytics/ultralytics/tree/v8.4.29
+  License: https://github.com/ultralytics/ultralytics/blob/v8.4.29/LICENSE
+  Export and executable-graph/weight hashes: scripts/fetch-person-model.py
+
 yt-dlp
   Fetched at runtime from GitHub Releases into Application Support (not bundled).
   Terms: Unlicense (public domain equivalent).

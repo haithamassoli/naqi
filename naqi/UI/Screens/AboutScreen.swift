@@ -255,6 +255,9 @@ struct ThirdPartyLicensesScreen: View {
                     notice(title: .licensesInsightFaceTitle,
                            terms: .licensesInsightFaceTerms,
                            source: "https://github.com/deepinsight/insightface/tree/master/model_zoo")
+                    notice(title: .licensesPersonTitle,
+                           terms: .licensesPersonTerms,
+                           source: "https://github.com/ultralytics/ultralytics/blob/v8.4.29/LICENSE")
 
                     Text(.licensesPersonalOnly)
                         .font(Naqi.F.bodySmall)

@@ -2,6 +2,12 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<!-- FFmpeg libavdevice references capture APIs. Naqi processes selected files
+	     and never requests camera or microphone capture. -->
+	<key>NSCameraUsageDescription</key>
+	<string>Naqi uses a media-processing library that supports camera capture. Naqi filters your selected videos locally and does not record from the camera.</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Naqi uses a media-processing library that supports microphone recording. Naqi processes your selected files locally and does not record from the microphone.</string>
 	<key>UTImportedTypeDeclarations</key>
 	<array>
 		<dict>

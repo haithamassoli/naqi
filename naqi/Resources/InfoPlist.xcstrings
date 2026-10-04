@@ -1,0 +1,42 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "NSCameraUsageDescription" : {
+      "comment" : "Required by FFmpeg libavdevice's capture API references. Naqi does not request camera capture.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يستخدم نقي مكتبة لمعالجة الوسائط تدعم التصوير بالكاميرا. يعالج نقي مقاطع الفيديو التي تختارها على جهازك ولا يسجّل من الكاميرا."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Naqi uses a media-processing library that supports camera capture. Naqi filters your selected videos locally and does not record from the camera."
+          }
+        }
+      }
+    },
+    "NSMicrophoneUsageDescription" : {
+      "comment" : "Required by FFmpeg libavdevice's capture API references. Naqi does not request microphone recording.",
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "يستخدم نقي مكتبة لمعالجة الوسائط تدعم التسجيل بالميكروفون. يعالج نقي الملفات التي تختارها على جهازك ولا يسجّل من الميكروفون."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Naqi uses a media-processing library that supports microphone recording. Naqi processes your selected files locally and does not record from the microphone."
+          }
+        }
+      }
+    }
+  },
+  "version" : "1.0"
+}

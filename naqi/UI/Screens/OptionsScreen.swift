@@ -133,7 +133,7 @@ struct ProcessingModeSection: View {
 // `audioOnly`. The other two read `flow.ops` and nothing else, so they are the
 // same view on both screens.
 
-/// Who gets censored, face or body coverage, scene gating, and censor style.
+/// Who gets censored, scene gating, and censor style.
 struct CensorSection: View {
     @Bindable var flow: Flow
 
@@ -142,20 +142,6 @@ struct CensorSection: View {
             SectionHeader(.optSectionCensorFaces)
             NaqiCard(padding: 0) {
                 WhoRow(flow: flow)
-                NaqiRowDivider()
-                SelectRow(title: .optFaceTitle,
-                          desc: .optFaceDesc,
-                          isSelected: flow.ops.censorTarget == .face,
-                          id: "censor.face") {
-                    withAnimation(Naqi.spring) { flow.ops.censorTarget = .face }
-                }
-                NaqiRowDivider()
-                SelectRow(title: .optPersonTitle,
-                          desc: .optPersonDesc,
-                          isSelected: flow.ops.censorTarget == .person,
-                          id: "censor.person") {
-                    withAnimation(Naqi.spring) { flow.ops.censorTarget = .person }
-                }
                 NaqiRowDivider()
                 // `regions` is off, `wholeFrame` is on.
                 ToggleTile(icon: nil,

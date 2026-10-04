@@ -13,11 +13,11 @@ Naqi filters video on iPhone, iPad, and Mac. It can suppress musical instruments
 ## What you can do
 
 - Import a video from Photos or Files, or share one to Naqi. On Mac, you can also drag in a file. Audio files support music removal.
-- Suppress instruments with HTDemucs, cover women, men or everyone, and choose face-only or whole-person coverage. Whole-person mode uses YOLO11 body rectangles, Vision faces and the existing appearance classifier; unknown people are covered conservatively. Run either filter alone or both together.
+- Suppress instruments with HTDemucs, and cover women, men, or everyone. Coverage uses Vision faces and the existing appearance classifier. Run either filter alone or both together.
 - Save a filtered copy to Photos or a folder. Interrupted jobs can resume from saved progress.
 - Use the app in English or Arabic, with right-to-left layout for Arabic.
 
-Naqi accepts media that Apple's system decoders can read, including common MP4, MOV, and M4V videos. WebM files imported from Files, sharing, or Mac drag-and-drop are converted to an H.264/AAC working copy before filtering; the original stays untouched. MKV containers are not supported. Filtering can miss a face or scene, so review the result before sharing it.
+Naqi accepts media that Apple's system decoders can read, including common MP4, MOV, and M4V videos. WebM files imported from Files, sharing, or Mac drag-and-drop become an MP4 working copy before filtering; AV1, H.264, and HEVC video is copied and other video is transcoded to H.264, and audio becomes AAC. The original stays untouched. MKV containers are not supported. Filtering can miss a face or scene, so review the result before sharing it.
 
 ## Build from source
 

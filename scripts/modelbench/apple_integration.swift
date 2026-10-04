@@ -209,10 +209,12 @@ struct IntegrationBench {
         options.censor = args[7] != "music"
         options.censorNsfw = args[8] == "on"
         options.keepStems = .vocals
-        #if NAQI_PERSON
-        options.censorTarget = args[5] == "person" ? .person : .face
-        #else
-        guard args[5] == "face", args[6] == "on" else { throw MediaError.readerFailed("baseline supports face + original gate-on only") }
+        guard args[5] == "face" else {
+            throw MediaError.readerFailed("whole-body coverage was removed; pass face")
+        }
+        options.censorTarget = .face
+        #if !NAQI_PERSON
+        guard args[6] == "on" else { throw MediaError.readerFailed("baseline supports the original gate-on setting only") }
         #endif
         let ops = options
         let failed = OSAllocatedUnfairLock(initialState: false)
@@ -258,10 +260,7 @@ struct IntegrationBench {
             if let first { throw first }
         }
         let branchesMs = msSince(branchesStart)
-        var edl = saved ?? analyzed.withLock { $0?.edl } ?? Edl()
-        #if NAQI_PERSON
-        if ops.censorTarget == .person { edl.personWho = ops.resolvedWho }
-        #endif
+        let edl = saved ?? analyzed.withLock { $0?.edl } ?? Edl()
         if ops.censor { try edl.toJSONData().write(to: edlURL, options: .atomic) }
         let renderStart = ContinuousClock.now
         var render: RenderPass.Result?

@@ -100,16 +100,62 @@ struct WebMTests {
         #expect(!FileManager.default.fileExists(atPath: WorkDir.root.appendingPathComponent(key).path))
     }
 
-    private func verifyDecoding(_ url: URL, video: Bool) async throws {
+    @Test("AV1 WebM is copied into an MP4 the system can decode")
+    func av1Copy() async throws {
+        let source = try fixture("av1-opus")
+        let info = try await WebM.metadata(source)
+        #expect(info.videoCodec == "av1" && info.copiesVideo)
+        let dir = try directory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let output = try await WebM.prepare(source, in: dir)
+        let media = try await MediaSource.probe(output)
+        #expect(media.video != nil && media.hasAudio)
+        #expect(media.duration.seconds > 1 && media.duration.seconds < 1.5)
+        try await verifyDecoding(output, video: true, minimumFrames: 12, exact: false)
+    }
+
+    /// The sample is a YouTube AV1 WebM. The test runs only when that file is present.
+    private static let localAV1Sample: URL = {
+        if let path = ProcessInfo.processInfo.environment["NAQI_WEBM"] {
+            return URL(fileURLWithPath: path)
+        }
+        return FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Downloads/Telegram Desktop")
+            .appendingPathComponent("a week in my life vlog [kaPgGH5HC0w]-00.00.00.000-00.04.29.221.webm")
+    }()
+
+    @Test("a local AV1 WebM remuxes to a file the system can decode",
+          .enabled(if: FileManager.default.fileExists(atPath: localAV1Sample.path)))
+    func localAV1() async throws {
+        let source = Self.localAV1Sample
+        let before = SHA256.hash(data: try Data(contentsOf: source))
+        let info = try await WebM.metadata(source)
+        #expect(info.videoCodec == "av1" && info.copiesVideo && info.duration > 260)
+        let dir = try directory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let output = try await WebM.prepare(source, in: dir)
+        let media = try await MediaSource.probe(output)
+        #expect(media.video != nil && media.hasAudio)
+        #expect(abs(media.duration.seconds - info.duration) < 1)
+        try await verifyDecoding(output, video: true, minimumFrames: 30, limit: 30, exact: false)
+        #expect(SHA256.hash(data: try Data(contentsOf: source)) == before)
+    }
+
+    private func verifyDecoding(_ url: URL, video: Bool, minimumFrames: Int = 12,
+                                limit: Int? = nil, exact: Bool = true) async throws {
         let asset = AVURLAsset(url: url)
         if video {
             let track = try #require(try await asset.loadTracks(withMediaType: .video).first)
             let reader = try TrackReader.decodedVideo(track: track)
             try reader.start()
             var frames = 0
-            while reader.next() != nil { frames += 1 }
+            while reader.next() != nil {
+                frames += 1
+                if let limit, frames >= limit { break }
+            }
             try reader.throwIfFailed()
-            #expect(frames == 12)
+            #expect(frames >= minimumFrames)
+            if exact { #expect(frames == minimumFrames) }
         }
         let audio = try #require(try await asset.loadTracks(withMediaType: .audio).first)
         let reader = try AudioDecoder(track: audio)

@@ -3331,13 +3331,13 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "مدى سهولة حجب المشهد كاملًا. حجب الوجوه والأجسام مستقل عن هذا الإعداد."
+            "value" : "مدى سهولة حجب المشهد كاملًا. حجب الوجوه مستقل عن هذا الإعداد."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "How eagerly whole scenes are censored. Face and body coverage are independent."
+            "value" : "How eagerly whole scenes are censored. Face coverage is independent of this setting."
           }
         }
       }

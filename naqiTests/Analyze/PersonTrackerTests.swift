@@ -132,18 +132,19 @@ struct PersonTrackerTests {
         #expect(person.shouldCensor(.men))
     }
 
-    @Test("old saved options retain face mode; new options and checkpoint keys include bodies")
-    func compatibility() throws {
+    @Test("saved options stay on face coverage, including a stored body selection")
+    func faceOnly() throws {
         let current = FilterOps()
-        #expect(current.censorTarget == .person)
+        #expect(current.censorTarget == .face)
         var object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(current)) as? [String: Any])
+        object["censorTarget"] = FilterOps.CensorTarget.person.rawValue
+        let stored = try JSONDecoder().decode(FilterOps.self, from: JSONSerialization.data(withJSONObject: object))
+        #expect(stored.censorTarget == .face)
         object.removeValue(forKey: "censorTarget")
         let old = try JSONDecoder().decode(FilterOps.self, from: JSONSerialization.data(withJSONObject: object))
         #expect(old.censorTarget == .face)
         let source = URL(fileURLWithPath: "/tmp/person-policy.mp4")
-        #expect(Checkpoint.key(source: source, ops: old) != Checkpoint.key(source: source, ops: current))
-        // Recorded default key before crop retries: resuming it would reuse
-        // the analysis that left the reported camera display uncovered.
+        #expect(Checkpoint.key(source: source, ops: old) == Checkpoint.key(source: source, ops: stored))
         #expect(Checkpoint.key(source: source, ops: current) != "83877f60f4fd5241")
     }
 }

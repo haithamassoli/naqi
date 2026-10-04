@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 import os
 @preconcurrency import ffmpegkit
@@ -10,7 +11,15 @@ enum WebM {
         let duration: Double
         let hasVideo: Bool
         let hasAudio: Bool
+        let videoCodec: String
         let videoBitrate: Int
+
+        /// AVFoundation decodes these inside an MPEG-4 file. The bundled
+        /// FFmpeg build cannot decode AV1, so those streams are copied
+        /// instead of transcoded.
+        var copiesVideo: Bool {
+            ["av1", "h264", "hevc", "h265", "mpeg4", "prores"].contains(videoCodec)
+        }
     }
 
     static func metadata(_ url: URL) async throws -> Metadata {
@@ -30,6 +39,7 @@ enum WebM {
             let pixels = (video?.getWidth()?.intValue ?? 0) * (video?.getHeight()?.intValue ?? 0)
             return Metadata(duration: duration, hasVideo: video != nil,
                             hasAudio: streams.contains { $0.getType() == "audio" },
+                            videoCodec: video?.getCodec()?.lowercased() ?? "",
                             videoBitrate: video == nil ? 0 : EncodeSettings.bitrateCap(pixels: pixels))
         }.value
     }
@@ -46,9 +56,15 @@ enum WebM {
 
         let info = try await metadata(source)
         // Conversion runs before normal preflight, so budget the working copy here.
-        let bytes = info.duration > 0
-            ? info.duration * Double(info.videoBitrate + 192_000) / 8
-            : Double(Preflight.fileSize(source) ?? 0) * 4
+        // A copied video stays about the size of the source; a transcode is estimated.
+        let bytes: Double
+        if info.copiesVideo, let size = Preflight.fileSize(source) {
+            bytes = Double(size) + info.duration * 192_000 / 8
+        } else if info.duration > 0 {
+            bytes = info.duration * Double(info.videoBitrate + 192_000) / 8
+        } else {
+            bytes = Double(Preflight.fileSize(source) ?? 0) * 4
+        }
         guard bytes < Double(Int64.max - Preflight.slackBytes) else {
             throw PreflightFailure.sourceUnreadable
         }
@@ -65,9 +81,17 @@ enum WebM {
         var arguments = ["-nostdin", "-v", "error", "-y", "-i", source.path,
                          "-map", "0:v:0?", "-map", "0:a:0?", "-sn", "-dn"]
         if info.hasVideo {
-            arguments += ["-c:v", "h264_videotoolbox", "-allow_sw", "1",
-                          "-pix_fmt", "yuv420p", "-b:v", String(info.videoBitrate),
-                          "-fps_mode", "passthrough", "-video_track_timescale", "1000000"]
+            if info.copiesVideo {
+                arguments += ["-c:v", "copy"]
+                if info.videoCodec == "av1" { arguments += ["-tag:v", "av01"] }
+                if info.videoCodec == "hevc" || info.videoCodec == "h265" {
+                    arguments += ["-tag:v", "hvc1"]
+                }
+            } else {
+                arguments += ["-c:v", "h264_videotoolbox", "-allow_sw", "1",
+                              "-pix_fmt", "yuv420p", "-b:v", String(info.videoBitrate),
+                              "-fps_mode", "passthrough", "-video_track_timescale", "1000000"]
+            }
         }
         arguments += ["-c:a", "aac", "-b:a", "192k", "-movflags", "+faststart", part.path]
         onProgress(0)
@@ -80,10 +104,32 @@ enum WebM {
               (converted.audio != nil) == info.hasAudio else {
             throw PreflightFailure.sourceUnreadable
         }
+        // A copied AV1 stream plays only where the system has an AV1 decoder.
+        if info.copiesVideo, info.hasVideo, await canDecode(part) == false {
+            throw DecodeUnsupported()
+        }
         try? FileManager.default.removeItem(at: output)
         try FileManager.default.moveItem(at: part, to: output)
         onProgress(1)
         return output
+    }
+
+    /// `JobFailure.of` maps a description that names a decoder to `.unsupportedCodec`.
+    private struct DecodeUnsupported: Error, CustomStringConvertible {
+        var description: String { "No decoder for this WebM video codec on this device." }
+    }
+
+    private static func canDecode(_ url: URL) async -> Bool {
+        let asset = AVURLAsset(url: url)
+        guard let track = try? await asset.loadTracks(withMediaType: .video).first,
+              let reader = try? AVAssetReader(asset: asset) else { return false }
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
+            kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_420YpCbCr8BiPlanarVideoRange
+        ])
+        reader.add(output)
+        guard reader.startReading(), output.copyNextSampleBuffer() != nil else { return false }
+        reader.cancelReading()
+        return true
     }
 
     private static func convert(_ arguments: [String], duration: Double,

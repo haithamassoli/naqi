@@ -257,7 +257,7 @@
 				BE4718EE3021E434001C874F /* Frameworks */,
 				BE4718EF3021E434001C874F /* Resources */,
 				AA000000000000000000002D /* Embed Foundation Extensions */,
-				AA0000000000000000000040 /* Drop onnxruntime stub framework */,
+				AA0000000000000000000040 /* Prepare embedded frameworks */,
 			);
 			buildRules = (
 			);
@@ -362,7 +362,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		AA0000000000000000000040 /* Drop onnxruntime stub framework */ = {
+		AA0000000000000000000040 /* Prepare embedded frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
@@ -372,14 +372,14 @@
 			);
 			inputPaths = (
 			);
-			name = "Drop onnxruntime stub framework";
+			name = "Prepare embedded frameworks";
 			outputFileListPaths = (
 			);
 			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# ponytail: ORT's ios-arm64 slice is a static archive, so its code links\n# straight into the app binary. Xcode still copies the framework bundle in\n# with an empty stub dylib no binary here links. Its Info.plist keeps\n# upstream's MinimumOSVersion 15.1 while the stub is built minos 18.0 --\n# that mismatch is ITMS-90208. Nothing loads it, so drop it before signing.\nrm -rf \"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/onnxruntime.framework\"\n";
+			shellScript = "\"${SRCROOT}/scripts/prepare-frameworks.sh\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 

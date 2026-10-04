@@ -353,7 +353,7 @@ struct UITests {
     @Test("Only movie and audio files are accepted from a drop")
     func dropFiltersByType() {
         let tmp = FileManager.default.temporaryDirectory
-        for name in ["clip.mp4", "clip.mov", "clip.m4v", "CLIP.MP4",
+        for name in ["clip.mp4", "clip.mov", "clip.m4v", "CLIP.MP4", "clip.webm", "CLIP.WEBM",
                      "song.mp3", "song.m4a", "song.wav", "song.aiff", "SONG.MP3"] {
             #expect(isDroppableSource(tmp.appendingPathComponent(name)), "\(name)")
         }

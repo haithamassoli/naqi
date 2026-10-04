@@ -68,6 +68,24 @@ struct PersonDetectorTests {
         }
     }
 
+    @Test("retry crops cover the image with overlap and stay inside upright bounds",
+          arguments: [CGSize(width: 360, height: 640), CGSize(width: 640, height: 360), CGSize(width: 640, height: 640)])
+    func retryCoverage(_ size: CGSize) {
+        let crops = PersonDetector.retryCrops(size: size)
+        let bounds = CGRect(origin: .zero, size: size)
+        #expect(crops.isEmpty == false)
+        #expect(crops.allSatisfy { bounds.contains($0) && $0.width == $0.height })
+        for y in stride(from: 0.0, through: size.height, by: 10) {
+            for x in stride(from: 0.0, through: size.width, by: 10) {
+                // A small person crossing a tile edge still fits another tile.
+                let person = CGRect(x: max(0, min(x, size.width - 30)),
+                                    y: max(0, min(y, size.height - 60)), width: 30, height: 60)
+                #expect(crops.contains { $0.contains(person) })
+            }
+        }
+        #expect(PersonDetector.retryCrops(size: .zero).isEmpty)
+    }
+
     @Test("RGB input rotates stored pixels upright and pads with 114", arguments: [0, 90, 180, 270])
     func orientation(_ rotation: Int) throws {
         func buffer(_ width: Int, _ height: Int) throws -> CVPixelBuffer {
@@ -95,7 +113,6 @@ struct PersonDetectorTests {
         let context = CIContext(options: [.useSoftwareRenderer: true, .workingColorSpace: NSNull(), .outputColorSpace: NSNull()])
         let layout = try PersonDetector.prepare(frame, into: input, context: context)
         CVPixelBufferLockBaseAddress(input, .readOnly)
-        defer { CVPixelBufferUnlockBaseAddress(input, .readOnly) }
         let output = try #require(CVPixelBufferGetBaseAddress(input)).assumingMemoryBound(to: UInt8.self)
         let row = CVPixelBufferGetBytesPerRow(input)
         let expected = rotation == 0 ? [0,1,2,3] : rotation == 90 ? [2,0,3,1] : rotation == 180 ? [3,2,1,0] : [1,3,0,2]
@@ -105,5 +122,25 @@ struct PersonDetectorTests {
             for c in 0..<3 { #expect(abs(Int(output[y * row + x * 4 + c]) - Int(colors[expected[corner]][c])) <= 2) }
         }
         for c in 0..<3 { #expect(output[c] == 114) }
+        CVPixelBufferUnlockBaseAddress(input, .readOnly)
+
+        // Crop in upright top-left space, including rotations and bottom tiles.
+        for corner in 0..<4 {
+            let crop = CGRect(x: corner % 2 == 0 ? 0 : size.width / 2,
+                              y: corner < 2 ? 0 : size.height / 2,
+                              width: size.width / 2, height: size.height / 2)
+            let cropped = try PersonDetector.prepare(frame, into: input, context: context, crop: crop)
+            #expect(cropped.source == crop.size)
+            CVPixelBufferLockBaseAddress(input, .readOnly)
+            let center = (cropped.top + cropped.height / 2) * row + (cropped.left + cropped.width / 2) * 4
+            for c in 0..<3 {
+                #expect(abs(Int(output[center + c]) - Int(colors[expected[corner]][c])) <= 2)
+            }
+            CVPixelBufferUnlockBaseAddress(input, .readOnly)
+        }
+        #expect(throws: PersonDetectionError.self) {
+            try PersonDetector.prepare(frame, into: input, context: context,
+                                       crop: CGRect(x: -1, y: 0, width: 1, height: 1))
+        }
     }
 }

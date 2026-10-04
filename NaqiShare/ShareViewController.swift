@@ -13,10 +13,10 @@ import UniformTypeIdentifiers
 final class ShareViewController: UIViewController {
 
     /// The two roots the activation rule admits for files, **in the order they
-    /// are tried**. Movie first is load-bearing: an audio-only `.mp4` conforms
+    /// are tried**. Movie before audio is load-bearing: an audio-only `.mp4` conforms
     /// to both, and asking a movie provider for `public.audio` can hand back a
     /// re-encoded extraction instead of the file the user shared.
-    private static let accepted: [UTType] = [.movie, .audio]
+    private static let accepted: [UTType] = [MediaTypes.webM, .movie, .audio]
 
     private let label = UILabel()
     private let spinner = UIActivityIndicatorView(style: .large)

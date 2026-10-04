@@ -1,6 +1,57 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "licenses_ffmpeg_terms": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "يستخدم استيراد WebM الإصدار المصغّر من FFmpegKit وFFmpeg بترخيص LGPL-3.0. نص الترخيص مرفق بالتطبيق، وتتوفر تفاصيل الحزمة عبر الرابط أدناه."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "WebM import uses the LGPL-3.0 FFmpegKit min build and FFmpeg. License text is bundled with the app. Package details are available below."
+          }
+        }
+      }
+    },
+    "licenses_ffmpeg_title": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "FFmpegKit / FFmpeg"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "FFmpegKit / FFmpeg"
+          }
+        }
+      }
+    },
+    "stage_converting": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "تحويل WebM"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Converting WebM"
+          }
+        }
+      }
+    },
     "" : {
 
     },
@@ -3841,13 +3892,13 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "MP4 · MOV · MP3 · M4A · WAV"
+            "value" : "MP4 · MOV · WebM · MP3 · M4A · WAV"
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "MP4 · MOV · MP3 · M4A · WAV"
+            "value" : "MP4 · MOV · WebM · MP3 · M4A · WAV"
           }
         }
       }

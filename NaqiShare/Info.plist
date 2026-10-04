@@ -2,6 +2,24 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>UTImportedTypeDeclarations</key>
+	<array>
+		<dict>
+			<key>UTTypeIdentifier</key>
+			<string>org.webmproject.webm</string>
+			<key>UTTypeDescription</key>
+			<string>WebM media</string>
+			<key>UTTypeConformsTo</key>
+			<array><string>public.movie</string></array>
+			<key>UTTypeTagSpecification</key>
+			<dict>
+				<key>public.filename-extension</key>
+				<array><string>webm</string></array>
+				<key>public.mime-type</key>
+				<array><string>video/webm</string><string>audio/webm</string></array>
+			</dict>
+		</dict>
+	</array>
 	<!-- Thmanyah Sans (NaqiShared/Fonts, flattened into the bundle root). -->
 	<key>UIAppFonts</key>
 	<array>
@@ -48,6 +66,7 @@
 						$att,
 						ANY $att.registeredTypeIdentifiers UTI-CONFORMS-TO "public.movie"
 						|| ANY $att.registeredTypeIdentifiers UTI-CONFORMS-TO "public.audio"
+						|| ANY $att.registeredTypeIdentifiers == "org.webmproject.webm"
 					).@count &gt;= 1
 					AND
 					SUBQUERY (
@@ -55,6 +74,7 @@
 						$att,
 						ANY $att.registeredTypeIdentifiers UTI-CONFORMS-TO "public.movie"
 						|| ANY $att.registeredTypeIdentifiers UTI-CONFORMS-TO "public.audio"
+						|| ANY $att.registeredTypeIdentifiers == "org.webmproject.webm"
 					).@count &lt;= 10
 				)
 				OR

@@ -243,6 +243,9 @@ struct ThirdPartyLicensesScreen: View {
                     notice(title: .licensesOnnxTitle,
                            terms: .licensesOnnxTerms,
                            source: "https://github.com/microsoft/onnxruntime-swift-package-manager/tree/1.24.2")
+                    notice(title: .licensesFfmpegTitle,
+                           terms: .licensesFfmpegTerms,
+                           source: "https://github.com/tylerjonesio/ffmpeg-kit-spm/tree/6053b0e4f8607314ff5e14e0b18fc250c0f87c9b")
                     notice(title: .licensesDemucsTitle,
                            terms: .licensesDemucsTerms,
                            source: "https://github.com/facebookresearch/demucs")

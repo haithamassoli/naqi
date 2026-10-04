@@ -87,6 +87,18 @@ struct PersonTrackerTests {
         #expect(try Edl.fromJSONData(Data("{\"faceTracks\":[],\"censorIntervalsMs\":[]}".utf8)).isEmpty)
     }
 
+    @Test("delayed detection covers the shot lead-in without reaching across a cut")
+    func delayedDetection() throws {
+        let tracker = PersonTracker(frameRate: 30)
+        tracker.onFrame(bodies: [], faces: [], uprightSize: size, ptsMs: 1_000, sceneCut: true)
+        tracker.onFrame(bodies: [body], faces: [], uprightSize: size, ptsMs: 1_100)
+        let edl = Edl(personTracks: tracker.finish(), personWho: .everyone)
+        #expect(edl.regions(at: 999).isEmpty)
+        #expect(edl.regions(at: 1_000).isEmpty == false)
+        #expect(edl.regions(at: 1_050).isEmpty == false)
+        #expect(edl.regions(at: 1_200).isEmpty)
+    }
+
     @Test("a body containing several faces cannot have its earlier verdict rewritten")
     func severalFacesNeverRewritePast() throws {
         let tracker = PersonTracker(frameRate: 30)
@@ -130,5 +142,8 @@ struct PersonTrackerTests {
         #expect(old.censorTarget == .face)
         let source = URL(fileURLWithPath: "/tmp/person-policy.mp4")
         #expect(Checkpoint.key(source: source, ops: old) != Checkpoint.key(source: source, ops: current))
+        // Recorded default key before crop retries: resuming it would reuse
+        // the analysis that left the reported camera display uncovered.
+        #expect(Checkpoint.key(source: source, ops: current) != "83877f60f4fd5241")
     }
 }

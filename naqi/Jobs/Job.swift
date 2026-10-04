@@ -142,7 +142,7 @@ extension Job {
     /// `Remux.mux` untouched, and a source AVFoundation cannot passthrough is
     /// one it already refused at `Preflight`'s `isPlayable` check.
     enum Stage: String, Codable, Sendable, CaseIterable {
-        case download, analyze, render, separate, mux, concat, publish
+        case download, convert, analyze, render, separate, mux, concat, publish
     }
 
     /// Stage order per shape (§2.5). `separate` sits between `analyze` and
@@ -214,7 +214,7 @@ struct JobProgress: Sendable, Equatable, Codable {
         }
     }
 
-    /// Exclusive download bar. Filter progress starts after this returns to 0
+    /// Exclusive download bar. Conversion also has its own bar; filter progress starts at 0
     /// via a fresh `JobProgress` — mixing them on one scale would make
     /// "Downloading 80 %" jump to "Pass 1 5 %".
     /// An unknown total leaves the bar where it is; the stats still move.
@@ -229,7 +229,7 @@ struct JobProgress: Sendable, Equatable, Codable {
         let s = min(max(sub, 0), 1)
         self.stage = stage
         if stage != .download { download = nil }
-        if stage == .download {
+        if stage == .download || stage == .convert {
             pct = max(pct, s * 100)
             return
         }

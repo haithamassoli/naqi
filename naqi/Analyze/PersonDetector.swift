@@ -65,14 +65,42 @@ actor PersonDetector {
         // Core ML/CI create autoreleased tensors and images. Bound their life
         // to one frame rather than the long-lived analysis task's outer pool.
         return try autoreleasepool {
-            let layout = try Self.prepare(frame, into: input, context: context)
-            let provider = try MLDictionaryFeatureProvider(dictionary: ["image": MLFeatureValue(pixelBuffer: input)])
-            let prediction = try model.prediction(from: provider)
-            guard let output = prediction.featureValue(for: outputName)?.multiArrayValue else {
-                throw PersonDetectionError.modelContract
+            func infer(crop: CGRect? = nil) throws -> [CGRect] {
+                let layout = try Self.prepare(frame, into: input, context: context, crop: crop)
+                let provider = try MLDictionaryFeatureProvider(dictionary: ["image": MLFeatureValue(pixelBuffer: input)])
+                let prediction = try model.prediction(from: provider)
+                guard let output = prediction.featureValue(for: outputName)?.multiArrayValue else {
+                    throw PersonDetectionError.modelContract
+                }
+                try Task.checkCancellation()
+                return try Self.decode(output, layout: layout).map {
+                    $0.offsetBy(dx: crop?.minX ?? 0, dy: crop?.minY ?? 0)
+                }
             }
-            try Task.checkCancellation()
-            return try Self.decode(output, layout: layout)
+            let boxes = try infer()
+            guard boxes.isEmpty else { return boxes }
+            // Letterboxing a portrait frame shrinks people shown on small
+            // screens. Retry overlapping square crops without another model.
+            var recovered: [CGRect] = []
+            for crop in Self.retryCrops(size: frame.transform.uprightSize) {
+                for box in try infer(crop: crop) where recovered.allSatisfy({ Self.iou($0, box) <= Self.nmsIoU }) {
+                    recovered.append(box)
+                }
+            }
+            return recovered
+        }
+    }
+
+    static func retryCrops(size: CGSize) -> [CGRect] {
+        let side = min(size.width, size.height) * 0.6
+        guard side > 0 else { return [] }
+        let columns = max(1, Int(ceil((size.width - side) / (side * 0.75))))
+        let rows = max(1, Int(ceil((size.height - side) / (side * 0.75))))
+        return (0...rows).flatMap { row in
+            (0...columns).map { column in
+                CGRect(x: (size.width - side) * CGFloat(column) / CGFloat(columns),
+                       y: (size.height - side) * CGFloat(row) / CGFloat(rows), width: side, height: side)
+            }
         }
     }
 
@@ -102,12 +130,21 @@ actor PersonDetector {
         }
     }
 
-    static func prepare(_ frame: SampledFrame, into input: CVPixelBuffer, context: CIContext) throws -> Letterbox {
-        let layout = try Letterbox(source: frame.transform.uprightSize)
+    static func prepare(_ frame: SampledFrame, into input: CVPixelBuffer, context: CIContext,
+                        crop: CGRect? = nil) throws -> Letterbox {
         let oriented = CIImage(cvPixelBuffer: frame.detect).oriented(frame.orientation)
-        guard abs(oriented.extent.width - layout.source.width) < 0.5,
-              abs(oriented.extent.height - layout.source.height) < 0.5 else { throw PersonDetectionError.invalidFrame }
-        let upright = oriented.transformed(by: CGAffineTransform(translationX: -oriented.extent.minX, y: -oriented.extent.minY))
+        let size = frame.transform.uprightSize
+        guard abs(oriented.extent.width - size.width) < 0.5,
+              abs(oriented.extent.height - size.height) < 0.5 else { throw PersonDetectionError.invalidFrame }
+        var upright = oriented.transformed(by: CGAffineTransform(translationX: -oriented.extent.minX, y: -oriented.extent.minY))
+        if let crop {
+            guard CGRect(origin: .zero, size: size).contains(crop), !crop.isEmpty else {
+                throw PersonDetectionError.invalidFrame
+            }
+            let ciCrop = CGRect(x: crop.minX, y: size.height - crop.maxY, width: crop.width, height: crop.height)
+            upright = upright.cropped(to: ciCrop).transformed(by: CGAffineTransform(translationX: -ciCrop.minX, y: -ciCrop.minY))
+        }
+        let layout = try Letterbox(source: crop?.size ?? size)
         let resized = upright.transformed(by: CGAffineTransform(scaleX: CGFloat(layout.width) / layout.source.width,
                                                                y: CGFloat(layout.height) / layout.source.height))
         // Core Image uses bottom-left coordinates; model boxes use top-left.

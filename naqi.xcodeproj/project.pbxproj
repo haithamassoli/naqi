@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AB0000000000000000000003 /* FFmpeg-Kit in Frameworks */ = {isa = PBXBuildFile; productRef = AB0000000000000000000002 /* FFmpeg-Kit */; };
+		AB0000000000000000000004 /* FFmpeg-Kit in Embed Frameworks */ = {isa = PBXBuildFile; productRef = AB0000000000000000000002 /* FFmpeg-Kit */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		AA0000000000000000000003 /* onnxruntime in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000002 /* onnxruntime */; };
 		AA000000000000000000002E /* NaqiShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000020 /* NaqiShare.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		AA000000000000000000002F /* NaqiWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000021 /* NaqiWidgets.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -37,6 +39,17 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
+		AB0000000000000000000005 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+				AB0000000000000000000004 /* FFmpeg-Kit in Embed Frameworks */,
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		AA000000000000000000002D /* Embed Foundation Extensions */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -146,6 +159,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AA0000000000000000000003 /* onnxruntime in Frameworks */,
+				AB0000000000000000000003 /* FFmpeg-Kit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -254,8 +268,9 @@
 				BE4718ED3021E434001C874F /* Sources */,
 				BE4718EE3021E434001C874F /* Frameworks */,
 				BE4718EF3021E434001C874F /* Resources */,
+				AB0000000000000000000005 /* Embed Frameworks */,
 				AA000000000000000000002D /* Embed Foundation Extensions */,
-				AA0000000000000000000040 /* Drop onnxruntime stub framework */,
+				AA0000000000000000000040 /* Prepare embedded frameworks */,
 			);
 			buildRules = (
 			);
@@ -270,6 +285,7 @@
 			name = naqi;
 			packageProductDependencies = (
 				AA0000000000000000000002 /* onnxruntime */,
+				AB0000000000000000000002 /* FFmpeg-Kit */,
 			);
 			productName = naqi;
 			productReference = BE4718F13021E434001C874F /* naqi.app */;
@@ -312,6 +328,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				AA0000000000000000000001 /* XCRemoteSwiftPackageReference "onnxruntime-swift-package-manager" */,
+				AB0000000000000000000001 /* XCRemoteSwiftPackageReference "ffmpeg-kit-spm" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = BE4718F23021E434001C874F /* Products */;
@@ -358,7 +375,7 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXShellScriptBuildPhase section */
-		AA0000000000000000000040 /* Drop onnxruntime stub framework */ = {
+		AA0000000000000000000040 /* Prepare embedded frameworks */ = {
 			isa = PBXShellScriptBuildPhase;
 			alwaysOutOfDate = 1;
 			buildActionMask = 2147483647;
@@ -368,14 +385,14 @@
 			);
 			inputPaths = (
 			);
-			name = "Drop onnxruntime stub framework";
+			name = "Prepare embedded frameworks";
 			outputFileListPaths = (
 			);
 			outputPaths = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "# ponytail: ORT's ios-arm64 slice is a static archive, so its code links\n# straight into the app binary. Xcode still copies the framework bundle in\n# with an empty stub dylib no binary here links. Its Info.plist keeps\n# upstream's MinimumOSVersion 15.1 while the stub is built minos 18.0 --\n# that mismatch is ITMS-90208. Nothing loads it, so drop it before signing.\nrm -rf \"${TARGET_BUILD_DIR}/${FRAMEWORKS_FOLDER_PATH}/onnxruntime.framework\"\n";
+			shellScript = "\"${SRCROOT}/scripts/prepare-frameworks.sh\"\n";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -488,7 +505,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = Entitlements/NaqiShare.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 19;
 				DEVELOPMENT_TEAM = U3C6DM4QX4;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = NaqiShare/Info.plist;
@@ -515,7 +532,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = Entitlements/NaqiShare.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 19;
 				DEVELOPMENT_TEAM = U3C6DM4QX4;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = NaqiShare/Info.plist;
@@ -543,7 +560,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Entitlements/NaqiWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 19;
 				DEVELOPMENT_TEAM = U3C6DM4QX4;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = NaqiWidgets/Info.plist;
@@ -571,7 +588,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Entitlements/NaqiWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 19;
 				DEVELOPMENT_TEAM = U3C6DM4QX4;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = NaqiWidgets/Info.plist;
@@ -717,7 +734,7 @@
 				"CODE_SIGN_ENTITLEMENTS[sdk=iphone*]" = Entitlements/naqi.entitlements;
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "Entitlements/naqi-macos.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 19;
 				DEVELOPMENT_TEAM = U3C6DM4QX4;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -773,7 +790,7 @@
 				"CODE_SIGN_ENTITLEMENTS[sdk=iphone*]" = Entitlements/naqi.entitlements;
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "Entitlements/naqi-macos.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 19;
 				DEVELOPMENT_TEAM = U3C6DM4QX4;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -880,6 +897,14 @@
 				version = 1.24.2;
 			};
 		};
+		AB0000000000000000000001 /* XCRemoteSwiftPackageReference "ffmpeg-kit-spm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/tylerjonesio/ffmpeg-kit-spm";
+			requirement = {
+				kind = revision;
+				revision = 6053b0e4f8607314ff5e14e0b18fc250c0f87c9b;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -887,6 +912,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = AA0000000000000000000001 /* XCRemoteSwiftPackageReference "onnxruntime-swift-package-manager" */;
 			productName = onnxruntime;
+		};
+		AB0000000000000000000002 /* FFmpeg-Kit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AB0000000000000000000001 /* XCRemoteSwiftPackageReference "ffmpeg-kit-spm" */;
+			productName = "FFmpeg-Kit";
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

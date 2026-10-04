@@ -117,12 +117,12 @@ struct PickScreen: View {
         // it has to be the original bytes.
         .photosPicker(isPresented: $showPhotosPicker, selection: $photoItem,
                       matching: .videos, preferredItemEncoding: .current)
-        // The two roots, not a list of containers: `.video`, `.mpeg4Movie` and
+        // The two roots plus WebM: `.video`, `.mpeg4Movie` and
         // `.quickTimeMovie` all conform to `.movie`, and `.mp3`, `.wav`,
         // `.mpeg4Audio` and the rest to `.audio`. A bare audio file is a job
         // shape of its own (`Job.shape`, `audioOnly`) — music removal only.
         .fileImporter(isPresented: $showFileImporter,
-                      allowedContentTypes: [.movie, .audio]) { result in
+                      allowedContentTypes: MediaTypes.importable) { result in
             switch result {
             case .success(let url):
                 importFailed = false

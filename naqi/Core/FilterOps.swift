@@ -11,6 +11,9 @@ struct FilterOps: Codable, Sendable, Equatable {
 
     /// Which gender's face tracks get censored.
     var who: Who = .women
+    /// The face toggle wins over a legacy off selection that the picker no
+    /// longer offers. Keep the stored value so censor-off jobs retain it.
+    var resolvedWho: Who { censor && who == .none ? .women : who }
     var censorMode: CensorMode = .regions
     /// Whether the NSFW model may add whole-frame censor spans. Face tracks
     /// remain independent, so turning this off also removes the gate's model

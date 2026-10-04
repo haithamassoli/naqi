@@ -64,14 +64,15 @@ enum AnalyzePass {
 
         // A build without genderage degrades every track to "no vote", which
         // means censor — safe, and the only signal is this log line (§11.6).
-        let voter = ops.who.skipsGenderVote
+        let who = ops.resolvedWho
+        let voter = who.skipsGenderVote
             ? nil
             : (try? ModelRegistry.model(Models.GenderAge.file, compute: .xnnpack)).map(GenderVote.init)
-        if voter == nil, !ops.who.skipsGenderVote {
+        if voter == nil, !who.skipsGenderVote {
             Log.analyze.notice("genderage unavailable: every track abstains, i.e. censors")
         }
 
-        let tracker = FaceTracker(who: ops.who)
+        let tracker = FaceTracker(who: who)
         let detector = await FaceDetector.resolve()
         let gateRunner: NsfwRunner?
         if ops.censorNsfw {

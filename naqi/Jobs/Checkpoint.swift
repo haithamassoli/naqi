@@ -116,7 +116,7 @@ enum Checkpoint {
         var parts = [
             source.absoluteString,
             String(ops.removeMusic),
-            ops.who.rawValue,
+            ops.resolvedWho.rawValue,
             String(ops.censor),
             ops.censorMode.rawValue,
             String(ops.strictness),

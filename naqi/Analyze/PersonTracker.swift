@@ -192,7 +192,9 @@ final class PersonTracker {
         let end = min(last.timeMs + spanPad, cut.map { $0 - 1 } ?? .max)
         guard end >= first.timeMs else { return }
         finished.append(PersonTrackEdl(id: track.id, shot: track.shot, faceOnly: track.faceOnly,
-            geometry: FaceTrackEdl(startMs: max(track.shotStart, first.timeMs - spanPad), endMs: end,
+            // Detection can settle a few frames after a cut, especially for
+            // small screen images. Cover that lead-in within this shot only.
+            geometry: FaceTrackEdl(startMs: max(track.shotStart, first.timeMs - Self.holdMs), endMs: end,
                                    keyframes: track.samples),
             faces: track.faces, femaleVotes: track.female, maleVotes: track.male))
     }

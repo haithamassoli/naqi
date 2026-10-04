@@ -17,11 +17,11 @@ Naqi filters video on iPhone, iPad, and Mac. It can suppress musical instruments
 - Save a filtered copy to Photos or a folder. Interrupted jobs can resume from saved progress.
 - Use the app in English or Arabic, with right-to-left layout for Arabic.
 
-Naqi accepts media that Apple's system decoders can read, including common MP4, MOV, and M4V videos. It does not support MKV or WebM containers. Filtering can miss a face or scene, so review the result before sharing it.
+Naqi accepts media that Apple's system decoders can read, including common MP4, MOV, and M4V videos. WebM files imported from Files, sharing, or Mac drag-and-drop are converted to an H.264/AAC working copy before filtering; the original stays untouched. MKV containers are not supported. Filtering can miss a face or scene, so review the result before sharing it.
 
 ## Build from source
 
-You need a Mac with Xcode and the iOS 18 / macOS 15 SDKs. The Xcode project uses Swift 6 and resolves ONNX Runtime through Swift Package Manager.
+You need a Mac with Xcode and the iOS 18 / macOS 15 SDKs. The Xcode project uses Swift 6 and resolves ONNX Runtime and the FFmpegKit min build through Swift Package Manager.
 
 1. Obtain the model assets from the [Android Naqi project](https://github.com/haithamassoli/NaqiHalalVideoFilter). Set `NAQI_ANDROID_REPO` to its checkout path, then install the Python packages used to prepare the Apple models:
 

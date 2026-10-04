@@ -162,6 +162,7 @@ extension Job.Stage {
     var symbol: String {
         switch self {
         case .download: "arrow.down"
+        case .convert: "arrow.triangle.2.circlepath"
         case .analyze: "eye"
         case .render: "film"
         case .separate: "waveform"

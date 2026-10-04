@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		AB0000000000000000000003 /* FFmpeg-Kit in Frameworks */ = {isa = PBXBuildFile; productRef = AB0000000000000000000002 /* FFmpeg-Kit */; };
 		AA0000000000000000000003 /* onnxruntime in Frameworks */ = {isa = PBXBuildFile; productRef = AA0000000000000000000002 /* onnxruntime */; };
 		AA000000000000000000002E /* NaqiShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000020 /* NaqiShare.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		AA000000000000000000002F /* NaqiWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000021 /* NaqiWidgets.appex */; platformFilter = ios; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -146,6 +147,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AA0000000000000000000003 /* onnxruntime in Frameworks */,
+				AB0000000000000000000003 /* FFmpeg-Kit in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -270,6 +272,7 @@
 			name = naqi;
 			packageProductDependencies = (
 				AA0000000000000000000002 /* onnxruntime */,
+				AB0000000000000000000002 /* FFmpeg-Kit */,
 			);
 			productName = naqi;
 			productReference = BE4718F13021E434001C874F /* naqi.app */;
@@ -312,6 +315,7 @@
 			minimizedProjectReferenceProxies = 1;
 			packageReferences = (
 				AA0000000000000000000001 /* XCRemoteSwiftPackageReference "onnxruntime-swift-package-manager" */,
+				AB0000000000000000000001 /* XCRemoteSwiftPackageReference "ffmpeg-kit-spm" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = BE4718F23021E434001C874F /* Products */;
@@ -488,7 +492,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = Entitlements/NaqiShare.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 17;
 				DEVELOPMENT_TEAM = U3C6DM4QX4;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = NaqiShare/Info.plist;
@@ -515,7 +519,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = Entitlements/NaqiShare.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 17;
 				DEVELOPMENT_TEAM = U3C6DM4QX4;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = NaqiShare/Info.plist;
@@ -543,7 +547,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Entitlements/NaqiWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 17;
 				DEVELOPMENT_TEAM = U3C6DM4QX4;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = NaqiWidgets/Info.plist;
@@ -571,7 +575,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Entitlements/NaqiWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 17;
 				DEVELOPMENT_TEAM = U3C6DM4QX4;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = NaqiWidgets/Info.plist;
@@ -717,7 +721,7 @@
 				"CODE_SIGN_ENTITLEMENTS[sdk=iphone*]" = Entitlements/naqi.entitlements;
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "Entitlements/naqi-macos.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 17;
 				DEVELOPMENT_TEAM = U3C6DM4QX4;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -773,7 +777,7 @@
 				"CODE_SIGN_ENTITLEMENTS[sdk=iphone*]" = Entitlements/naqi.entitlements;
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "Entitlements/naqi-macos.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 15;
+				CURRENT_PROJECT_VERSION = 17;
 				DEVELOPMENT_TEAM = U3C6DM4QX4;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -880,6 +884,14 @@
 				version = 1.24.2;
 			};
 		};
+		AB0000000000000000000001 /* XCRemoteSwiftPackageReference "ffmpeg-kit-spm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/tylerjonesio/ffmpeg-kit-spm";
+			requirement = {
+				kind = revision;
+				revision = 6053b0e4f8607314ff5e14e0b18fc250c0f87c9b;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -887,6 +899,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = AA0000000000000000000001 /* XCRemoteSwiftPackageReference "onnxruntime-swift-package-manager" */;
 			productName = onnxruntime;
+		};
+		AB0000000000000000000002 /* FFmpeg-Kit */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = AB0000000000000000000001 /* XCRemoteSwiftPackageReference "ffmpeg-kit-spm" */;
+			productName = "FFmpeg-Kit";
 		};
 /* End XCSwiftPackageProductDependency section */
 	};

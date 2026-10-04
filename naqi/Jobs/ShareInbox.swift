@@ -105,8 +105,13 @@ enum ShareInbox {
         // Not `MediaSource.probe`: this runs for every shared item at launch,
         // and precise-duration loading would read far more of the file than
         // "does it have a video track" needs.
-        let tracks = try? await AVURLAsset(url: url).loadTracks(withMediaType: .video)
-        let hasVideo = tracks.map { !$0.isEmpty }
+        let hasVideo: Bool?
+        if MediaTypes.isWebM(url) {
+            hasVideo = try? await WebM.metadata(url).hasVideo
+        } else {
+            let tracks = try? await AVURLAsset(url: url).loadTracks(withMediaType: .video)
+            hasVideo = tracks.map { !$0.isEmpty }
+        }
         ops.fit(hasVideo: hasVideo)
         return (ops, hasVideo == false)
     }

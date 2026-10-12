@@ -69,12 +69,12 @@ extension FilterOps.SolidColor {
 }
 
 extension Job.Stage {
-    /// Five user-visible stage names cover six pipeline stages: `concat` and
-    /// `publish` are both "Finishing up". Naming the copy into Photos would
+    /// `concat` and `publish` are both "Finishing up". Naming the copy into Photos would
     /// mean explaining why a file that is already filtered is still moving.
     var label: LocalizedStringResource {
         switch self {
         case .download: .stageDownloading
+        case .convert: .stageConverting
         case .analyze: .stageAnalyzing
         case .render: .stageRendering
         case .separate: .stageSeparating

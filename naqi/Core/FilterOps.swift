@@ -15,7 +15,9 @@ struct FilterOps: Codable, Sendable, Equatable {
     /// longer offers. Keep the stored value so censor-off jobs retain it.
     var resolvedWho: Who { censor && who == .none ? .women : who }
     var censorMode: CensorMode = .regions
-    var censorTarget: CensorTarget = .person
+    /// Both body targets run the person detector on every frame, so they are
+    /// opt-in; `bodyPrecise` also blurs the body's outline instead of its box.
+    var censorTarget: CensorTarget = .face
     /// Whether the NSFW model may add whole-frame censor spans. Face tracks
     /// remain independent, so turning this off also removes the gate's model
     /// session and tensor lane from analyze.
@@ -47,7 +49,9 @@ struct FilterOps: Codable, Sendable, Equatable {
         var skipsGenderVote: Bool { self == .everyone || self == .none }
     }
     enum CensorMode: String, Codable, Sendable, CaseIterable { case regions, wholeFrame }
-    enum CensorTarget: String, Codable, Sendable, CaseIterable { case face, person }
+    /// `person` was the removed whole-body value. New raw names keep a stored
+    /// `person` (once the default) from silently selecting the slower path.
+    enum CensorTarget: String, Codable, Sendable, CaseIterable { case face, body, bodyPrecise }
     enum SolidColor: UInt32, Codable, Sendable, CaseIterable {
         case blur = 0
         case gray = 0xFF9E9E9E
@@ -131,8 +135,9 @@ extension FilterOps {
         processingMode = try values.decodeIfPresent(ProcessingMode.self, forKey: .processingMode) ?? .current
         who = try values.decode(Who.self, forKey: .who)
         censorMode = try values.decode(CensorMode.self, forKey: .censorMode)
-        // A queued job or saved setting keeps its original face-only policy.
-        censorTarget = try values.decodeIfPresent(CensorTarget.self, forKey: .censorTarget) ?? .face
+        // The legacy `person` value, like any unknown one, falls back to face.
+        censorTarget = try values.decodeIfPresent(String.self, forKey: .censorTarget)
+            .flatMap(CensorTarget.init(rawValue:)) ?? .face
         censorNsfw = try values.decodeIfPresent(Bool.self, forKey: .censorNsfw) ?? true
         strictness = try values.decode(Int.self, forKey: .strictness)
         blurAmount = try values.decode(Int.self, forKey: .blurAmount)

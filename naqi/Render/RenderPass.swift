@@ -249,9 +249,9 @@ enum RenderPass {
             let outPts = range == nil ? pts : CMTimeSubtract(pts, base.v)
 
             let full = edl.fullFrame(at: ms)
-            let regions = full ? [] : edl.regions(at: ms)
+            let (regions, masks) = full ? ([], []) : edl.coverage(at: ms)
 
-            if effect.needsRender(wholeFrame: full, regions: regions) {
+            if effect.needsRender(wholeFrame: full, regions: regions, masks: masks) {
                 guard let pool = sink.pixelBufferPool else {
                     throw MediaError.writerFailed("adaptor has no pixel buffer pool")
                 }
@@ -260,7 +260,7 @@ enum RenderPass {
                       let dst else {
                     throw MediaError.writerFailed("pixel buffer pool exhausted at frame \(counts.v.frames)")
                 }
-                effect.render(src, to: dst, wholeFrame: full, regions: regions)
+                effect.render(src, to: dst, wholeFrame: full, regions: regions, masks: masks)
                 guard sink.append(dst, withPresentationTime: outPts) else {
                     throw MediaError.writerFailed("append censored frame \(counts.v.frames)")
                 }

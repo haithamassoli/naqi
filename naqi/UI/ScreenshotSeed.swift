@@ -70,6 +70,11 @@ extension Flow {
             // no 88 MB htdemucs graph to load on a simulator.
             ops.removeMusic = false
             ops.censor = true
+            // `-naqiCensorTarget body|bodyPrecise` drives the slower coverage paths.
+            if let j = CommandLine.arguments.firstIndex(of: "-naqiCensorTarget"), j + 1 < CommandLine.arguments.count,
+               let target = FilterOps.CensorTarget(rawValue: CommandLine.arguments[j + 1]) {
+                ops.censorTarget = target
+            }
             Task {
                 await start()
                 guard screen == "runQueue" else { return }

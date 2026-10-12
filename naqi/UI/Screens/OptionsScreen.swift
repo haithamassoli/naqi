@@ -143,20 +143,17 @@ struct CensorSection: View {
             NaqiCard(padding: 0) {
                 WhoRow(flow: flow)
                 NaqiRowDivider()
-                SelectRow(title: .optFaceTitle,
-                          desc: .optFaceDesc,
-                          isSelected: flow.ops.censorTarget == .face,
-                          id: "censor.face") {
-                    withAnimation(Naqi.spring) { flow.ops.censorTarget = .face }
+                // Both body descriptions say up front that filtering slows down.
+                ForEach([(FilterOps.CensorTarget.face, LocalizedStringResource.optFaceTitle, LocalizedStringResource.optFaceDesc),
+                         (.body, .optPersonTitle, .optPersonDesc),
+                         (.bodyPrecise, .optBodyPreciseTitle, .optBodyPreciseDesc)], id: \.0) { target, title, desc in
+                    SelectRow(title: title, desc: desc,
+                              isSelected: flow.ops.censorTarget == target,
+                              id: "censor.\(target.rawValue)") {
+                        withAnimation(Naqi.spring) { flow.ops.censorTarget = target }
+                    }
+                    NaqiRowDivider()
                 }
-                NaqiRowDivider()
-                SelectRow(title: .optPersonTitle,
-                          desc: .optPersonDesc,
-                          isSelected: flow.ops.censorTarget == .person,
-                          id: "censor.person") {
-                    withAnimation(Naqi.spring) { flow.ops.censorTarget = .person }
-                }
-                NaqiRowDivider()
                 // `regions` is off, `wholeFrame` is on.
                 ToggleTile(icon: nil,
                            title: .optWholeFrameTitle,

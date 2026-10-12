@@ -90,14 +90,36 @@ enum JobRunner {
         } else {
             opened = try job.openSource()
         }
-        let url = opened.url
+        let originalURL = opened.url
         let close = opened.close
         defer {
             close()
             if discardDownloaded, let downloaded { Downloader.discard(downloaded) }
         }
 
-        // A file AVFoundation cannot parse (WebM, a half-written download) used
+        let keyURL = job.remoteURL != nil ? job.source : originalURL
+        let sourceIdentity = downloaded.flatMap(Downloader.sourceIdentity)
+        let key = Checkpoint.key(source: keyURL, ops: job.ops, forcedSegmentMs: forcedSegmentMs,
+                                 quality: resolvedQuality?.rawValue, sourceIdentity: sourceIdentity)
+        let dir = WorkDir.job(key)
+        defer {
+            if !hasResumableWork(dir: dir) { WorkDir.clear(key) }
+        }
+        let url: URL
+        do {
+            url = try await WebM.prepare(originalURL, in: dir, onProgress: { fraction in
+                var p = JobProgress(shape: .censorOnly, removeMusic: false)
+                p.post(.convert, fraction)
+                progress(p)
+            }, isCancelled: { stop() != nil })
+        } catch is CancellationError {
+            if stop() == .userCancelled { WorkDir.clear(key); discardDownloaded = true }
+            throw JobStopped(reason: stop() ?? .userCancelled, resumable: hasResumableWork(dir: dir))
+        } catch {
+            throw JobFailure.of(error)
+        }
+
+        // A file AVFoundation cannot parse (a half-written download) used
         // to surface as `.generic` — "Filtering failed." — when the truth is
         // that the file was never readable. Both cases share `errUnreadable`.
         let src: MediaSource
@@ -147,14 +169,6 @@ enum JobRunner {
             Log.job.notice("photo library refused; output will stay in the app")
         }
 
-        // Link jobs hash the page URL, not the quarantine file: a relaunch of
-        // the same link must find the same work directory. File jobs keep the
-        // opened URL, which is what a bookmark may have re-resolved to.
-        let keyURL = job.remoteURL != nil ? job.source : url
-        let key = Checkpoint.key(source: keyURL, ops: job.ops, forcedSegmentMs: forcedSegmentMs,
-                                 quality: resolvedQuality?.rawValue,
-                                 sourceIdentity: downloaded.flatMap(Downloader.sourceIdentity))
-        let dir = WorkDir.job(key)
         let ext = shape == .audioOnly ? "m4a" : "mp4"
         let out = dir.appendingPathComponent("out.\(ext)")
         // A leftover from an attempt that died between the writer finishing and
@@ -287,7 +301,7 @@ enum JobRunner {
             // have been rendering for an hour.
             let folder = publishTo == .userFolder
                 ? (job.resolvedFolder ?? OutputLibrary.root) : job.resolvedFolder
-            let published = try await Publish.save(out, named: outputName(for: url, ext: ext),
+            let published = try await Publish.save(out, named: outputName(for: originalURL, ext: ext),
                                                    to: publishTo, folder: folder)
             post(.publish, 1)
             // Success takes the whole directory: the checkpoints only exist to
@@ -355,7 +369,7 @@ enum JobRunner {
     /// anything there", not "is it long".
     static func hasResumableWork(dir: URL) -> Bool {
         let fm = FileManager.default
-        for name in [Checkpoint.analysisName, Checkpoint.audioTrackName, Checkpoint.concatName]
+        for name in [Checkpoint.analysisName, Checkpoint.audioTrackName, Checkpoint.concatName, WebM.convertedName]
         where fm.fileExists(atPath: dir.appendingPathComponent(name).path) { return true }
         return Checkpoint.hasRenderedSegments(dir: dir)
     }

@@ -210,6 +210,35 @@ struct RenderTests {
          (560, 90), [(160, 45), (80, 270), (480, 315)]),
     ]
 
+    @Test("a body mask censors only its grown cells, in every rotation", arguments: regionCases.indices)
+    func bodyMaskMapping(i: Int) throws {
+        let c = Self.regionCases[i]
+        let w = 640, h = 360
+        let src = try Self.bgra(w, h) { _, _ in (200, 40, 90) }
+        let dst = try Self.bgra(w, h) { _, _ in (0, 0, 0) }
+        var ops = FilterOps()
+        ops.blurAmount = 0
+        ops.grayscale = true
+        let transform = VideoTransform(preferredTransform: c.t, naturalSize: CGSize(width: w, height: h))
+        let effect = CensorEffect(ops: ops, transform: transform, tonemapHDR: false)
+        // Upright 8x8 grid over the frame with only the top-left cell set; the
+        // one-cell growth covers 0..0.25 on each axis and ramps out by 0.3125.
+        let mask = BodyMask(rect: NRect(left: 0, top: 0, right: 1, bottom: 1), width: 8, height: 8,
+                            bits: Data([1] + Array(repeating: 0, count: 7)))
+        effect.render(src, to: dst, wholeFrame: false, regions: [], masks: [mask])
+        func stored(_ u: CGFloat, _ v: CGFloat) -> (Int, Int) {
+            let p = CGPoint(x: u * transform.uprightSize.width, y: v * transform.uprightSize.height)
+                .applying(transform.toUpright.inverted())
+            return (min(w - 1, Int(p.x)), min(h - 1, Int(p.y)))
+        }
+        let inside = Self.pixel(dst, stored(0.08, 0.08).0, stored(0.08, 0.08).1)
+        #expect(inside.r == inside.g && inside.g == inside.b, "\(c.name): top-left should be greyed, is \(inside)")
+        for (u, v) in [(0.8, 0.8), (0.8, 0.1), (0.1, 0.8), (0.5, 0.5)] as [(CGFloat, CGFloat)] {
+            let got = Self.pixel(dst, stored(u, v).0, stored(u, v).1)
+            #expect(got == (r: 200, g: 40, b: 90), "\(c.name): (\(u), \(v)) should be untouched, is \(got)")
+        }
+    }
+
     @Test("region censor lands in the right corner", arguments: regionCases.indices)
     func regionMapping(i: Int) throws {
         let c = Self.regionCases[i]

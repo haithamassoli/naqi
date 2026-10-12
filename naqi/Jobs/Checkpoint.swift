@@ -103,7 +103,7 @@ enum Checkpoint {
     /// a film censored under the old semantics) and `plan3 → plan4` when the
     /// music guard changed which chunks a resumed audio checkpoint claimed.
     /// Bumping orphans stale directories and the 7-day sweep collects them.
-    static let planGeneration = "apple-plan2-person-ungated"
+    static let planGeneration = "apple-plan3-person-crops"
 
     /// - Parameter forcedSegmentMs: the debug segment-length override (Android's
     ///   `segment_ms` Data key). It changes how many `seg-NNN.mp4` there are and
@@ -133,6 +133,10 @@ enum Checkpoint {
         if ops.processingMode != .current { parts.append("mode-fast720-v1") }
         if let quality { parts.append("quality-\(quality)") }
         if let sourceIdentity { parts.append("source-\(sourceIdentity)") }
+        if source.isFileURL, MediaTypes.isWebM(source) {
+            let values = try? source.resourceValues(forKeys: [.fileSizeKey, .contentModificationDateKey])
+            parts.append("webm-v1|\(values?.fileSize ?? 0)|\(values?.contentModificationDate?.timeIntervalSince1970 ?? 0)")
+        }
         if forcedSegmentMs > 0 { parts.append("seg\(forcedSegmentMs)") }
         return key(parts)
     }

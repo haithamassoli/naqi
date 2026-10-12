@@ -123,14 +123,15 @@ final class CensorEffect: @unchecked Sendable {
     /// yes for *every* frame: a passed-through frame would stay HDR while its
     /// tone-mapped neighbours went SDR, and the track carries one transfer
     /// function for all of them.
-    func needsRender(wholeFrame: Bool, regions: [NRect]) -> Bool {
-        tonemap || (isActive && (wholeFrame || !regions.isEmpty))
+    func needsRender(wholeFrame: Bool, regions: [NRect], masks: [BodyMask] = []) -> Bool {
+        tonemap || (isActive && (wholeFrame || !regions.isEmpty || !masks.isEmpty))
     }
 
     /// Applies the censor to `src` and writes the result into `dst` (same size).
     /// `dst` comes from the writer's pixel-buffer pool, so this is the only copy
     /// on the render path.
-    func render(_ src: CVPixelBuffer, to dst: CVPixelBuffer, wholeFrame: Bool, regions: [NRect]) {
+    func render(_ src: CVPixelBuffer, to dst: CVPixelBuffer, wholeFrame: Bool, regions: [NRect],
+                masks: [BodyMask] = []) {
         if tonemap {
             // The source's HLG/PQ tags must not ride along to an SDR output.
             CVBufferSetAttachment(dst, kCVImageBufferColorPrimariesKey,
@@ -146,13 +147,13 @@ final class CensorEffect: @unchecked Sendable {
             CVBufferPropagateAttachments(src, dst)
         }
         let input = CIImage(cvPixelBuffer: src)
-        ctx.render(image(input, wholeFrame: wholeFrame, regions: regions),
+        ctx.render(image(input, wholeFrame: wholeFrame, regions: regions, masks: masks),
                    to: dst, bounds: input.extent, colorSpace: outputColorSpace)
     }
 
     /// The filter graph for one frame. Public so tests can inspect it without a
     /// writer attached.
-    func image(_ input: CIImage, wholeFrame: Bool, regions: [NRect]) -> CIImage {
+    func image(_ input: CIImage, wholeFrame: Bool, regions: [NRect], masks: [BodyMask] = []) -> CIImage {
         var source = input
         if tonemap {
             let f = CIFilter.toneMapHeadroom()
@@ -160,7 +161,7 @@ final class CensorEffect: @unchecked Sendable {
             f.targetHeadroom = 1
             source = f.outputImage ?? source
         }
-        guard isActive, wholeFrame || !regions.isEmpty else { return source }
+        guard isActive, wholeFrame || !regions.isEmpty || !masks.isEmpty else { return source }
 
         var base: CIImage
         if let solidColor {
@@ -170,7 +171,7 @@ final class CensorEffect: @unchecked Sendable {
             if grayscale { base = greyed(base) }
         }
         if wholeFrame { return base }
-        guard let mask = mask(for: regions, extent: source.extent) else { return source }
+        guard let mask = mask(for: regions, masks: masks, extent: source.extent) else { return source }
 
         let blend = CIFilter.blendWithMask()
         blend.inputImage = base
@@ -225,8 +226,16 @@ final class CensorEffect: @unchecked Sendable {
     /// uncover a pixel the hard rect covered. Feather is 15 % of the rect's own
     /// size per axis with a floor of 0.002 of the frame (`spec-render.md` §2.5).
     /// Rects are unioned with `max()`, so overlapping faces do not double-darken.
-    private func mask(for regions: [NRect], extent: CGRect) -> CIImage? {
+    private func mask(for regions: [NRect], masks: [BodyMask] = [], extent: CGRect) -> CIImage? {
         var out: CIImage?
+        for body in masks {
+            guard let m = bodyMask(body, extent: extent) else { continue }
+            guard let prev = out else { out = m; continue }
+            let union = CIFilter.maximumCompositing()
+            union.inputImage = m
+            union.backgroundImage = prev
+            out = union.outputImage ?? prev
+        }
         for n in Self.limited(regions) {
             let r = ciRect(n, in: extent)
             let fx = max(r.width * 0.15, 0.002 * extent.width)
@@ -248,6 +257,29 @@ final class CensorEffect: @unchecked Sendable {
         }
         // Gradients are infinite; bounding the mask keeps the blend's ROI finite.
         return out?.cropped(to: extent)
+    }
+
+    /// A body mask grown by one cell, plus a one-cell empty border, so the
+    /// bilinear edge ramps outward from the model's outline and never inside it.
+    /// Mapped upright cell space -> upright pixels -> stored -> Core Image y-up.
+    private func bodyMask(_ body: BodyMask, extent: CGRect) -> CIImage? {
+        guard body.isValid else { return nil }
+        let w = body.width + 2, h = body.height + 2
+        var bytes = [UInt8](repeating: 0, count: w * h)
+        for y in 0..<body.height {
+            for x in 0..<body.width where body[x, y] {
+                for dy in 0...2 { for dx in 0...2 { bytes[(y + dy) * w + x + dx] = 255 } }
+            }
+        }
+        let r = body.rect.rect(in: transform.uprightSize)
+        let cx = r.width / CGFloat(body.width), cy = r.height / CGFloat(body.height)
+        // Bitmap rows run top-down; Core Image puts row 0 at the top as well.
+        let toUpright = CGAffineTransform(a: cx, b: 0, c: 0, d: -cy, tx: r.minX - cx, ty: r.maxY + cy)
+        let toCore = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: extent.height)
+        let image = CIImage(bitmapData: Data(bytes), bytesPerRow: w, size: CGSize(width: w, height: h),
+                            format: .L8, colorSpace: nil).samplingLinear()
+        return image.transformed(by: toUpright.concatenating(transform.toUpright.inverted()).concatenating(toCore))
+            .cropped(to: extent)
     }
 
     /// `smoothstep(a, b, ·)` as an alpha ramp along the a→b axis: clear at `a`,

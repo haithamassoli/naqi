@@ -113,7 +113,8 @@ struct ExtensionTests {
             predicate.evaluate(with: MockContext([MockItem((0..<count).map { _ in MockAttachment(ids) })]))
         }
         for uti in ["public.mpeg-4", "com.apple.quicktime-movie", "public.mp3",
-                    "com.apple.m4a-audio", "com.microsoft.waveform-audio", "org.xiph.flac"] {
+                    "com.apple.m4a-audio", "com.microsoft.waveform-audio", "org.xiph.flac",
+                    "org.webmproject.webm"] {
             #expect(shares([uti]), "\(uti) should reach the extension")
         }
         for uti in ["public.url", "public.plain-text"] {

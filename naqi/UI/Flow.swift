@@ -50,7 +50,7 @@ struct MovieFile: Transferable {
 /// read", which blames the pipeline for a mis-drop.
 ///
 /// Type comes from the file when the file is there, and from the extension when
-/// it is not. `public.movie` and `public.audio` are the two roots the importer
+/// it is not. Alongside WebM, `public.movie` and `public.audio` are the roots the importer
 /// lists — `.video`, `.mpeg4Movie`, `.mp3`, `.wav` and the rest all conform to
 /// one of them. A bare audio file is accepted because `removeMusic` is a real
 /// job shape for it (`Job.shape`, `audioOnly`); censoring is not, which is what
@@ -59,7 +59,7 @@ func isDroppableSource(_ url: URL) -> Bool {
     let type = (try? url.resourceValues(forKeys: [.contentTypeKey]).contentType)
         ?? UTType(filenameExtension: url.pathExtension)
     guard let type else { return false }
-    return type.conforms(to: .movie) || type.conforms(to: .audio)
+    return MediaTypes.importable.contains { type.conforms(to: $0) }
 }
 
 /// Four steps in a straight line. There is no route DSL because there is no
@@ -296,6 +296,10 @@ func isDroppableSource(_ url: URL) -> Bool {
     /// Locking the destination on a source we could not read would trade
     /// Preflight's honest error for a silently different one.
     private static func probe(_ url: URL) async -> (ms: Int64, hasVideo: Bool?) {
+        if MediaTypes.isWebM(url) {
+            guard let info = try? await WebM.metadata(url) else { return (0, nil) }
+            return (Int64(info.duration * 1000), info.hasVideo)
+        }
         guard let src = try? await MediaSource.probe(url) else { return (0, nil) }
         return (src.duration.isNumeric ? Int64(src.duration.seconds * 1000) : 0, src.video != nil)
     }

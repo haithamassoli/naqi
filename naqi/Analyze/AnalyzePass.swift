@@ -74,9 +74,10 @@ enum AnalyzePass {
 
         let tracker = FaceTracker(who: who)
         let detector = await FaceDetector.resolve()
-        let bodyMode = ops.censor && who != .none && ops.censorTarget == .person
+        let bodyMode = ops.censor && who != .none && ops.censorTarget != .face
+        let precise = bodyMode && ops.censorTarget == .bodyPrecise
         let people = bodyMode ? PersonTracker(frameRate: Double(video.nominalFrameRate)) : nil
-        let personDetector = bodyMode ? try PersonDetector() : nil
+        let personDetector = bodyMode ? try PersonDetector(masks: precise) : nil
         var cuts = ShotCuts()
         let gateRunner: NsfwRunner?
         if ops.censorNsfw {
@@ -143,7 +144,8 @@ enum AnalyzePass {
                 boxes = []
             }
             if let people {
-                people.onFrame(bodies: bodies, faces: boxes, uprightSize: frame.transform.uprightSize,
+                people.onFrame(bodies: bodies.map(\.rect), masks: bodies.map(\.mask), faces: boxes,
+                               uprightSize: frame.transform.uprightSize,
                                ptsMs: frame.ptsMs, sceneCut: cuts.add(frame),
                                voter: voter.map { voter in { voter.vote(in: frame, rect: $0) } })
             } else {
@@ -182,7 +184,8 @@ enum AnalyzePass {
             """)
         return AnalyzeResult(edl: Edl(censorIntervalsMs: intervals, faceTracks: faceTracks,
                                      personTracks: personTracks, personWho: bodyMode ? who : .none,
-                                     personWholeFrame: bodyMode && ops.censorMode == .wholeFrame),
+                                     personWholeFrame: bodyMode && ops.censorMode == .wholeFrame,
+                                     personMasks: precise),
                              decodedFrames: stats.decoded,
                              sampledFrames: stats.emitted,
                              gateFrames: stats.gated,

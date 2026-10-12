@@ -6,10 +6,12 @@ import Testing
 @Suite("Download", .serialized)
 struct DownloadTests {
 
-    @Test("the paste field stays hidden until 12 Oct 2026")
+    @Test("the paste field stays hidden for three days after the first open")
     func pasteGate() {
-        #expect(!LinkPaste.isVisible(at: Date(timeIntervalSince1970: 1_791_763_199)))
-        #expect(LinkPaste.isVisible(at: Date(timeIntervalSince1970: 1_791_763_200)))
+        let first = Date(timeIntervalSince1970: 1_791_763_200)
+        #expect(!LinkPaste.isVisible(at: first, firstOpen: first))
+        #expect(!LinkPaste.isVisible(at: first.addingTimeInterval(LinkPaste.delay - 1), firstOpen: first))
+        #expect(LinkPaste.isVisible(at: first.addingTimeInterval(LinkPaste.delay), firstOpen: first))
     }
 
     @Test("the pasted-link regex takes the first http(s) URL and strips trailing punctuation")

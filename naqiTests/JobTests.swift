@@ -377,7 +377,7 @@ struct JobTests {
         var body = censor
         for target in [FilterOps.CensorTarget.body, .bodyPrecise] {
             body.censorTarget = target
-            #expect(Eta.estimateMs(durationMs: 100_000, ops: body) == 208_000)
+            #expect(Eta.estimateMs(durationMs: 100_000, ops: body) == 40_000)
         }
         #expect(Eta.estimateMs(durationMs: 100_000, ops: none) == 0)
         #expect(Eta.estimateMs(durationMs: 0, ops: both) == 0)

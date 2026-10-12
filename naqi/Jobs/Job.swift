@@ -315,11 +315,10 @@ enum Eta {
         case .musicOnly: 0.68
         case .both: 1.0
         }
-        // Body targets detect on every frame: the 53 s regression clip took
-        // ~2.1x (boxes) and ~1.7x (masks) its length on an M3, against 0.2x
-        // for faces. ponytail: one Mac-measured surcharge for both; re-measure
-        // on device alongside the S23 factors.
-        let body: Double = ops.censor && ops.censorTarget != .face ? 1.8 : 0
+        // Body targets add YOLO11 at 10 fps: the 53 s regression clip analyzed
+        // in ~0.17x its length on an M3, against 0.06x for faces. ponytail: one
+        // Mac-measured surcharge for both; re-measure on device alongside the S23 factors.
+        let body: Double = ops.censor && ops.censorTarget != .face ? 0.12 : 0
         return Int64(Double(durationMs) * (factor + body))
     }
 

@@ -45,7 +45,8 @@ struct PersonTrackerTests {
         #expect(people[1].classification == .unknown)
         #expect(people[0].shot != people[1].shot)
         #expect(people[0].geometry.endMs < 66)
-        #expect(people[1].geometry.startMs == 66)
+        // The new shot reaches back to just after the previous sample.
+        #expect(people[1].geometry.startMs == 51)
         #expect(Edl(personTracks: people, personWho: .women).regions(at: 66).count == 1)
     }
 

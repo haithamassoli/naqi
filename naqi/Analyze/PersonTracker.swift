@@ -40,6 +40,7 @@ final class PersonTracker {
     private var nextID = 0
     private var shot = 0
     private var shotStart: Int64 = 0
+    private var lastPtsMs: Int64?
     private let spanPad: Int64
     private static let holdMs: Int64 = 300
 
@@ -54,8 +55,11 @@ final class PersonTracker {
             for track in active { emit(track, before: ptsMs) }
             active.removeAll()
             shot += 1
-            shotStart = ptsMs
+            // The cut happened somewhere after the previous sample; at 10 fps
+            // that is up to 100 ms of the new shot this frame must also cover.
+            shotStart = lastPtsMs.map { $0 + 1 } ?? ptsMs
         }
+        lastPtsMs = ptsMs
         let bodyTracks = associate(bodies, faceOnly: false, ptsMs: ptsMs)
         var faceForBody: [Int: [Int]] = [:]
         var unmatchedFaces: [CGRect] = []

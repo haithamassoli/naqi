@@ -36,6 +36,8 @@ actor PersonDetector {
     private let protoName: String?
     private let input: CVPixelBuffer
     private let context: CIContext
+    /// The previous frame's crop retry found nobody either.
+    private var retryWasEmpty = false
 
     struct Person: Sendable {
         var rect: CGRect
@@ -48,7 +50,7 @@ actor PersonDetector {
         #if targetEnvironment(simulator)
         configuration.computeUnits = .cpuOnly
         #else
-        configuration.computeUnits = .cpuAndGPU
+        configuration.computeUnits = .all
         #endif
         model = try MLModel(contentsOf: modelURL, configuration: configuration)
         guard let image = model.modelDescription.inputDescriptionsByName["image"]?.imageConstraint,
@@ -109,7 +111,10 @@ actor PersonDetector {
                 }
             }
             let people = try infer()
-            guard people.isEmpty else { return people }
+            guard people.isEmpty else { retryWasEmpty = false; return people }
+            // ponytail: an empty scene retries every other sample. A person found
+            // one sample late is still covered by PersonTracker's 300 ms lead-in.
+            if retryWasEmpty { retryWasEmpty = false; return [] }
             // Letterboxing a portrait frame shrinks people shown on small
             // screens. Retry overlapping square crops without another model.
             var recovered: [Person] = []
@@ -119,6 +124,7 @@ actor PersonDetector {
                     recovered.append(person)
                 }
             }
+            retryWasEmpty = recovered.isEmpty
             return recovered
         }
     }

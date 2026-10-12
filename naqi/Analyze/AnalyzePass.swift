@@ -76,7 +76,7 @@ enum AnalyzePass {
         let detector = await FaceDetector.resolve()
         let bodyMode = ops.censor && who != .none && ops.censorTarget != .face
         let precise = bodyMode && ops.censorTarget == .bodyPrecise
-        let people = bodyMode ? PersonTracker(frameRate: Double(video.nominalFrameRate)) : nil
+        let people = bodyMode ? PersonTracker(frameRate: min(Double(video.nominalFrameRate), AnalyzeConstants.sampleFPS)) : nil
         let personDetector = bodyMode ? try PersonDetector(masks: precise) : nil
         var cuts = ShotCuts()
         let gateRunner: NsfwRunner?
@@ -87,8 +87,6 @@ enum AnalyzePass {
             gateRunner = nil
         }
         let sampler = try FrameSampler(track: track, transform: video.transform,
-                                       everyFrame: bodyMode,
-                                       gateEvery: bodyMode ? max(1, Int(video.nominalFrameRate / 5)) : AnalyzeConstants.gateStride,
                                        gateEnabled: ops.censorNsfw)
 
         // `RenderPass` throttles to every 30th frame, which at a 30 fps source is
@@ -96,7 +94,7 @@ enum AnalyzePass {
         // the same one-report-per-source-second cadence is every `sampleFPS`-th
         // *sampled* frame. Copying the literal 30 instead would tick a third as
         // often here and read as a stalled bar on the longer of the two stages.
-        let reportEvery = max(1, Int((bodyMode ? Double(video.nominalFrameRate) : AnalyzeConstants.sampleFPS).rounded()))
+        let reportEvery = max(1, Int(AnalyzeConstants.sampleFPS.rounded()))
         // `durationMs` is `.max` when the container will not say, and dividing
         // by it would peg the bar at 0 for the whole film — report nothing then
         // and let the terminal 1.0 close the band.

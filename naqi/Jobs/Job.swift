@@ -315,7 +315,12 @@ enum Eta {
         case .musicOnly: 0.68
         case .both: 1.0
         }
-        return Int64(Double(durationMs) * factor)
+        // Body targets detect on every frame: the 53 s regression clip took
+        // ~2.1x (boxes) and ~1.7x (masks) its length on an M3, against 0.2x
+        // for faces. ponytail: one Mac-measured surcharge for both; re-measure
+        // on device alongside the S23 factors.
+        let body: Double = ops.censor && ops.censorTarget != .face ? 1.8 : 0
+        return Int64(Double(durationMs) * (factor + body))
     }
 
     /// Straight-line extrapolation over *overall* percent.

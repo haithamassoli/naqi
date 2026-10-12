@@ -10,7 +10,8 @@ struct PersonDetectorTests {
     @Test("bundled native Core ML person model runs on an actual image buffer")
     func bundledModel() async throws {
         let url = try #require(Models.personURL, "Run scripts/fetch-person-model.py before building")
-        let detector = try PersonDetector(modelURL: url)
+        // Precise mode also checks the bundled prototype output's contract.
+        let detector = try PersonDetector(modelURL: url, masks: true)
         var allocated: CVPixelBuffer?
         let status = CVPixelBufferCreate(nil, 64, 64, kCVPixelFormatType_32BGRA,
             [kCVPixelBufferIOSurfacePropertiesKey: [:]] as CFDictionary, &allocated)
@@ -25,8 +26,9 @@ struct PersonDetectorTests {
         CVPixelBufferUnlockBaseAddress(buffer, [])
         let frame = SampledFrame(ptsMs: 0, detect: buffer, transform: .identity(size: CGSize(width: 64, height: 64)),
                                  orientation: .up, gate: nil)
-        let boxes = try await detector.detect(frame)
-        #expect(boxes.allSatisfy { r in
+        let people = try await detector.detect(frame)
+        #expect(people.allSatisfy { $0.mask?.isValid == true })
+        #expect(people.map(\.rect).allSatisfy { r in
             [r.minX, r.minY, r.maxX, r.maxY].allSatisfy(\.isFinite)
                 && !r.isEmpty && CGRect(x: 0, y: 0, width: 64, height: 64).contains(r)
         })
@@ -56,6 +58,30 @@ struct PersonDetectorTests {
         #expect(throws: PersonDetectionError.self) { try PersonDetector.decode(output, layout: layout) }
         let wrong = try MLMultiArray(shape: [1, 6, 10], dataType: .float32)
         #expect(throws: PersonDetectionError.self) { try PersonDetector.decode(wrong, layout: layout) }
+    }
+
+    @Test("precise mode samples the prototype mask inside the upright box")
+    func masks() throws {
+        let output = try MLMultiArray(shape: [1, 116, 8400], dataType: .float32)
+        let proto = try MLMultiArray(shape: [1, 32, 160, 160], dataType: .float32)
+        let p = output.dataPointer.assumingMemoryBound(to: Float.self)
+        p.initialize(repeating: 0, count: output.count)
+        for (attribute, value) in [200, 300, 100, 200, 0.9].enumerated() { p[attribute * 8400] = Float(value) }
+        p[84 * 8400] = 1 // first coefficient selects prototype 0
+        let q = proto.dataPointer.assumingMemoryBound(to: Float.self)
+        q.initialize(repeating: 0, count: proto.count)
+        // Prototype 0 is positive left of letterbox x 200 (prototype column 50).
+        for y in 0..<160 { for x in 0..<160 { q[y * 160 + x] = x < 50 ? 1 : -1 } }
+        let layout = try PersonDetector.Letterbox(source: CGSize(width: 360, height: 640))
+        let person = try #require(PersonDetector.decode(output, proto: proto, layout: layout).first)
+        #expect(person.rect == CGRect(x: 10, y: 200, width: 100, height: 200))
+        let mask = try #require(person.mask)
+        #expect(mask.width == 16 && mask.height == 32 && mask.isValid)
+        // Upright x 10..110 is letterbox x 150..250, so its left half is set.
+        for y in [0, 31] {
+            #expect((0..<16).map { mask[$0, y] } == Array(repeating: true, count: 8) + Array(repeating: false, count: 8))
+        }
+        #expect(try PersonDetector.decode(output, proto: nil, layout: layout).first?.mask == nil)
     }
 
     @Test("letterbox dimensions reject invalid geometry and preserve odd padding")

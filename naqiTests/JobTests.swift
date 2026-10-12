@@ -225,7 +225,8 @@ struct JobTests {
         v = base; v.censor = !base.censor; variants.append(v)
         v = base; v.who = .men; variants.append(v)
         v = base; v.censorMode = .wholeFrame; variants.append(v)
-        v = base; v.censorTarget = .person; variants.append(v)
+        v = base; v.censorTarget = .body; variants.append(v)
+        v = base; v.censorTarget = .bodyPrecise; variants.append(v)
         v = base; v.censorNsfw = false; variants.append(v)
         v = base; v.strictness += 1; variants.append(v)
         v = base; v.blurAmount += 1; variants.append(v)
@@ -373,6 +374,11 @@ struct JobTests {
         #expect(Eta.estimateMs(durationMs: 100_000, ops: censor) == 28_000)
         #expect(Eta.estimateMs(durationMs: 100_000, ops: music) == 68_000)
         #expect(Eta.estimateMs(durationMs: 100_000, ops: both) == 100_000)
+        var body = censor
+        for target in [FilterOps.CensorTarget.body, .bodyPrecise] {
+            body.censorTarget = target
+            #expect(Eta.estimateMs(durationMs: 100_000, ops: body) == 208_000)
+        }
         #expect(Eta.estimateMs(durationMs: 100_000, ops: none) == 0)
         #expect(Eta.estimateMs(durationMs: 0, ops: both) == 0)
 

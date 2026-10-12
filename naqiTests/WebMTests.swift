@@ -119,7 +119,7 @@ struct WebMTests {
         if let path = ProcessInfo.processInfo.environment["NAQI_WEBM"] {
             return URL(fileURLWithPath: path)
         }
-        return FileManager.default.homeDirectoryForCurrentUser
+        return URL.homeDirectory
             .appendingPathComponent("Downloads/Telegram Desktop")
             .appendingPathComponent("a week in my life vlog [kaPgGH5HC0w]-00.00.00.000-00.04.29.221.webm")
     }()

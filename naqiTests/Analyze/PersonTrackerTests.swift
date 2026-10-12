@@ -132,19 +132,48 @@ struct PersonTrackerTests {
         #expect(person.shouldCensor(.men))
     }
 
-    @Test("saved options stay on face coverage, including a stored body selection")
-    func faceOnly() throws {
+    @Test("face is the default; the removed person value stays face, body choices round-trip")
+    func targets() throws {
         let current = FilterOps()
         #expect(current.censorTarget == .face)
         var object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(current)) as? [String: Any])
-        object["censorTarget"] = FilterOps.CensorTarget.person.rawValue
-        let stored = try JSONDecoder().decode(FilterOps.self, from: JSONSerialization.data(withJSONObject: object))
+        func decoded() throws -> FilterOps {
+            try JSONDecoder().decode(FilterOps.self, from: JSONSerialization.data(withJSONObject: object))
+        }
+        object["censorTarget"] = "person"
+        let stored = try decoded()
         #expect(stored.censorTarget == .face)
         object.removeValue(forKey: "censorTarget")
-        let old = try JSONDecoder().decode(FilterOps.self, from: JSONSerialization.data(withJSONObject: object))
+        let old = try decoded()
         #expect(old.censorTarget == .face)
+        for target in [FilterOps.CensorTarget.body, .bodyPrecise] {
+            object["censorTarget"] = target.rawValue
+            #expect(try decoded().censorTarget == target)
+        }
         let source = URL(fileURLWithPath: "/tmp/person-policy.mp4")
         #expect(Checkpoint.key(source: source, ops: old) == Checkpoint.key(source: source, ops: stored))
         #expect(Checkpoint.key(source: source, ops: current) != "83877f60f4fd5241")
+    }
+
+    @Test("precise mode draws observed masks and falls back to the box when held")
+    func preciseMasks() throws {
+        let tracker = PersonTracker(frameRate: 30)
+        let mask = BodyMask(rect: NRect(left: 0.1, top: 0.1, right: 0.4, bottom: 0.9), width: 2, height: 2,
+                            bits: Data([0b1001]))
+        tracker.onFrame(bodies: [body], masks: [mask], faces: [face], uprightSize: size, ptsMs: 0)
+        tracker.onFrame(bodies: [body], masks: [mask], faces: [face], uprightSize: size, ptsMs: 33)
+        tracker.onFrame(bodies: [], faces: [], uprightSize: size, ptsMs: 66) // held, no mask
+        tracker.onFrame(bodies: [body], masks: [nil], faces: [face], uprightSize: size, ptsMs: 100)
+        var edl = Edl(personTracks: tracker.finish(), personWho: .everyone, personMasks: true)
+        #expect(edl.coverage(at: 0).masks == [mask] && edl.coverage(at: 0).regions.isEmpty)
+        #expect(edl.coverage(at: 20).masks == [mask, mask])
+        #expect(edl.coverage(at: 66).masks.isEmpty && edl.coverage(at: 66).regions.count == 1)
+        #expect(edl.coverage(at: 100).masks.isEmpty && edl.coverage(at: 100).regions.count == 1)
+        // Coverage checks and box mode keep the conservative rectangle.
+        #expect(edl.regions(at: 0).count == 1)
+        #expect(mask[0, 0] && !mask[1, 0] && !mask[0, 1] && mask[1, 1] && !mask[2, 0])
+        #expect(try Edl.fromJSONData(edl.toJSONData()) == edl)
+        edl.personMasks = false
+        #expect(edl.coverage(at: 0).masks.isEmpty && edl.coverage(at: 0).regions.count == 1)
     }
 }

@@ -47,7 +47,8 @@ final class PersonTracker {
         spanPad = max(1, min(50, Int64((500 / max(1, frameRate)).rounded(.up))))
     }
 
-    func onFrame(bodies: [CGRect], faces: [CGRect], uprightSize: CGSize,
+    /// `masks`, when given, parallels `bodies` (precise body mode).
+    func onFrame(bodies: [CGRect], masks: [BodyMask?] = [], faces: [CGRect], uprightSize: CGSize,
                  ptsMs: Int64, sceneCut: Bool = false, voter: ((NRect) -> Int)? = nil) {
         if sceneCut {
             for track in active { emit(track, before: ptsMs) }
@@ -81,7 +82,8 @@ final class PersonTracker {
                 active.append(track)
             }
             if assigned.count > 1 { track.unresolvedFaces = true }
-            observe(track, box: bodies[b], size: uprightSize, ptsMs: ptsMs)
+            observe(track, box: bodies[b], mask: masks.indices.contains(b) ? masks[b] : nil,
+                    size: uprightSize, ptsMs: ptsMs)
             seen.insert(track.id)
             if assigned.count == 1 {
                 addFace(faces[assigned[0]], to: track, size: uprightSize, ptsMs: ptsMs, voter: voter)
@@ -157,19 +159,19 @@ final class PersonTracker {
         }
     }
 
-    private func observe(_ track: Track, box: CGRect, size: CGSize, ptsMs: Int64) {
+    private func observe(_ track: Track, box: CGRect, mask: BodyMask? = nil, size: CGSize, ptsMs: Int64) {
         track.previousBox = track.lastBox
         track.previousSeen = track.lastSeen
         if track.samples.isEmpty { track.previousBox = box; track.previousSeen = ptsMs }
         track.lastBox = box; track.lastSeen = ptsMs
-        appendGeometry(track, box: box, size: size, ptsMs: ptsMs)
+        appendGeometry(track, box: box, mask: mask, size: size, ptsMs: ptsMs)
     }
 
-    private func appendGeometry(_ track: Track, box: CGRect, size: CGSize, ptsMs: Int64) {
+    private func appendGeometry(_ track: Track, box: CGRect, mask: BodyMask? = nil, size: CGSize, ptsMs: Int64) {
         let padded = box.padded(by: track.faceOnly ? AnalyzeConstants.keyframePad : 0.12, clampedTo: size)
         guard !padded.isNull, padded.width > 0, padded.height > 0 else { return }
         let rect = Self.normalized(padded, size)
-        track.samples.append(.init(timeMs: ptsMs, rect: rect))
+        track.samples.append(.init(timeMs: ptsMs, rect: rect, mask: mask))
     }
 
     private func addFace(_ box: CGRect, to track: Track, size: CGSize, ptsMs: Int64,

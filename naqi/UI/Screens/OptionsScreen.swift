@@ -133,7 +133,7 @@ struct ProcessingModeSection: View {
 // `audioOnly`. The other two read `flow.ops` and nothing else, so they are the
 // same view on both screens.
 
-/// Who gets censored, scene gating, and censor style.
+/// Who gets censored, face or body coverage, scene gating, and censor style.
 struct CensorSection: View {
     @Bindable var flow: Flow
 
@@ -143,6 +143,17 @@ struct CensorSection: View {
             NaqiCard(padding: 0) {
                 WhoRow(flow: flow)
                 NaqiRowDivider()
+                // Both body descriptions say up front that filtering slows down.
+                ForEach([(FilterOps.CensorTarget.face, LocalizedStringResource.optFaceTitle, LocalizedStringResource.optFaceDesc),
+                         (.body, .optPersonTitle, .optPersonDesc),
+                         (.bodyPrecise, .optBodyPreciseTitle, .optBodyPreciseDesc)], id: \.0) { target, title, desc in
+                    SelectRow(title: title, desc: desc,
+                              isSelected: flow.ops.censorTarget == target,
+                              id: "censor.\(target.rawValue)") {
+                        withAnimation(Naqi.spring) { flow.ops.censorTarget = target }
+                    }
+                    NaqiRowDivider()
+                }
                 // `regions` is off, `wholeFrame` is on.
                 ToggleTile(icon: nil,
                            title: .optWholeFrameTitle,

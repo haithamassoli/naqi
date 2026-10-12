@@ -3138,6 +3138,40 @@
         }
       }
     },
+    "opt_body_precise_title" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "الجسم بدقة"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Precise body"
+          }
+        }
+      }
+    },
+    "opt_body_precise_desc" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "الفلترة أبطأ بوضوح لأن كل إطار يُفحص. يحجب الوجه وحدود الجسم فقط ويُبقي الخلفية واضحة. يُحجب من لم يتضح تصنيفه؛ وقد تُحجب الصورة كاملة عند تعذّر تحديد الجسم."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Filtering is noticeably slower because every frame is checked. Covers faces and only the body's outline, keeping the background clear. Unknown people are covered; the whole picture may be covered when a body cannot be identified."
+          }
+        }
+      }
+    },
     "opt_person_title" : {
       "extractionState" : "manual",
       "localizations" : {
@@ -3161,13 +3195,13 @@
         "ar" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "يحجب الوجه والجسم ويستغرق وقتًا أطول. يُحجب من لم يتضح تصنيفه؛ وقد تُحجب الصورة كاملة عند تعذّر تحديد الجسم."
+            "value" : "الفلترة أبطأ بوضوح لأن كل إطار يُفحص. يحجب الوجه والجسم بمستطيل يشمل ما حوله. يُحجب من لم يتضح تصنيفه؛ وقد تُحجب الصورة كاملة عند تعذّر تحديد الجسم."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Covers faces and bodies and takes longer to process. Unknown people are covered; the whole picture may be covered when a body cannot be identified."
+            "value" : "Filtering is noticeably slower because every frame is checked. Covers faces and bodies with a rectangle that includes what is around them. Unknown people are covered; the whole picture may be covered when a body cannot be identified."
           }
         }
       }

@@ -26,6 +26,28 @@ struct NRect: Codable, Sendable, Equatable {
     }
 }
 
+/// A person's segmentation over their unpadded body box: `width`×`height`
+/// cells, row-major from the top, one bit per cell (LSB first).
+/// ponytail: 32 cells on the long side keeps an hour of every-frame tracks in
+/// tens of MB; raise `PersonDetector.maskSide` if edges look too coarse.
+struct BodyMask: Codable, Sendable, Equatable {
+    var rect: NRect
+    var width: Int
+    var height: Int
+    var bits: Data
+
+    subscript(x: Int, y: Int) -> Bool {
+        guard x >= 0, y >= 0, x < width, y < height else { return false }
+        let i = y * width + x
+        return bits[bits.startIndex + i / 8] & (1 << UInt8(i % 8)) != 0
+    }
+
+    var isValid: Bool {
+        (1...64).contains(width) && (1...64).contains(height) && bits.count == (width * height + 7) / 8
+            && [rect.left, rect.top, rect.right, rect.bottom].allSatisfy(\.isFinite) && !rect.isEmpty
+    }
+}
+
 /// One face's on-screen span plus its sampled boxes. Between keyframes the box
 /// is linearly interpolated, which is what turns a 10 fps detection pass into a
 /// full-frame-rate censor (Android `analysis/FaceTracker.kt` §4.5).
@@ -40,6 +62,8 @@ struct FaceTrackEdl: Codable, Sendable, Equatable {
     struct Keyframe: Codable, Sendable, Equatable {
         var timeMs: Int64
         var rect: NRect
+        /// Precise body mode only, and only on observed (not held) samples.
+        var mask: BodyMask? = nil
     }
 
     /// Interpolated box at `t`, or nil outside the span / with no keyframes.
@@ -105,6 +129,21 @@ struct PersonTrackEdl: Codable, Sendable, Equatable {
         return NRect(left: min(a.left, b.left), top: min(a.top, b.top),
                      right: max(a.right, b.right), bottom: max(a.bottom, b.bottom))
     }
+
+    /// The masks to draw at `t`, or nil when the box must be drawn instead:
+    /// a held or unmasked sample never narrows coverage below its rectangle.
+    /// Across a detector gap both neighbours are drawn, mirroring `rect(at:)`.
+    func masks(at t: Int64) -> [BodyMask]? {
+        let ks = geometry.keyframes
+        guard !faceOnly, t >= geometry.startMs, t <= geometry.endMs,
+              let first = ks.first, let last = ks.last else { return nil }
+        if t <= first.timeMs { return first.mask.map { [$0] } }
+        if t >= last.timeMs { return last.mask.map { [$0] } }
+        let i = geometry.upperKeyframeIndex(at: t)
+        if ks[i].timeMs == t { return ks[i].mask.map { [$0] } }
+        guard let a = ks[i - 1].mask, let b = ks[i].mask else { return nil }
+        return [a, b]
+    }
 }
 
 /// The analyze pass's whole output: whole-frame censor intervals plus per-face
@@ -120,6 +159,8 @@ struct Edl: Codable, Sendable, Equatable {
     var personTracks: [PersonTrackEdl] = []
     var personWho: FilterOps.Who = .none
     var personWholeFrame: Bool = false
+    /// Precise body mode: render person tracks through their masks.
+    var personMasks: Bool = false
 
     var isEmpty: Bool {
         censorIntervalsMs.isEmpty && faceTracks.isEmpty
@@ -143,16 +184,28 @@ struct Edl: Codable, Sendable, Equatable {
     /// suppresses every face region at that timestamp. Pass 2 depends on this,
     /// so it lives here rather than at the call site.
     func regions(at t: Int64) -> [NRect] {
-        guard !fullFrame(at: t) else { return [] }
+        coverage(at: t, masks: false).regions
+    }
+
+    /// What pass 2 draws: `regions(at:)`, except that in precise body mode a
+    /// person track with masks at `t` contributes those instead of its box.
+    func coverage(at t: Int64) -> (regions: [NRect], masks: [BodyMask]) {
+        coverage(at: t, masks: personMasks)
+    }
+
+    private func coverage(at t: Int64, masks useMasks: Bool) -> (regions: [NRect], masks: [BodyMask]) {
+        guard !fullFrame(at: t) else { return ([], []) }
         var out: [NRect] = []
+        var masks: [BodyMask] = []
         out.reserveCapacity(2)
         for tr in faceTracks where t >= tr.startMs && t <= tr.endMs {
             if let r = tr.rect(at: t) { out.append(r) }
         }
         for tr in personTracks where tr.shouldCensor(personWho) {
-            if let r = tr.rect(at: t) { out.append(r) }
+            if useMasks, let m = tr.masks(at: t) { masks += m }
+            else if let r = tr.rect(at: t) { out.append(r) }
         }
-        return out
+        return (out, masks)
     }
 
     /// The renderer applies at most this many regions per frame; a frame with
@@ -187,6 +240,7 @@ extension Edl {
             obj["personTracks"] = try JSONSerialization.jsonObject(with: JSONEncoder().encode(personTracks))
             obj["personWho"] = personWho.rawValue
             obj["personWholeFrame"] = personWholeFrame
+            if personMasks { obj["personMasks"] = true }
         }
         return try JSONSerialization.data(withJSONObject: obj, options: [.sortedKeys])
     }
@@ -206,11 +260,13 @@ extension Edl {
                 from: JSONSerialization.data(withJSONObject: people))
             edl.personWho = who
             edl.personWholeFrame = root["personWholeFrame"] as? Bool ?? false
+            edl.personMasks = root["personMasks"] as? Bool ?? false
             for tr in edl.personTracks {
                 let ks = tr.geometry.keyframes
                 guard tr.geometry.startMs <= tr.geometry.endMs, !ks.isEmpty,
                       tr.femaleVotes >= 0, tr.maleVotes >= 0,
                       ks == ks.sorted(by: { $0.timeMs < $1.timeMs }),
+                      ks.allSatisfy({ $0.mask?.isValid ?? true }),
                       ks.allSatisfy({ k in
                           let r = k.rect
                           return [r.left, r.top, r.right, r.bottom].allSatisfy(\.isFinite)

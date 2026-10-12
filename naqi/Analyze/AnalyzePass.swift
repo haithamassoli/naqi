@@ -74,6 +74,11 @@ enum AnalyzePass {
 
         let tracker = FaceTracker(who: who)
         let detector = await FaceDetector.resolve()
+        let bodyMode = ops.censor && who != .none && ops.censorTarget != .face
+        let precise = bodyMode && ops.censorTarget == .bodyPrecise
+        let people = bodyMode ? PersonTracker(frameRate: Double(video.nominalFrameRate)) : nil
+        let personDetector = bodyMode ? try PersonDetector(masks: precise) : nil
+        var cuts = ShotCuts()
         let gateRunner: NsfwRunner?
         if ops.censorNsfw {
             let gate = try ModelRegistry.model(Models.Nsfw.file, compute: .coreMLNeuralNetwork)
@@ -82,8 +87,8 @@ enum AnalyzePass {
             gateRunner = nil
         }
         let sampler = try FrameSampler(track: track, transform: video.transform,
-                                       everyFrame: false,
-                                       gateEvery: AnalyzeConstants.gateStride,
+                                       everyFrame: bodyMode,
+                                       gateEvery: bodyMode ? max(1, Int(video.nominalFrameRate / 5)) : AnalyzeConstants.gateStride,
                                        gateEnabled: ops.censorNsfw)
 
         // `RenderPass` throttles to every 30th frame, which at a 30 fps source is
@@ -91,7 +96,7 @@ enum AnalyzePass {
         // the same one-report-per-source-second cadence is every `sampleFPS`-th
         // *sampled* frame. Copying the literal 30 instead would tick a third as
         // often here and read as a stalled bar on the longer of the two stages.
-        let reportEvery = max(1, Int(AnalyzeConstants.sampleFPS.rounded()))
+        let reportEvery = max(1, Int((bodyMode ? Double(video.nominalFrameRate) : AnalyzeConstants.sampleFPS).rounded()))
         // `durationMs` is `.max` when the container will not say, and dividing
         // by it would peg the bar at 0 for the whole film — report nothing then
         // and let the terminal 1.0 close the band.
@@ -116,6 +121,9 @@ enum AnalyzePass {
             // Detection and the gate overlap; the await stays inside this call
             // so the frame's pool slot survives both (§1.5, §2.5).
             async let detected = detector.detect(frame)
+            // A body-model error stops the job; falling back to face-only would
+            // silently violate the selected coverage. Actor state stays serial.
+            let bodies = try await personDetector?.detect(frame) ?? []
             if let g = frame.gate { try gateRunner?.add(ptsMs: frame.ptsMs, tensor: g) }
             // A detector failure is per-frame and survivable; see
             // `DetectFailures` for why it is survivable only up to a point.
@@ -135,8 +143,15 @@ enum AnalyzePass {
                     """)
                 boxes = []
             }
-            tracker.onFaces(boxes, uprightSize: frame.transform.uprightSize, ptsMs: frame.ptsMs) { rect in
-                voter?.vote(in: frame, rect: rect) ?? 0
+            if let people {
+                people.onFrame(bodies: bodies.map(\.rect), masks: bodies.map(\.mask), faces: boxes,
+                               uprightSize: frame.transform.uprightSize,
+                               ptsMs: frame.ptsMs, sceneCut: cuts.add(frame),
+                               voter: voter.map { voter in { voter.vote(in: frame, rect: $0) } })
+            } else {
+                tracker.onFaces(boxes, uprightSize: frame.transform.uprightSize, ptsMs: frame.ptsMs) { rect in
+                    voter?.vote(in: frame, rect: rect) ?? 0
+                }
             }
         }
         // Before assembling the EDL, because an unusable detector must not look
@@ -151,24 +166,26 @@ enum AnalyzePass {
         progress?(1)
         let wallMs = msSince(started)
         let faceTracks = tracker.finish()
+        let personTracks = people?.finish() ?? []
 
         // In region mode this is the plain concatenation — only the whole-frame
         // path merges (§6.3 rule 2).
         let firings = gateRunner?.firings ?? []
         var intervals = NsfwGate.intervals(firings, durationMs: durationMs)
             + overflowSpans(faceTracks)
-        if ops.censorMode == .wholeFrame {
+        if !bodyMode && ops.censorMode == .wholeFrame {
             intervals = promoteToWholeFrame(intervals, tracks: faceTracks)
         }
 
         stage.stop("""
             \(stats.decoded) decoded, \(stats.emitted) sampled, \(stats.gated) gated, \
-            \(firings.count) firings, \(faceTracks.count) face tracks, \(intervals.count) intervals\
+            \(firings.count) firings, \(faceTracks.count) face tracks, \(personTracks.count) person tracks, \(intervals.count) intervals\
             \(detectFailures.total > 0 ? ", \(detectFailures.total) detect failures" : "")
             """)
         return AnalyzeResult(edl: Edl(censorIntervalsMs: intervals, faceTracks: faceTracks,
-                                     personTracks: [], personWho: .none,
-                                     personWholeFrame: false),
+                                     personTracks: personTracks, personWho: bodyMode ? who : .none,
+                                     personWholeFrame: bodyMode && ops.censorMode == .wholeFrame,
+                                     personMasks: precise),
                              decodedFrames: stats.decoded,
                              sampledFrames: stats.emitted,
                              gateFrames: stats.gated,

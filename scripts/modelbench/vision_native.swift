@@ -99,6 +99,7 @@ func checkMaskPNG() throws {
                         "thermal_state": ProcessInfo.processInfo.thermalState.rawValue, "warmup": index < 3,
                         "input_long_side": 640, "boxes": [[Double]](), "masks": [String]()]
                     let started = ContinuousClock.now
+                    var pngExportMs = 0.0
                     do {
                         if candidate.hasPrefix("face") {
                             let observations = try await handler.perform(face)
@@ -121,7 +122,9 @@ func checkMaskPNG() throws {
                                     let image = CIImage(cvPixelBuffer: buffer)
                                     guard let cg = context.createCGImage(image, from: image.extent) else { throw NSError(domain: "mask", code: 1) }
                                     let name = "\(video.lastPathComponent)_\(candidate)_\(frame.deletingPathExtension().lastPathComponent)_\(id)_\(args[3]).png"
+                                    let pngStarted = ContinuousClock.now
                                     try png(cg, at: output.appendingPathComponent(name))
+                                    pngExportMs += milliseconds(pngStarted)
                                     masks.append(name)
                                 }
                                 row["masks"] = masks
@@ -130,10 +133,15 @@ func checkMaskPNG() throws {
                             let observation = try await handler.perform(semantic)
                             row["inference_ms"] = milliseconds(started)
                             let name = "\(video.lastPathComponent)_\(candidate)_\(frame.deletingPathExtension().lastPathComponent)_\(args[3]).png"
-                            try png(observation.cgImage, at: output.appendingPathComponent(name))
+                            let cg = try observation.cgImage
+                            let pngStarted = ContinuousClock.now
+                            try png(cg, at: output.appendingPathComponent(name))
+                            pngExportMs += milliseconds(pngStarted)
                             row["masks"] = [name]
                         }
                         row["infer_mask_export_ms"] = milliseconds(started)
+                        row["png_export_ms"] = pngExportMs
+                        row["processing_ms"] = milliseconds(started) - pngExportMs
                     } catch {
                         row["error"] = String(describing: error)
                         row["infer_mask_export_ms"] = milliseconds(started)

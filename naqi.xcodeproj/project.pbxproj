@@ -505,7 +505,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = Entitlements/NaqiShare.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 19;
+				CURRENT_PROJECT_VERSION = 20;
 				DEVELOPMENT_TEAM = U3C6DM4QX4;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = NaqiShare/Info.plist;
@@ -532,7 +532,7 @@
 			buildSettings = {
 				CODE_SIGN_ENTITLEMENTS = Entitlements/NaqiShare.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 19;
+				CURRENT_PROJECT_VERSION = 20;
 				DEVELOPMENT_TEAM = U3C6DM4QX4;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = NaqiShare/Info.plist;
@@ -560,7 +560,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Entitlements/NaqiWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 19;
+				CURRENT_PROJECT_VERSION = 20;
 				DEVELOPMENT_TEAM = U3C6DM4QX4;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = NaqiWidgets/Info.plist;
@@ -588,7 +588,7 @@
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = Entitlements/NaqiWidgets.entitlements;
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 19;
+				CURRENT_PROJECT_VERSION = 20;
 				DEVELOPMENT_TEAM = U3C6DM4QX4;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = NaqiWidgets/Info.plist;
@@ -734,7 +734,7 @@
 				"CODE_SIGN_ENTITLEMENTS[sdk=iphone*]" = Entitlements/naqi.entitlements;
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "Entitlements/naqi-macos.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 19;
+				CURRENT_PROJECT_VERSION = 20;
 				DEVELOPMENT_TEAM = U3C6DM4QX4;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -790,7 +790,7 @@
 				"CODE_SIGN_ENTITLEMENTS[sdk=iphone*]" = Entitlements/naqi.entitlements;
 				"CODE_SIGN_ENTITLEMENTS[sdk=macosx*]" = "Entitlements/naqi-macos.entitlements";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 19;
+				CURRENT_PROJECT_VERSION = 20;
 				DEVELOPMENT_TEAM = U3C6DM4QX4;
 				ENABLE_APP_SANDBOX = YES;
 				ENABLE_HARDENED_RUNTIME = YES;

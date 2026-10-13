@@ -735,6 +735,40 @@
         }
       }
     },
+    "share_app" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "مشاركة التطبيق"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Share Naqi"
+          }
+        }
+      }
+    },
+    "share_app_message" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "ar" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "جرّب تطبيق نقي لفلترة الفيديو:"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Try Naqi, the halal video filter:"
+          }
+        }
+      }
+    },
     "about_open" : {
       "extractionState" : "manual",
       "localizations" : {

@@ -102,6 +102,12 @@ struct PickScreen: View {
                     // run on a real phone; it stays one tap from the first
                     // screen for exactly that reason.
                     Button { flow.path = [.diagnostics] } label: { Text(.pickDiagTitle) }
+                    // Both store links: the person it is sent to may be on
+                    // either platform.
+                    ShareLink(item: String(localized: .shareAppMessage)
+                        + "\n\niOS: https://apps.apple.com/app/id6798173054"
+                        + "\nAndroid: https://play.google.com/store/apps/details?id=com.haithamassoli.naqi"
+                    ) { Text(.shareApp) }
                 } label: {
                     Image(systemName: "ellipsis")
                         .accessibilityLabel(Text(.actionMore))

@@ -2,6 +2,8 @@
 
 [English](README.md) · [العربية](README.ar.md)
 
+🤖 Also on Android: [Naqi for Android](https://github.com/haithamassoli/NaqiHalalVideoFilter)
+
 Naqi filters video on iPhone, iPad, and Mac. It can suppress musical instruments while keeping human vocals, including speech and singing, cover selected faces or bodies and flagged scenes, and save the result as a new file. Processing of local media runs on the device; the original file stays untouched.
 
 <p align="center">

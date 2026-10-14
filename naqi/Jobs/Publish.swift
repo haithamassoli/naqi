@@ -38,6 +38,9 @@ struct Published: Codable, Sendable, Equatable {
     let url: URL?
     /// `PHAsset` local identifier, for a Photos publish.
     let assetID: String?
+    /// The video ends with the Naqi card. Optional so older queue rows still
+    /// decode; the Done screen says once that it can be turned off.
+    var endCard: Bool?
 
     /// `url` if the file is still there. The queue stores absolute paths and
     /// the app container's path can change under them (a reinstall does it

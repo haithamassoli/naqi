@@ -945,6 +945,99 @@ struct RenderTests {
         #expect(!FileManager.default.fileExists(atPath: outURL.path), "partial file left behind")
     }
 
+    // MARK: - End card
+
+    /// The mockup's timeline (`docs/endcard/endcard-mockup.html`): blank at 0,
+    /// settled well before 2 s, and the drop overshooting its resting place on
+    /// the way in.
+    @Test("end card timing follows the mockup")
+    func endCardTiming() {
+        let start = EndCard.Pose(t: 0)
+        #expect(start.fade == 0 && start.arc == 0 && start.drop == 0 && start.glow == 0)
+        #expect(start.arabic == 0 && start.english == 0)
+        #expect(abs(EndCard.Pose(t: 0.075).fade - 0.5) < 1e-9)
+        let settled = EndCard.Pose(t: 1.3)
+        #expect(settled.fade == 1 && settled.arc == 1 && settled.glow == 1)
+        #expect(settled.arabic == 1 && settled.english == 1 && settled.dropAlpha == 1)
+        #expect(abs(settled.dropOffset) < 1e-9)
+        let fall = (0...100).map { EndCard.Pose(t: 0.35 + 0.35 * Double($0) / 100).dropOffset }
+        #expect(fall.first == -18 && (fall.max() ?? 0) > 0, "the drop never overshot: \(fall)")
+
+        #expect(EndCard.frameRate(source: 1) == 30)
+        #expect(EndCard.frameRate(source: 120) == 30)
+        #expect(EndCard(transform: .identity(size: CGSize(width: 64, height: 64)),
+                        sourceFrameRate: 25).frameCount == 50)
+    }
+
+    /// The card is drawn upright and stored the way the picture is, so turning
+    /// a rotated card's stored pixels by the track's own matrix has to give the
+    /// upright card back — and the upright card has its bowl under its drop.
+    @Test("the end card plays upright under every rotation", arguments: regionCases.indices)
+    func endCardUpright(i: Int) throws {
+        let c = Self.regionCases[i]
+        let stored = CGSize(width: 640, height: 360)
+        let transform = VideoTransform(preferredTransform: c.t, naturalSize: stored)
+        let up = transform.uprightSize
+        let ctx = CIContext(options: [.workingColorSpace: NSNull()])
+        func bitmap(_ image: CIImage) throws -> CVPixelBuffer {
+            let b = try Self.bgra(Int(image.extent.width), Int(image.extent.height)) { _, _ in (0, 0, 0) }
+            ctx.render(image, to: b, bounds: image.extent, colorSpace: nil)
+            return b
+        }
+        let card = EndCard(transform: transform, sourceFrameRate: 30)
+        let shown = card.image(frame: card.frameCount - 1, over: nil)
+        #expect(shown.extent.size == stored)
+        // Stored, y-up -> upright, y-up: the same trip a player makes.
+        let flipStored = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: stored.height)
+        let flipUp = CGAffineTransform(a: 1, b: 0, c: 0, d: -1, tx: 0, ty: up.height)
+        let played = try bitmap(shown.transformed(by: flipStored.concatenating(c.t).concatenating(flipUp)))
+        let reference = EndCard(transform: .identity(size: up), sourceFrameRate: 30)
+        let expected = try bitmap(reference.image(frame: reference.frameCount - 1, over: nil))
+
+        var off = 0
+        for y in stride(from: 0, to: Int(up.height), by: 6) {
+            for x in stride(from: 0, to: Int(up.width), by: 6) {
+                let a = Self.pixel(played, x, y), b = Self.pixel(expected, x, y)
+                if abs(a.r - b.r) + abs(a.g - b.g) + abs(a.b - b.b) > 12 { off += 1 }
+            }
+        }
+        #expect(off == 0, "\(c.name): \(off) sampled pixels differ from the upright card")
+
+        // Mark units -> upright pixels, exactly as `EndCard.draw` lays it out.
+        let s = min(up.width, up.height), unit = s * 0.26 / 45.7
+        func at(_ mx: CGFloat, _ my: CGFloat) -> (r: Int, g: Int, b: Int) {
+            Self.pixel(expected, Int(up.width / 2 + (mx - 54) * unit),
+                       Int(up.height / 2 - s * 0.09 + (my - 53.55) * unit))
+        }
+        #expect(at(54, 70.45).g > 150, "\(c.name): no bowl at the bottom of the mark")
+        #expect(at(56, 40.64).g > 150, "\(c.name): no drop inside the bowl")
+        #expect(at(54, 26).g < 80, "\(c.name): ink above the drop")
+    }
+
+    /// Picture only, after the last frame, at the source's cadence: the output
+    /// grows by exactly the card and keeps its rotation matrix.
+    @Test("render appends the end card after the last frame")
+    func renderAppendsEndCard() async throws {
+        let rot = CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: 96, ty: 0)
+        let inURL = Fixtures.scratch("endcard-in.mp4")
+        try await Self.syntheticClip(inURL, size: CGSize(width: 160, height: 96), frames: 30, rotation: rot)
+        let src = try await MediaSource.probe(inURL)
+        var ops = FilterOps()
+        ops.blurAmount = 0
+        ops.grayscale = true
+        let outURL = Fixtures.scratch("endcard-out.mp4")
+        let r = try await RenderPass.run(source: src, edl: Edl(censorIntervalsMs: [0...100]), ops: ops,
+                                         output: outURL, endCard: true)
+        #expect(r.frames == 30, "the card is not a source frame")
+        let frames = try await Self.sampleCount(outURL, .video)
+        #expect(frames == 30 + 60, "output holds \(frames) frames, expected 30 + a 60-frame card")
+        let a = try await Self.videoTrackInfo(inURL)
+        let b = try await Self.videoTrackInfo(outURL)
+        #expect(b.transform == rot)
+        #expect(abs(b.duration - (a.duration + EndCard.duration)) < 0.05,
+                "output is \(b.duration)s from a \(a.duration)s source")
+    }
+
     // MARK: - Helpers
 
     static func bgra(_ w: Int, _ h: Int,

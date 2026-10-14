@@ -233,6 +233,7 @@ struct JobTests {
         v = base; v.grayscale = !base.grayscale; variants.append(v)
         v = base; v.solidColor = .black; variants.append(v)
         v = base; v.keepStems = .vocalsAndOther; variants.append(v)
+        v = base; v.endCard = false; variants.append(v)
 
         var seen: Set<String> = [key]
         for variant in variants {
@@ -458,7 +459,8 @@ struct JobTests {
         #expect(out.video != nil, "the output has no video track")
         #expect(done.output.name == out.url.lastPathComponent)
         let source = try await MediaSource.probe(url)
-        #expect(abs(out.duration.seconds - source.duration.seconds) < 0.5)
+        // Re-encoded, so the end card rides on the end.
+        #expect(abs(out.duration.seconds - source.duration.seconds - EndCard.duration) < 0.5)
         #expect(!FileManager.default.fileExists(atPath: dir.path),
                 "a completed job leaves no work directory")
         try? FileManager.default.removeItem(at: folder)
@@ -508,7 +510,7 @@ struct JobTests {
         #expect(out.video != nil)
         #expect(out.audio != nil, "the separated track was not muxed in")
         let source = try await MediaSource.probe(url)
-        #expect(abs(out.duration.seconds - source.duration.seconds) < 0.5)
+        #expect(abs(out.duration.seconds - source.duration.seconds - EndCard.duration) < 0.5)
         try? FileManager.default.removeItem(at: folder)
     }
 
@@ -550,9 +552,11 @@ struct JobTests {
         let plan = Checkpoint.plan(durationMs: durationMs, forcedSegmentMs: segmentMs)
         #expect(plan.count == 4, "plan is \(plan.count) segments over \(durationMs) ms")
 
-        // The reference: the same EDL, one unsegmented pass, no ledger.
+        // The reference: the same EDL, one unsegmented pass, no ledger — and
+        // the one end card the join must carry on its last segment only.
         let refURL = Fixtures.scratch("seg-job-reference.mp4")
-        let reference = try await RenderPass.run(source: src, edl: edl, ops: ops, output: refURL)
+        _ = try await RenderPass.run(source: src, edl: edl, ops: ops, output: refURL, endCard: true)
+        let referenceFrames = try await RenderTests.sampleCount(refURL, .video)
 
         let folder = Fixtures.scratch("seg-job-out")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -635,8 +639,8 @@ struct JobTests {
         #expect(out.video != nil)
         #expect(out.audio != nil, "the joined picture never got its audio track")
         let frames = try await RenderTests.sampleCount(out.url, .video)
-        #expect(frames == reference.frames,
-                "the join holds \(frames) frames, the unsegmented render \(reference.frames)")
+        #expect(frames == referenceFrames,
+                "the join holds \(frames) frames, the unsegmented render \(referenceFrames)")
         let ref = try await MediaSource.probe(refURL)
         #expect(abs(out.duration.seconds - ref.duration.seconds) < 0.2,
                 "the join is \(out.duration.seconds)s, unsegmented \(ref.duration.seconds)s")
@@ -684,7 +688,7 @@ struct JobTests {
         #expect(out.video != nil)
         #expect(out.audio?.sampleRate == 44_100,
                 "output audio is \(out.audio?.sampleRate ?? 0) Hz — the source's track was muxed in")
-        #expect(abs(out.duration.seconds - src.duration.seconds) < 0.2)
+        #expect(abs(out.duration.seconds - src.duration.seconds - EndCard.duration) < 0.2)
         #expect(!FileManager.default.fileExists(
             atPath: WorkDir.root.appendingPathComponent(key, isDirectory: true).path))
         try? FileManager.default.removeItem(at: folder)
@@ -871,8 +875,9 @@ struct JobTests {
                 "the concat stage never posted: \(stages.withLock { $0 })")
         let out = try await MediaSource.probe(try #require(done.output.url))
         let frames = try await RenderTests.sampleCount(out.url, .video)
-        #expect(frames == 1_860, "the join holds \(frames) of 1860 frames")
-        #expect(abs(out.duration.seconds - src.duration.seconds) < 1.0,
+        // 1 fps is no cadence for an animation, so the card runs at 30: 60 frames.
+        #expect(frames == 1_860 + 60, "the join holds \(frames) of 1860 + 60 frames")
+        #expect(abs(out.duration.seconds - src.duration.seconds - EndCard.duration) < 1.0,
                 "the join is \(out.duration.seconds)s, the source \(src.duration.seconds)s")
         try? FileManager.default.removeItem(at: folder)
     }
@@ -929,7 +934,7 @@ struct JobTests {
         let done = try await JobRunner.run(job, forcedSegmentMs: segmentMs)
         #expect(done.resumed.contains(.render), "the join was not treated as a finished render")
         let out = try await MediaSource.probe(try #require(done.output.url))
-        #expect(abs(out.duration.seconds - src.duration.seconds) < 0.2,
+        #expect(abs(out.duration.seconds - src.duration.seconds - EndCard.duration) < 0.2,
                 "the resumed join is \(out.duration.seconds)s, the source \(src.duration.seconds)s")
         try? FileManager.default.removeItem(at: folder)
     }

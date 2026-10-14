@@ -49,6 +49,13 @@ struct SettingsScreen: View {
                     // would grey Photos out for every future video because the
                     // last pick happened to be an MP3.
                     DestinationSection(flow: flow)
+                    NaqiCard(padding: 0) {
+                        ToggleTile(icon: .video,
+                                   title: .settingsEndCardTitle,
+                                   desc: .settingsEndCardDesc,
+                                   id: "settings.endCard",
+                                   isOn: $flow.ops.endCard)
+                    }
                     StorageSection(monitor: flow.monitor)
                     VStack(alignment: .leading, spacing: 0) {
                         SectionHeader(.settingsLanguageTitle)

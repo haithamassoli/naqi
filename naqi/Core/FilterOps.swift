@@ -35,6 +35,10 @@ struct FilterOps: Codable, Sendable, Equatable {
     /// again. One field therefore carries both mode and colour on disk.
     var solidColor: SolidColor = .blur
     var keepStems: KeepStems = .vocals
+    /// Appends the two-second Naqi card after the last frame. Only a render
+    /// that re-encodes the picture can add it: compressed passthrough leaves
+    /// the video exactly as it came, card included or not.
+    var endCard: Bool = true
 
     /// `none` is the step-1 toggle rather than a picker option. `everyone`
     /// remains reachable because it is both the strictest choice and the one
@@ -125,8 +129,8 @@ struct FilterOps: Codable, Sendable, Equatable {
     }
 }
 
-// A queue file written before `censorNsfw` and `solidColor` existed must
-// decode to the exact behavior it recorded: gate on, Gaussian blur.
+// A queue file written before `censorNsfw`, `solidColor` and `endCard` existed
+// must decode to the defaults: gate on, Gaussian blur, card on.
 extension FilterOps {
     init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
@@ -144,6 +148,7 @@ extension FilterOps {
         grayscale = try values.decode(Bool.self, forKey: .grayscale)
         solidColor = try values.decodeIfPresent(SolidColor.self, forKey: .solidColor) ?? .blur
         keepStems = try values.decode(KeepStems.self, forKey: .keepStems)
+        endCard = try values.decodeIfPresent(Bool.self, forKey: .endCard) ?? true
     }
 }
 

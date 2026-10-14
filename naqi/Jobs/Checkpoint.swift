@@ -131,6 +131,8 @@ enum Checkpoint {
         if !ops.censorNsfw { parts.append("nsfw-off") }
         if ops.solidColor.isSolid { parts.append("solid-\(ops.solidColor.rawValue)") }
         if ops.processingMode != .current { parts.append("mode-fast720-v1") }
+        // The last segment carries the card, so its absence is a different file.
+        if !ops.endCard { parts.append("endcard-off") }
         if let quality { parts.append("quality-\(quality)") }
         if let sourceIdentity { parts.append("source-\(sourceIdentity)") }
         if source.isFileURL, MediaTypes.isWebM(source) {

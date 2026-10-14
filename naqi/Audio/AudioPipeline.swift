@@ -153,8 +153,9 @@ enum AudioPipeline {
                                  isCancelled: @escaping @Sendable () -> Bool) async throws -> Sep {
         nonisolated(unsafe) let decoder = try AudioDecoder(track: track)
         try decoder.start()
-        // Generic music classification can miss instruments beneath voices.
-        // Process every window by default; the gate remains available for A/B diagnostics.
+        // On only for sources of 10 min or more (JobRunner.separate): YAMNet can
+        // miss quiet music under speech, a risk worth taking only where the skips
+        // save minutes.
         let gate = useMusicGate ? MusicGate.open() : nil
         defer { if gate != nil { ModelRegistry.evict(Models.YamNet.file) } }
         let session = Confined<DemucsSession?>(nil)

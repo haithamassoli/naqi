@@ -1,6 +1,57 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "done_end_card_hint": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ينتهي الفيديو بخاتمة نقي، ويمكنك إيقافها من «الإعدادات»."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This video ends with the Naqi card. You can turn it off in Settings."
+          }
+        }
+      }
+    },
+    "settings_end_card_desc": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "أضف شعار نقي لثانيتين في نهاية الفيديو."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add a 2-second Naqi card at the end of the video."
+          }
+        }
+      }
+    },
+    "settings_end_card_title": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "خاتمة نقي"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Naqi end card"
+          }
+        }
+      }
+    },
     "licenses_ffmpeg_terms": {
       "extractionState": "manual",
       "localizations": {

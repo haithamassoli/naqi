@@ -207,6 +207,9 @@ enum JobRunner {
             lowPower=\(ProcessInfo.processInfo.isLowPowerModeEnabled)
             """)
 
+        // Set where a render actually ran with the card, so the Done screen
+        // never mentions a card a passthrough job does not have.
+        var cardAdded = false
         do {
             switch shape {
             case .censorOnly:
@@ -217,8 +220,10 @@ enum JobRunner {
                     post(.render, 1)
                 } else {
                     _ = try await RenderPass.run(source: src, edl: edl, ops: job.ops, output: out,
+                                                 endCard: job.ops.endCard,
                                                  progress: { post(.render, $0) },
                                                  isCancelled: stopping)
+                    cardAdded = job.ops.endCard
                 }
 
             case .musicOnly:
@@ -262,8 +267,10 @@ enum JobRunner {
                 } else {
                     _ = try await RenderPass.run(source: src, edl: edl, ops: job.ops, output: out,
                                                  replacedAudio: audio,
+                                                 endCard: job.ops.endCard,
                                                  progress: { post(.render, $0) },
                                                  isCancelled: stopping)
+                    cardAdded = job.ops.endCard
                 }
                 post(.mux, 1)
 
@@ -290,6 +297,7 @@ enum JobRunner {
                                              audio: job.ops.removeMusic ? audio
                                                  : (src.audio != nil ? url : nil),
                                              resumed: resumed, post: post, isCancelled: stopping)
+                    cardAdded = job.ops.endCard
                 }
             }
 
@@ -301,8 +309,9 @@ enum JobRunner {
             // have been rendering for an hour.
             let folder = publishTo == .userFolder
                 ? (job.resolvedFolder ?? OutputLibrary.root) : job.resolvedFolder
-            let published = try await Publish.save(out, named: outputName(for: originalURL, ext: ext),
+            var published = try await Publish.save(out, named: outputName(for: originalURL, ext: ext),
                                                    to: publishTo, folder: folder)
+            published.endCard = cardAdded
             post(.publish, 1)
             // Success takes the whole directory: the checkpoints only exist to
             // survive an interruption, and this run had none.
@@ -376,6 +385,7 @@ enum JobRunner {
 
     /// Empty finalized EDLs and explicit visual no-ops keep compressed video.
     /// Fast may use this too when the source is already at or below its cap.
+    /// No end card here: adding one would mean re-encoding the whole picture.
     private static func passthroughIfEligible(_ src: MediaSource, edl: Edl, ops: FilterOps,
                                               output: URL, replacedAudio: URL? = nil,
                                               isCancelled: @escaping @Sendable () -> Bool) async throws -> Bool {
@@ -556,6 +566,10 @@ enum JobRunner {
                 _ = try await RenderPass.run(
                     source: src, edl: edl, ops: ops, output: part,
                     range: seg.startMs...seg.endMs,
+                    // Once, at the end of the film: the concat joins it in
+                    // like any other picture, and the mux lets the audio end
+                    // before it.
+                    endCard: ops.endCard && seg.index == plan.last?.index,
                     context: renderContext,
                     progress: { post(.render, (Double(seg.index) + $0) / count) },
                     isCancelled: isCancelled)
@@ -629,8 +643,11 @@ enum JobRunner {
                                  isCancelled: @escaping @Sendable () -> Bool) async throws {
         let part = url.appendingPathExtension("part")
         try? FileManager.default.removeItem(at: part)
+        // YAMNet gate on sources of 10 min or more, where its skips save minutes;
+        // shorter clips keep separating every window. Same policy as Android.
+        let long = src.duration.isNumeric && src.duration.seconds >= 10 * 60
         _ = try await AudioPipeline.removeMusic(src, to: part, keepStems: ops.keepStems,
-                                                includeVideo: includeVideo,
+                                                includeVideo: includeVideo, useMusicGate: long,
                                                 progress: progress, isCancelled: isCancelled)
         try? FileManager.default.removeItem(at: url)
         try FileManager.default.moveItem(at: part, to: url)

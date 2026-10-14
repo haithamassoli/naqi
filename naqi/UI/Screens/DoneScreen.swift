@@ -24,6 +24,10 @@ struct DoneScreen: View {
     /// Flips once the in-app copy is gone, so the screen re-reads the disk.
     @State private var copyDropped = false
     @State private var publishing: PublishTarget?
+    @AppStorage("naqi.endCardHintSeen") private var endCardHintSeen = false
+    /// Once ever, on the first video that ends with the card. Captured on
+    /// appear so marking it seen does not take it away mid-visit.
+    @State private var showEndCardHint = false
 
     /// The name the publish actually used — not the job's `title`, which is the
     /// **source** name and would read as the filtered copy's. Available on both
@@ -104,6 +108,11 @@ struct DoneScreen: View {
         .toolbarBackground(Naqi.C.background, for: .navigationBar)
         #endif
         .navigationBarBackButtonHidden(true)
+        .onAppear {
+            guard flow.monitor.published?.endCard == true, !endCardHintSeen else { return }
+            showEndCardHint = true
+            endCardHintSeen = true
+        }
         .sheet(item: $playback) { MediaPlayerSheet(item: $0) }
         .sheet(item: $publishing) { PublishSheet(target: $0) }
         .mediaFileExporter(isPresented: $saving, url: flow.monitor.output,
@@ -130,6 +139,14 @@ struct DoneScreen: View {
                   publish: { publishing = $0 }) {
             extraTiles
         } footer: {
+            if showEndCardHint {
+                Text(.doneEndCardHint)
+                    .font(Naqi.F.bodySmall)
+                    .foregroundStyle(Naqi.C.onSurfaceVariant)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.top, Naqi.S.s3)
+            }
             deleteFooter
         }
     }

@@ -132,6 +132,22 @@ final class CensorEffect: @unchecked Sendable {
     /// on the render path.
     func render(_ src: CVPixelBuffer, to dst: CVPixelBuffer, wholeFrame: Bool, regions: [NRect],
                 masks: [BodyMask] = []) {
+        tag(dst, like: src)
+        let input = CIImage(cvPixelBuffer: src)
+        ctx.render(image(input, wholeFrame: wholeFrame, regions: regions, masks: masks),
+                   to: dst, bounds: input.extent, colorSpace: outputColorSpace)
+    }
+
+    /// Writes a frame that is already a finished image — the end card —
+    /// through the same context and with the same tags as the frames before
+    /// it. `reference` is the last frame the video wrote.
+    func render(_ image: CIImage, to dst: CVPixelBuffer, like reference: CVPixelBuffer?) {
+        tag(dst, like: reference)
+        ctx.render(image, to: dst, bounds: CGRect(origin: .zero, size: outputSize),
+                   colorSpace: outputColorSpace)
+    }
+
+    private func tag(_ dst: CVPixelBuffer, like src: CVPixelBuffer?) {
         if tonemap {
             // The source's HLG/PQ tags must not ride along to an SDR output.
             CVBufferSetAttachment(dst, kCVImageBufferColorPrimariesKey,
@@ -144,11 +160,8 @@ final class CensorEffect: @unchecked Sendable {
             // Carries the source's primaries/transfer/matrix onto the pooled
             // buffer so the RGB -> YCbCr write back uses the same matrix the
             // decode used.
-            CVBufferPropagateAttachments(src, dst)
+            if let src { CVBufferPropagateAttachments(src, dst) }
         }
-        let input = CIImage(cvPixelBuffer: src)
-        ctx.render(image(input, wholeFrame: wholeFrame, regions: regions, masks: masks),
-                   to: dst, bounds: input.extent, colorSpace: outputColorSpace)
     }
 
     /// The filter graph for one frame. Public so tests can inspect it without a

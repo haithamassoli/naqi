@@ -44,6 +44,7 @@ struct UITests {
         #expect(d.grayscale == false)
         #expect(d.solidColor == .blur)
         #expect(d.keepStems == .vocals)
+        #expect(d.endCard == true)
         // Spec §1.1 row 4 / analyze §0.20 — Android's `DEFAULT_STRICTNESS`.
         // The gate interpolates its thresholds from this, so a drift here
         // censors differently than Android at default settings.
@@ -61,6 +62,7 @@ struct UITests {
         #expect(ops.censorNsfw == true)
         #expect(ops.solidColor == .blur)
         #expect(ops.processingMode == .current)
+        #expect(ops.endCard == true)
     }
 
     @Test("Last-used options round-trip through UserDefaults")

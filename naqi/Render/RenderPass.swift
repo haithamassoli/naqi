@@ -61,12 +61,16 @@ enum RenderPass {
     ///   frames do not align with arbitrary clip boundaries, so the segmented
     ///   route renders picture alone and muxes one continuous track at the end
     ///   with `Remux.mux` (`spec-render.md` §4.2, Android `RenderPipeline.kt:66`).
+    /// - Parameter endCard: appends `EndCard` after the last frame written,
+    ///   picture only. Off by default so a caller has to ask for it: a segmented
+    ///   job wants it on its last segment and nowhere else.
     static func run(source: MediaSource,
                     edl: Edl,
                     ops: FilterOps,
                     output: URL,
                     replacedAudio: URL? = nil,
                     range: ClosedRange<Int64>? = nil,
+                    endCard: Bool = false,
                     context suppliedContext: Context? = nil,
                     progress: (@Sendable (Double) -> Void)? = nil,
                     isCancelled: @escaping @Sendable () -> Bool = { false }) async throws -> Result {
@@ -120,7 +124,8 @@ enum RenderPass {
             blur=\(ops.blurAmount)(sigma \(effect.plan.sigmaPx, format: .fixed(precision: 1))px \
             /\(effect.plan.downscale)) gray=\(ops.grayscale) \
             audio=\(audioTrack == nil ? "none" : (replacedAudio == nil ? "passthrough" : "replaced"), privacy: .public) \
-            range=\(range.map { "\($0.lowerBound)..<\($0.upperBound)ms" } ?? "whole", privacy: .public)
+            range=\(range.map { "\($0.lowerBound)..<\($0.upperBound)ms" } ?? "whole", privacy: .public) \
+            endCard=\(endCard)
             """)
 
         // AVFoundation objects are not Sendable but each is touched by exactly
@@ -132,7 +137,10 @@ enum RenderPass {
 
         let stage = Stage("render")
         do {
+            let card = endCard
+                ? EndCard(transform: v.transform, sourceFrameRate: v.nominalFrameRate) : nil
             async let video = renderVideo(track: vt, writer: out, edl: edl, effect: effect,
+                                          endCard: card,
                                           duration: source.duration, range: range,
                                           progress: progress, isCancelled: isCancelled)
             async let audio: Void = copyAudio(at, into: audioIn, isCancelled: isCancelled)
@@ -181,6 +189,7 @@ enum RenderPass {
                                     writer: OutputWriter,
                                     edl: Edl,
                                     effect: CensorEffect,
+                                    endCard: EndCard?,
                                     duration: CMTime,
                                     range: ClosedRange<Int64>?,
                                     progress: (@Sendable (Double) -> Void)?,
@@ -219,12 +228,39 @@ enum RenderPass {
         // 0...1 into its own band and does the per-segment arithmetic itself.
         let total = range.map { Double($0.upperBound - $0.lowerBound) } ?? duration.seconds * 1000
         let startMs = range?.lowerBound ?? 0
+        // The last frame written and the instant it stops showing: the end
+        // card dissolves in from the first and is timed from the second.
+        let last = Confined((frame: CVPixelBuffer?.none, end: CMTime.zero))
+        // Non-nil once the source is exhausted and the card is being written.
+        let cardFrame = Confined<Int?>(nil)
+        @Sendable func sourceDone() -> Bool {
+            guard endCard != nil, counts.v.frames > 0 else { return false }
+            cardFrame.v = 0
+            return true
+        }
 
         try await pump(input, label: "video") {
             if isCancelled() { throw MediaError.cancelled }
+            if let endCard, let i = cardFrame.v {
+                guard i < endCard.frameCount else { return false }
+                guard let pool = sink.pixelBufferPool else {
+                    throw MediaError.writerFailed("adaptor has no pixel buffer pool")
+                }
+                var dst: CVPixelBuffer?
+                guard CVPixelBufferPoolCreatePixelBuffer(nil, pool, &dst) == kCVReturnSuccess,
+                      let dst else {
+                    throw MediaError.writerFailed("pixel buffer pool exhausted at end card frame \(i)")
+                }
+                effect.render(endCard.image(frame: i, over: last.v.frame), to: dst, like: last.v.frame)
+                guard sink.append(dst, withPresentationTime: endCard.time(of: i, after: last.v.end)) else {
+                    throw MediaError.writerFailed("append end card frame \(i)")
+                }
+                cardFrame.v = i + 1
+                return true
+            }
             guard let sb = r.next() else {
                 try r.throwIfFailed()
-                return false
+                return sourceDone()
             }
             let pts = CMSampleBufferGetPresentationTimeStamp(sb)
             // The EDL is in whole milliseconds. Truncate rather than round, so a
@@ -240,13 +276,14 @@ enum RenderPass {
                 // Exclusive upper bound — see `run(range:)`. Decoded output
                 // arrives in presentation order, so the first frame at or past
                 // the boundary really is the end of this segment.
-                if ms >= range.upperBound { return false }
+                if ms >= range.upperBound { return sourceDone() }
             }
             guard let src = CMSampleBufferGetImageBuffer(sb) else {
                 throw MediaError.readerFailed("frame \(counts.v.frames) carries no image buffer")
             }
             if !base.v.isValid { base.v = pts }
             let outPts = range == nil ? pts : CMTimeSubtract(pts, base.v)
+            let frameDuration = CMSampleBufferGetDuration(sb)
 
             let full = edl.fullFrame(at: ms)
             let (regions, masks) = full ? ([], []) : edl.coverage(at: ms)
@@ -264,6 +301,7 @@ enum RenderPass {
                 guard sink.append(dst, withPresentationTime: outPts) else {
                     throw MediaError.writerFailed("append censored frame \(counts.v.frames)")
                 }
+                if endCard != nil { last.v.frame = dst }
                 counts.v.censored += 1
             } else {
                 // Nothing to censor here: the decoder's own buffer goes straight
@@ -271,6 +309,11 @@ enum RenderPass {
                 guard sink.append(src, withPresentationTime: outPts) else {
                     throw MediaError.writerFailed("append frame \(counts.v.frames)")
                 }
+                if endCard != nil { last.v.frame = src }
+            }
+            if let endCard {
+                last.v.end = CMTimeAdd(outPts, frameDuration.isValid && frameDuration > .zero
+                    ? frameDuration : CMTime(seconds: 1 / endCard.fps, preferredTimescale: 90_000))
             }
             counts.v.frames += 1
             if let progress, total > 0, counts.v.frames % 30 == 0 {

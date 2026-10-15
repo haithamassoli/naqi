@@ -453,9 +453,8 @@ enum JobRunner {
                 // traces; it does not promise a particular core assignment.
                 group.addTask(priority: .utility) {
                     post(.analyze, 0)
-                    let r = try await AnalyzePass.run(src, ops: ops,
-                                                      progress: { post(.analyze, $0) },
-                                                      isCancelled: aborted).edl
+                    let r = try await analyze(src, ops: ops, progress: { post(.analyze, $0) },
+                                              isCancelled: aborted)
                     try Checkpoint.writeEdl(r, dir: dir)
                     edl.withLock { $0 = r }
                     post(.analyze, 1)
@@ -504,12 +503,20 @@ enum JobRunner {
         // This used to be a 200 ms sibling task that raced the pass and threw
         // to cancel it; the pass taking the closure directly deletes the race
         // along with the task.
-        let edl = try await AnalyzePass.run(src, ops: ops,
-                                            progress: { post(.analyze, $0) },
-                                            isCancelled: isCancelled).edl
+        let edl = try await analyze(src, ops: ops, progress: { post(.analyze, $0) }, isCancelled: isCancelled)
         try Checkpoint.writeEdl(edl, dir: dir)
         post(.analyze, 1)
         return edl
+    }
+
+    /// Body mode's pass 1 on the server for a long source, else here.
+    private static func analyze(_ src: MediaSource, ops: FilterOps,
+                                progress: @escaping @Sendable (Double) -> Void,
+                                isCancelled: @escaping @Sendable () -> Bool) async throws -> Edl {
+        if let edl = try await Cloud.analyze(src, ops: ops, progress: progress, isCancelled: isCancelled) {
+            return edl
+        }
+        return try await AnalyzePass.run(src, ops: ops, progress: progress, isCancelled: isCancelled).edl
     }
 
     // MARK: - Segmented render
@@ -646,9 +653,15 @@ enum JobRunner {
         // YAMNet gate on sources of 10 min or more, where its skips save minutes;
         // shorter clips keep separating every window. Same policy as Android.
         let long = src.duration.isNumeric && src.duration.seconds >= 10 * 60
-        _ = try await AudioPipeline.removeMusic(src, to: part, keepStems: ops.keepStems,
-                                                includeVideo: includeVideo, useMusicGate: long,
-                                                progress: progress, isCancelled: isCancelled)
+        // The server returns the audio track only; a pass that writes video too stays here.
+        let onServer = includeVideo ? false
+            : try await Cloud.removeMusic(src, keepStems: ops.keepStems, to: part,
+                                          progress: progress, isCancelled: isCancelled)
+        if !onServer {
+            _ = try await AudioPipeline.removeMusic(src, to: part, keepStems: ops.keepStems,
+                                                    includeVideo: includeVideo, useMusicGate: long,
+                                                    progress: progress, isCancelled: isCancelled)
+        }
         try? FileManager.default.removeItem(at: url)
         try FileManager.default.moveItem(at: part, to: url)
     }

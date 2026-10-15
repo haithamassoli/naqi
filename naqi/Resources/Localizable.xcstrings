@@ -86,6 +86,40 @@
         }
       }
     },
+    "settings_server_desc": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "الفيديوهات التي مدتها 10 دقائق فأكثر تُرسل إلى سيرفر نقي ليزيل الموسيقى ويحدد الأشخاص لتغبيش الجسم بسرعة أكبر بكثير، ثم تُحذف فورًا. إذا تعذّر السيرفر يقوم جهازك بذلك."
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Videos of 10 minutes or more are sent to Naqi's server, which removes music and finds people for body blur far faster, then deletes them. If the server is unavailable, your device does it."
+          }
+        }
+      }
+    },
+    "settings_server_title": {
+      "extractionState": "manual",
+      "localizations": {
+        "ar": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "استخدام السيرفر للفيديوهات الطويلة"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use the server for long videos"
+          }
+        }
+      }
+    },
     "stage_converting": {
       "extractionState": "manual",
       "localizations": {

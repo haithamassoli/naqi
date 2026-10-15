@@ -80,7 +80,7 @@
         "en" : {
           "stringUnit" : {
             "state" : "new",
-            "value" : "Naqi reads the video you pick so it can filter it on your device. Nothing is uploaded."
+            "value" : "Naqi reads the video you pick so it can filter it. Videos of 10 minutes or more may be processed on Naqi's server unless you turn that off in Settings."
           }
         }
       }

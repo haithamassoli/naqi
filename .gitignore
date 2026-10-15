@@ -28,3 +28,6 @@ naqiTests/Fixtures/
 # Thmanyah Sans: the licence allows embedding in the app but forbids hosting the
 # font files, and this repo is public. Copy regular/medium/bold .otf into NaqiShared/Fonts locally.
 NaqiShared/Fonts/
+
+# Server URL + key (Jobs/Cloud.swift). Never committed: the key is the server's only gate.
+naqi/Resources/NaqiCloud.plist

@@ -15,6 +15,7 @@ struct SettingsScreen: View {
     @Bindable var flow: Flow
     @Binding var language: String
     @AppStorage(AppTheme.key) private var theme = AppTheme.system
+    @AppStorage(Cloud.enabledKey) private var useServer = true
 
     var body: some View {
         ScrollView {
@@ -55,6 +56,16 @@ struct SettingsScreen: View {
                                    desc: .settingsEndCardDesc,
                                    id: "settings.endCard",
                                    isOn: $flow.ops.endCard)
+                    }
+                    // Only in a build that has a server to use (`Cloud.config`).
+                    if Cloud.config != nil {
+                        NaqiCard(padding: 0) {
+                            ToggleTile(icon: nil,
+                                       title: .settingsServerTitle,
+                                       desc: .settingsServerDesc,
+                                       id: "settings.server",
+                                       isOn: $useServer)
+                        }
                     }
                     StorageSection(monitor: flow.monitor)
                     VStack(alignment: .leading, spacing: 0) {
